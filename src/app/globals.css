@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* LIGHT MODE */
+  --bg-page: #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-surface-secondary: #F1F5F9;
+  --bg-card: #FFFFFF;
+  --bg-input: #FFFFFF;
+  --border: #CBD5E1;
+  --border-strong: #94A3B8;
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --text-disabled: #94A3B8;
+
+  --primary-blue: #2563EB;
+  --primary-hover: #1D4ED8;
+  --primary-light: #DBEAFE;
+  --primary-dark: #1E40AF;
+
+  --btn-secondary: #E2E8F0;
+  --btn-secondary-text: #0F172A;
+  --btn-secondary-hover: #CBD5E1;
+
+  --link-color: #1D4ED8;
+
+  --success: #15803D;
+  --success-bg: #DCFCE7;
+  --success-border: #86EFAC;
+  --success-text: #166534;
+
+  --warning: #B45309;
+  --warning-bg: #FEF3C7;
+  --warning-border: #FCD34D;
+  --warning-text: #92400E;
+
+  --error: #DC2626;
+  --error-bg: #FEE2E2;
+  --error-border: #FCA5A5;
+  --error-text: #991B1B;
+
+  --info: #0369A1;
+  --info-bg: #E0F2FE;
+  --footer-bg: #F1F5F9;
+}
+
+.dark {
+  /* DARK MODE */
+  --bg-page: #0F172A;
+  --bg-surface: #111827;
+  --bg-surface-secondary: #1E293B;
+  --bg-card: #111827;
+  --bg-input: #1E293B;
+  --border: #334155;
+  --border-strong: #475569;
+  --text-primary: #F8FAFC;
+  --text-secondary: #CBD5E1;
+  --text-muted: #94A3B8;
+  --text-disabled: #64748B;
+
+  --primary-blue: #3B82F6;
+  --primary-hover: #60A5FA;
+  --primary-light: #1E3A8A;
+  --primary-dark: #172554;
+
+  --btn-secondary: #334155;
+  --btn-secondary-text: #F8FAFC;
+  --btn-secondary-hover: #475569;
+
+  --link-color: #60A5FA;
+
+  --success: #4ADE80;
+  --success-bg: #14532D;
+  --success-border: #22C55E;
+  --success-text: #BBF7D0;
+
+  --warning: #FBBF24;
+  --warning-bg: #78350F;
+  --warning-border: #F59E0B;
+  --warning-text: #FEF3C7;
+
+  --error: #F87171;
+  --error-bg: #7F1D1D;
+  --error-border: #EF4444;
+  --error-text: #FECACA;
+
+  --info: #38BDF8;
+  --info-bg: #0C4A6E;
+  --footer-bg: #020617;
+}
+
+body {
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  overflow-x: hidden;
+  min-height: 100vh;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Scrollbars for Light and Dark */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-page);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Checkerboards for transparency testing */
+.bg-checkerboard-dark {
+  background-color: #0f172a;
+  background-image: 
+    linear-gradient(45deg, #1e293b 25%, transparent 25%),
+    linear-gradient(-45deg, #1e293b 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #1e293b 75%),
+    linear-gradient(-45deg, transparent 75%, #1e293b 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+}
+
+.bg-checkerboard-light {
+  background-color: #ffffff;
+  background-image: 
+    linear-gradient(45deg, #e2e8f0 25%, transparent 25%),
+    linear-gradient(-45deg, #e2e8f0 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
+    linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+}
