@@ -25,6 +25,13 @@ import { PrivacyBanner } from '@/components/PrivacyBanner';
 import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal';
 import { Footer } from '@/components/Footer';
 
+// Platform Categories & Tools
+import { MainCategory, PdfToolId } from '@/types/document';
+import { PdfToolsHub } from '@/components/pdf/PdfToolsHub';
+import { DedicatedToolWorkspace } from '@/components/pdf/DedicatedToolWorkspace';
+import { DocumentConverterHub } from '@/components/documents/DocumentConverterHub';
+import { ImageConverterHub } from '@/components/images/ImageConverterHub';
+
 // Panels
 import { CompressPanel } from '@/components/panels/CompressPanel';
 import { ResizePanel } from '@/components/panels/ResizePanel';
@@ -59,12 +66,32 @@ import {
 import { PASSPORT_PRESETS } from '@/lib/passportTemplates';
 
 export default function Home() {
-  // App state
+  // App category & tool state
+  const [activeCategory, setActiveCategory] = useState<MainCategory>('image-tools');
+  const [selectedPdfTool, setSelectedPdfTool] = useState<PdfToolId | null>(null);
+
+  // Existing App state
   const [queue, setQueue] = useState<ImageItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<ToolId>('compress');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // Sync URL search params
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab') as MainCategory;
+      const tool = params.get('tool') as PdfToolId;
+      if (['image-tools', 'pdf-tools', 'document-converter', 'image-converter'].includes(tab)) {
+        setActiveCategory(tab);
+      }
+      if (tool) {
+        setSelectedPdfTool(tool);
+        setActiveCategory('pdf-tools');
+      }
+    }
+  }, []);
 
   // Modals
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
@@ -772,8 +799,13 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F8FAFC] dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] selection:bg-[#2563EB] selection:text-white transition-colors">
-      {/* Top Navbar */}
+      {/* Top Navbar with Category Navigation */}
       <Header
+        activeCategory={activeCategory}
+        onSelectCategory={(cat) => {
+          setActiveCategory(cat);
+          setSelectedPdfTool(null);
+        }}
         onAddImages={handleAddFiles}
         onClearWorkspace={handleClearWorkspace}
         onOpenShortcuts={() => setShortcutsModalOpen(true)}
@@ -781,16 +813,69 @@ export default function Home() {
         queueLength={queue.length}
       />
 
-      {/* When Queue is Empty: Show Hero Dropzone */}
-      {queue.length === 0 ? (
-        <main className="flex-1 flex flex-col items-center justify-center p-4">
-          <Dropzone
-            onFilesSelected={handleAddFiles}
-            onSampleSelected={(file) => handleAddFiles([file])}
-            isLoadingSample={isProcessing}
-          />
+      {/* 1. PDF TOOLS CATEGORY */}
+      {activeCategory === 'pdf-tools' && (
+        <main className="flex-1 flex flex-col">
+          {selectedPdfTool ? (
+            <DedicatedToolWorkspace
+              toolId={selectedPdfTool}
+              onBack={() => setSelectedPdfTool(null)}
+              onSelectOtherTool={(t) => setSelectedPdfTool(t)}
+            />
+          ) : (
+            <PdfToolsHub onSelectTool={(toolId) => setSelectedPdfTool(toolId)} />
+          )}
         </main>
-      ) : (
+      )}
+
+      {/* 2. DOCUMENT CONVERTER CATEGORY */}
+      {activeCategory === 'document-converter' && (
+        <main className="flex-1 flex flex-col">
+          {selectedPdfTool ? (
+            <DedicatedToolWorkspace
+              toolId={selectedPdfTool}
+              onBack={() => setSelectedPdfTool(null)}
+              onSelectOtherTool={(t) => setSelectedPdfTool(t)}
+            />
+          ) : (
+            <DocumentConverterHub onSelectTool={(toolId) => setSelectedPdfTool(toolId)} />
+          )}
+        </main>
+      )}
+
+      {/* 3. IMAGE CONVERTER CATEGORY */}
+      {activeCategory === 'image-converter' && (
+        <main className="flex-1 flex flex-col">
+          {selectedPdfTool ? (
+            <DedicatedToolWorkspace
+              toolId={selectedPdfTool}
+              onBack={() => setSelectedPdfTool(null)}
+              onSelectOtherTool={(t) => setSelectedPdfTool(t)}
+            />
+          ) : (
+            <ImageConverterHub
+              onSelectPdfTool={(toolId) => setSelectedPdfTool(toolId)}
+              onSwitchToImageWorkbench={(tool) => {
+                setActiveCategory('image-tools');
+                if (tool) setActiveTool(tool as any);
+              }}
+            />
+          )}
+        </main>
+      )}
+
+      {/* 4. IMAGE TOOLS WORKBENCH (PRESERVED 100%) */}
+      {activeCategory === 'image-tools' && (
+        <>
+          {queue.length === 0 ? (
+            <main className="flex-1 flex flex-col items-center justify-center p-4">
+              <Dropzone
+                onFilesSelected={handleAddFiles}
+                onSampleSelected={(file) => handleAddFiles([file])}
+                isLoadingSample={isProcessing}
+              />
+            </main>
+          ) : (
         /* When Queue has Images: Show Workbench */
         <main className="flex-1 flex flex-col">
           {/* Tool Selector Bar */}
@@ -945,23 +1030,27 @@ export default function Home() {
         </main>
       )}
 
-      {/* Bottom Queue Strip */}
-      <QueueTray
-        queue={queue}
-        activeId={activeId}
-        onSelect={setActiveId}
-        onRemove={handleRemoveQueueItem}
-        onAddMore={() => {
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.multiple = true;
-          input.accept = 'image/*';
-          input.onchange = (e: any) => {
-            if (e.target.files) handleAddFiles(Array.from(e.target.files));
-          };
-          input.click();
-        }}
-      />
+      {/* Bottom Queue Strip (Only on Image Tools) */}
+      {activeCategory === 'image-tools' && (
+        <QueueTray
+          queue={queue}
+          activeId={activeId}
+          onSelect={setActiveId}
+          onRemove={handleRemoveQueueItem}
+          onAddMore={() => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.accept = 'image/*';
+            input.onchange = (e: any) => {
+              if (e.target.files) handleAddFiles(Array.from(e.target.files));
+            };
+            input.click();
+          }}
+        />
+      )}
+    </>
+  )}
 
       {/* Footer */}
       <Footer onOpenPrivacyInfo={() => setPrivacyModalOpen(true)} />
