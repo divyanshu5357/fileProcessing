@@ -17,6 +17,7 @@ import {
   Cpu,
   Layers,
   Search,
+  LayoutGrid,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { useAuth } from '@/context/AuthContext';
@@ -104,6 +105,14 @@ export default function DashboardOverview() {
                   disabled={isUploading}
                 />
               </label>
+
+              <Link
+                href="/tools/pdf-assembler"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white font-bold text-xs transition"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span>Open PDF Assembler</span>
+              </Link>
 
               <Link
                 href="/tools/pdf-editor"

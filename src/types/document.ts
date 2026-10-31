@@ -28,7 +28,8 @@ export type PdfToolId =
   | 'watermark-pdf'
   | 'page-numbers'
   | 'pdf-to-text'
-  | 'pdf-editor';
+  | 'pdf-editor'
+  | 'pdf-assembler';
 
 export interface ToolDefinition {
   id: PdfToolId;

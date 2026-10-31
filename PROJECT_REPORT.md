@@ -31,31 +31,37 @@ The following high-resolution production captures illustrate the complete PixelK
 
 ---
 
-### 2. Cloud SaaS Dashboard Overview (`/dashboard`)
+### 2. Multi-Document PDF Assembler & Page Workspace (`/tools/pdf-assembler`)
+*Interactive multi-document workbench inspired by PDF24 featuring responsive thumbnail grids, cross-document drag-and-drop page transfers, batch rotation, alternate interleaving merge, and S3 export.*
+![PixelKit PDF Assembler Workspace](file:///Users/sakshisingh/.gemini/antigravity-ide/brain/082a9de0-95b4-4f3e-b917-f72898c12961/pdf_assembler_loaded_1793457040450.png)
+
+---
+
+### 3. Cloud SaaS Dashboard Overview (`/dashboard`)
 *Multi-tenant executive overview displaying live AWS S3 storage quota metrics, Neon relational file counts, active Celery task counters, and quick actions.*
 ![SaaS Dashboard Overview](file:///Users/sakshisingh/.gemini/antigravity-ide/brain/082a9de0-95b4-4f3e-b917-f72898c12961/dashboard_overview_1793440709714.png)
 
 ---
 
-### 3. Cloud S3 File Manager (`/dashboard/files`)
+### 4. Cloud S3 File Manager (`/dashboard/files`)
 *Private S3 storage browser supporting hierarchical folders, real-time search, mime-type filtering, multi-file selection, rename, preview, and bulk ZIP packaging.*
 ![Cloud File Manager](file:///Users/sakshisingh/.gemini/antigravity-ide/brain/082a9de0-95b4-4f3e-b917-f72898c12961/cloud_file_manager_1793440720797.png)
 
 ---
 
-### 4. Asynchronous Celery Processing Queue (`/dashboard/jobs`)
+### 5. Asynchronous Celery Processing Queue (`/dashboard/jobs`)
 *Decoupled task execution pipeline with Redis broker, live progress bar streaming, worker concurrency tracking, retry controls, and S3 artifact downloads.*
 ![Celery Processing Jobs](file:///Users/sakshisingh/.gemini/antigravity-ide/brain/082a9de0-95b4-4f3e-b917-f72898c12961/celery_jobs_queue_1793440732613.png)
 
 ---
 
-### 5. PDF Tools Conversion Hub (`/pdf`)
-*Complete conversion suite inspired by iLovePDF and Smallpdf with a structured two-column layout and 22 dedicated conversion workflows.*
+### 6. PDF Tools Conversion Hub (`/pdf`)
+*Complete conversion suite inspired by iLovePDF and Smallpdf with a structured two-column layout and 23 dedicated conversion workflows.*
 ![PDF Tools Conversion Hub](file:///Users/sakshisingh/.gemini/antigravity-ide/brain/082a9de0-95b4-4f3e-b917-f72898c12961/pdf_tools_dark_mode_1793437928354.png)
 
 ---
 
-### 6. Client-Side Image Tools Workbench (`/`)
+### 7. Client-Side Image Tools Workbench (`/`)
 *Zero-server-upload photo utility workbench featuring multi-threaded Web Worker compression, EXIF stripper, color palette extractor, and screenshot beautifier.*
 ![Image Tools Workbench](file:///Users/sakshisingh/.gemini/antigravity-ide/brain/082a9de0-95b4-4f3e-b917-f72898c12961/main_image_tools_page_1793437915216.png)
 

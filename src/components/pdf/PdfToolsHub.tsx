@@ -15,6 +15,7 @@ import {
   Layers,
   Wrench,
   PenTool,
+  LayoutGrid,
 } from 'lucide-react';
 
 interface PdfToolsHubProps {
@@ -68,34 +69,68 @@ export function PdfToolsHub({ onSelectTool }: PdfToolsHubProps) {
           />
         </div>
 
-        {/* Featured PDF Editor Banner */}
-        <div
-          onClick={() => onSelectTool('pdf-editor')}
-          className="mt-6 w-full max-w-2xl p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white shadow-lg flex items-center justify-between gap-4 cursor-pointer hover:opacity-95 transition-all select-none hover:scale-[1.01]"
-        >
-          <div className="flex items-center gap-3.5 text-left">
-            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0 border border-white/30">
-              <PenTool className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white text-blue-700">
-                  New Feature
-                </span>
-                <span className="text-xs text-blue-100 font-semibold">100% In-Browser</span>
+        {/* Featured Hero Banners: PDF Assembler & PDF Editor */}
+        <div className="mt-6 w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* PDF Assembler Card */}
+          <div
+            onClick={() => onSelectTool('pdf-assembler')}
+            className="p-5 rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-600 text-white shadow-lg flex items-center justify-between gap-4 cursor-pointer hover:opacity-95 transition-all select-none hover:scale-[1.01]"
+          >
+            <div className="flex items-center gap-3.5 text-left">
+              <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0 border border-white/30">
+                <LayoutGrid className="w-6 h-6 text-white" />
               </div>
-              <h3 className="text-base sm:text-lg font-extrabold text-white mt-1">
-                PDF Editor – Edit Text, Images and Documents
-              </h3>
-              <p className="text-xs text-blue-100 mt-0.5 line-clamp-1">
-                Click existing PDF text to edit directly, add signatures, whiteout, insert images & shapes.
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white text-blue-700">
+                    New Feature
+                  </span>
+                  <span className="text-[10px] text-cyan-200 font-semibold">Interactive</span>
+                </div>
+                <h3 className="text-sm sm:text-base font-extrabold text-white mt-1 leading-tight">
+                  PDF Assembler – Page Management
+                </h3>
+                <p className="text-xs text-blue-100 mt-0.5 line-clamp-1">
+                  Rearrange, alternate merge, and drag pages between documents.
+                </p>
+              </div>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-1 font-bold text-xs bg-white text-blue-600 px-3 py-1.5 rounded-xl shadow-xs shrink-0">
+              <span>Assemble</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
 
-          <div className="hidden sm:flex items-center gap-1 font-bold text-xs bg-white text-blue-600 px-3.5 py-2 rounded-xl shadow-xs shrink-0">
-            <span>Open Editor</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+          {/* PDF Editor Card */}
+          <div
+            onClick={() => onSelectTool('pdf-editor')}
+            className="p-5 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white shadow-lg flex items-center justify-between gap-4 cursor-pointer hover:opacity-95 transition-all select-none hover:scale-[1.01]"
+          >
+            <div className="flex items-center gap-3.5 text-left">
+              <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0 border border-white/30">
+                <PenTool className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white text-indigo-700">
+                    Full Suite
+                  </span>
+                  <span className="text-[10px] text-indigo-200 font-semibold">100% In-Browser</span>
+                </div>
+                <h3 className="text-sm sm:text-base font-extrabold text-white mt-1 leading-tight">
+                  PDF Editor – Text & Docs
+                </h3>
+                <p className="text-xs text-indigo-100 mt-0.5 line-clamp-1">
+                  Edit existing text directly, add signatures & whiteout.
+                </p>
+              </div>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-1 font-bold text-xs bg-white text-indigo-600 px-3 py-1.5 rounded-xl shadow-xs shrink-0">
+              <span>Edit</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </div>
           </div>
         </div>
       </div>

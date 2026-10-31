@@ -41,6 +41,7 @@ import {
   FileCheck,
 } from 'lucide-react';
 import { PdfEditorWorkspace } from '../editor/PdfEditorWorkspace';
+import { PdfAssemblerWorkspace } from '../assembler/PdfAssemblerWorkspace';
 
 interface DedicatedToolWorkspaceProps {
   toolId: PdfToolId;
@@ -55,6 +56,10 @@ export function DedicatedToolWorkspace({
 }: DedicatedToolWorkspaceProps) {
   if (toolId === 'pdf-editor') {
     return <PdfEditorWorkspace onBackToTools={onBack} />;
+  }
+
+  if (toolId === 'pdf-assembler') {
+    return <PdfAssemblerWorkspace onBackToTools={onBack} />;
   }
 
   const tool = getToolById(toolId) || ALL_PDF_TOOLS[0];
