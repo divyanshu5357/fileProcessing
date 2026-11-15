@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 import uuid
+from datetime import datetime, timezone, timedelta
 from backend.app.core.security import get_current_user, AuthenticatedUser
 from backend.app.database.connection import get_db
 from backend.app.database.models import File
@@ -12,6 +13,7 @@ from backend.app.schemas.file_schemas import (
     MultipartPartUrlRequest,
     MultipartPartUrlResponse,
     MultipartCompleteRequest,
+    SingleUploadCompleteRequest,
     FileResponse,
 )
 
@@ -27,7 +29,7 @@ async def initiate_upload(
     Initiates direct browser-to-S3 upload session.
     Verifies user storage quota and maximum file size prior to issuing presigned S3 URLs.
     """
-    # 1. Quota Check
+    # 1. Quota Check based on user's database plan
     await quota_service.verify_upload_quota(
         db=db,
         user_id=current_user.user_id,
@@ -87,8 +89,8 @@ async def complete_multipart(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Finalizes multipart upload by notifying AWS S3 to assemble the chunks.
-    Saves file metadata in Neon PostgreSQL and atomically increments storage usage.
+    Finalizes multipart upload by assembling chunks in S3.
+    Verifies actual file size from S3, calculates data expiration date, and records quota.
     """
     parts_data = [{"PartNumber": p.PartNumber, "ETag": p.ETag} for p in payload.parts]
     s3_service.complete_multipart_upload(
@@ -96,6 +98,22 @@ async def complete_multipart(
         upload_id=payload.upload_id,
         parts=parts_data
     )
+
+    # 1. Do not trust frontend size - calculate actual size from S3
+    actual_size = s3_service.get_actual_object_size(payload.s3_key)
+    final_file_size = actual_size if actual_size > 0 else payload.file_size
+
+    # 2. Re-verify quota against actual verified file size
+    await quota_service.verify_upload_quota(
+        db=db,
+        user_id=current_user.user_id,
+        file_size=final_file_size,
+        plan=current_user.plan
+    )
+
+    # 3. Automatic Data Retention calculation based on plan
+    plan_name, _, _, retention_days = await quota_service.get_user_plan_config(db, current_user.user_id)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=retention_days)
 
     ext = payload.original_name.split(".")[-1].lower() if "." in payload.original_name else "bin"
 
@@ -108,18 +126,84 @@ async def complete_multipart(
             stored_name=payload.original_name,
             mime_type=payload.content_type,
             file_extension=ext,
-            file_size=payload.file_size,
+            file_size=final_file_size,
             s3_key=payload.s3_key,
-            status="ready"
+            status="ready",
+            expires_at=expires_at
         )
         db.add(db_file)
         await db.commit()
 
-        # Update quota accounting
+        # Update quota accounting atomically
         await quota_service.record_upload_atomic(
             db=db,
             user_id=current_user.user_id,
-            file_size=payload.file_size
+            file_size=final_file_size
         )
 
-    return {"status": "success", "file_id": payload.file_id, "message": "File ready in S3"}
+    return {
+        "status": "success",
+        "file_id": payload.file_id,
+        "file_size": final_file_size,
+        "expires_at": expires_at.isoformat(),
+        "retention_days": retention_days,
+        "message": f"File ready in cloud storage. Retained for {retention_days} days until {expires_at.strftime('%Y-%m-%d %H:%M UTC')}."
+    }
+
+@router.post("/complete-single")
+async def complete_single_upload(
+    payload: SingleUploadCompleteRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Registers a successfully uploaded single file.
+    Inspects actual S3 object size and assigns expiration timestamp based on user plan.
+    """
+    actual_size = s3_service.get_actual_object_size(payload.s3_key)
+    final_file_size = actual_size if actual_size > 0 else (payload.file_size or 0)
+
+    # Re-verify quota against actual size
+    await quota_service.verify_upload_quota(
+        db=db,
+        user_id=current_user.user_id,
+        file_size=final_file_size,
+        plan=current_user.plan
+    )
+
+    plan_name, _, _, retention_days = await quota_service.get_user_plan_config(db, current_user.user_id)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=retention_days)
+
+    ext = payload.original_name.split(".")[-1].lower() if "." in payload.original_name else "bin"
+
+    if db is not None:
+        db_file = File(
+            id=payload.file_id,
+            user_id=current_user.user_id,
+            folder_id=payload.folder_id,
+            original_name=payload.original_name,
+            stored_name=payload.original_name,
+            mime_type=payload.content_type,
+            file_extension=ext,
+            file_size=final_file_size,
+            s3_key=payload.s3_key,
+            status="ready",
+            expires_at=expires_at
+        )
+        db.add(db_file)
+        await db.commit()
+
+        await quota_service.record_upload_atomic(
+            db=db,
+            user_id=current_user.user_id,
+            file_size=final_file_size
+        )
+
+    return {
+        "status": "success",
+        "file_id": payload.file_id,
+        "file_size": final_file_size,
+        "expires_at": expires_at.isoformat(),
+        "retention_days": retention_days,
+        "message": f"File saved. Retained for {retention_days} days."
+    }

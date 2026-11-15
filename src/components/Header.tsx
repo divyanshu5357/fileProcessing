@@ -1,143 +1,340 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
+import { useRouter, usePathname } from 'next/navigation';
 import {
-  ShieldCheck,
+  ChevronDown,
+  FileText,
+  ScanLine,
+  Image as ImageIcon,
+  PenTool,
+  ArrowRight,
+  Menu,
+  X,
   Sparkles,
-  Plus,
-  Trash2,
-  Keyboard,
-  Info,
 } from 'lucide-react';
-import { Button } from './ui/Button';
+import { GyanvatsalaLogo } from './common/GyanvatsalaLogo';
 import { ThemeToggle } from './ThemeToggle';
-import { NavigationTabs } from './NavigationTabs';
-import { MainCategory } from '@/types/document';
 import { UserMenu } from './auth/UserMenu';
-import { ModeBadge } from './dashboard/ModeBadge';
 import { AuthModal } from './auth/AuthModal';
+import { useAuth } from '@/context/AuthContext';
 
 interface HeaderProps {
-  activeCategory: MainCategory;
-  onSelectCategory: (category: MainCategory) => void;
-  onAddImages: (files: File[]) => void;
-  onClearWorkspace: () => void;
-  onOpenShortcuts: () => void;
-  onOpenPrivacyInfo: () => void;
-  queueLength: number;
+  activeCategory?: string;
+  onSelectCategory?: (category: any) => void;
+  onAddImages?: (files: File[]) => void;
+  onClearWorkspace?: () => void;
+  onOpenShortcuts?: () => void;
+  onOpenPrivacyInfo?: () => void;
+  queueLength?: number;
 }
 
 export function Header({
-  activeCategory,
-  onSelectCategory,
-  onAddImages,
-  onClearWorkspace,
-  onOpenShortcuts,
   onOpenPrivacyInfo,
-  queueLength,
-}: HeaderProps) {
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  onOpenShortcuts,
+}: HeaderProps = {}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { isAuthenticated, openAuthModal } = useAuth();
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      onAddImages(Array.from(e.target.files));
-    }
-  };
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [productsOpen, setProductsOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Detect scroll to add slight elevation and border
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 15);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Close dropdown on click outside or escape key
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setProductsOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setProductsOpen(false);
+        setMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+    setProductsOpen(false);
+  }, [pathname]);
+
+  const productItems = [
+    {
+      title: 'Document Studio',
+      description: 'Edit, convert, compress and organize your documents.',
+      href: '/pdf',
+      icon: FileText,
+      accent: 'text-[#536BCE] bg-[#EDF0FF] dark:bg-[#536BCE]/20',
+    },
+    {
+      title: 'Scan Studio',
+      description: 'Give digital documents the look and feel of a physical scan.',
+      href: '/scan-studio',
+      icon: ScanLine,
+      accent: 'text-[#059669] bg-emerald-50 dark:bg-emerald-950/40',
+    },
+    {
+      title: 'Media Studio',
+      description: 'Prepare images for sharing, publishing and everyday work.',
+      href: '/image-converter',
+      icon: ImageIcon,
+      accent: 'text-[#D97706] bg-amber-50 dark:bg-amber-950/40',
+    },
+    {
+      title: 'Canvas Editor',
+      description: 'Make changes to your documents with precision and flexibility.',
+      href: '/tools/pdf-editor',
+      icon: PenTool,
+      accent: 'text-[#7C3AED] bg-purple-50 dark:bg-purple-950/40',
+    },
+  ];
 
   return (
-    <header className="w-full bg-white dark:bg-[#111827] border-b border-[#CBD5E1] dark:border-[#334155] sticky top-0 z-30 transition-colors shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-        {/* Logo and Brand */}
-        <div
-          onClick={() => onSelectCategory('image-tools')}
-          className="flex items-center gap-3 cursor-pointer shrink-0"
+    <header
+      className={`w-full sticky top-0 z-40 transition-all duration-200 ${
+        isScrolled
+          ? 'bg-white/95 dark:bg-[#0D1017]/95 backdrop-blur-md border-b border-[#E9EBF0] dark:border-[#222632] shadow-xs'
+          : 'bg-white dark:bg-[#0D1017] border-b border-transparent'
+      }`}
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
+        {/* ======================================================== */}
+        {/* LEFT: GYANVATSALA LOGO & DESCRIPTOR                      */}
+        {/* ======================================================== */}
+        <Link
+          href="/"
+          className="flex items-center gap-3 shrink-0 group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#536BCE] rounded-lg"
+          aria-label="Gyanvatsala Home"
         >
-          <div className="w-9 h-9 rounded-xl bg-[#2563EB] dark:bg-[#3B82F6] flex items-center justify-center text-white shadow-xs">
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-base tracking-tight text-[#0F172A] dark:text-[#F8FAFC]">
-                PixelKit
-              </span>
-              <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded-full bg-[#DBEAFE] dark:bg-[#1E3A8A] text-[#1E40AF] dark:text-[#93C5FD] border border-[#BFDBFE] dark:border-[#3B82F6] font-bold">
-                Platform
-              </span>
-            </div>
-            <span className="text-[11px] text-[#475569] dark:text-[#CBD5E1] -mt-0.5 hidden xl:block font-medium">
-              Image & Document Processing
-            </span>
-          </div>
-        </div>
+          <GyanvatsalaLogo size={32} showWordmark={true} descriptor="Your Digital Document Workspace" />
+        </Link>
 
-        {/* Central Categories Navigation Tabs */}
-        <div className="hidden md:flex items-center justify-center flex-1 max-w-2xl">
-          <NavigationTabs
-            activeCategory={activeCategory}
-            onSelectCategory={onSelectCategory}
-            queueCount={queueLength}
-          />
-        </div>
+        {/* ======================================================== */}
+        {/* CENTER: PRIMARY CLEAN NAVIGATION                         */}
+        {/* ======================================================== */}
+        <nav className="hidden md:flex items-center gap-1 lg:gap-2">
+          {/* Products Dropdown */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              type="button"
+              onClick={() => setProductsOpen((prev) => !prev)}
+              aria-expanded={productsOpen}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                productsOpen
+                  ? 'text-[#536BCE] bg-[#EDF0FF] dark:bg-[#536BCE]/15'
+                  : 'text-[#20232B] dark:text-[#F8FAFC] hover:text-[#536BCE] dark:hover:text-[#93A5F5] hover:bg-[#F7F8FA] dark:hover:bg-[#1A2030]'
+              }`}
+            >
+              <span>Products</span>
+              <ChevronDown
+                className={`w-4 h-4 transition-transform duration-200 ${
+                  productsOpen ? 'rotate-180 text-[#536BCE]' : 'text-[#727783]'
+                }`}
+              />
+            </button>
 
-        {/* Workspace Actions, Mode Selector, User Menu & Theme Toggle */}
-        <div className="flex items-center gap-2 shrink-0">
-          <ModeBadge />
+            {/* Dropdown Panel */}
+            {productsOpen && (
+              <div className="absolute top-full left-0 mt-2 w-80 rounded-2xl bg-white dark:bg-[#151926] border border-[#E9EBF0] dark:border-[#28314A] shadow-xl p-2.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="flex flex-col gap-1">
+                  {productItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.title}
+                        href={item.href}
+                        onClick={() => setProductsOpen(false)}
+                        className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-[#F7F8FA] dark:hover:bg-[#1D2335] transition group text-left"
+                      >
+                        <div
+                          className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${item.accent}`}
+                        >
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-semibold text-[#20232B] dark:text-[#F8FAFC] group-hover:text-[#536BCE] transition">
+                            {item.title}
+                          </span>
+                          <span className="text-xs text-[#727783] dark:text-[#9DA3AE] line-clamp-1 mt-0.5">
+                            {item.description}
+                          </span>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-2 pt-2 border-t border-[#E9EBF0] dark:border-[#28314A] px-2 py-1 flex items-center justify-between text-xs text-[#727783]">
+                  <span>All tools run locally</span>
+                  <Link
+                    href="/workspace"
+                    onClick={() => setProductsOpen(false)}
+                    className="font-semibold text-[#536BCE] hover:underline"
+                  >
+                    Open Workspace →
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Explore Tools */}
+          <Link
+            href="/pdf"
+            className="px-3 py-2 rounded-lg text-sm font-medium text-[#20232B] dark:text-[#F8FAFC] hover:text-[#536BCE] dark:hover:text-[#93A5F5] hover:bg-[#F7F8FA] dark:hover:bg-[#1A2030] transition-colors"
+          >
+            Explore Tools
+          </Link>
+
+          {/* How It Works */}
+          <Link
+            href="/#how-it-works"
+            className="px-3 py-2 rounded-lg text-sm font-medium text-[#20232B] dark:text-[#F8FAFC] hover:text-[#536BCE] dark:hover:text-[#93A5F5] hover:bg-[#F7F8FA] dark:hover:bg-[#1A2030] transition-colors"
+          >
+            How It Works
+          </Link>
+
+          {/* Pricing */}
+          <Link
+            href="/pricing"
+            className="px-3 py-2 rounded-lg text-sm font-medium text-[#20232B] dark:text-[#F8FAFC] hover:text-[#536BCE] dark:hover:text-[#93A5F5] hover:bg-[#F7F8FA] dark:hover:bg-[#1A2030] transition-colors"
+          >
+            Pricing
+          </Link>
+        </nav>
+
+        {/* ======================================================== */}
+        {/* RIGHT: THEME TOGGLE, SIGN IN & GET STARTED               */}
+        {/* ======================================================== */}
+        <div className="hidden sm:flex items-center gap-3">
           <ThemeToggle />
-          <UserMenu />
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="image/*"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-
-          {activeCategory === 'image-tools' && queueLength > 0 && (
-            <>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                className="hidden sm:inline-flex"
-              >
-                <Plus className="w-3.5 h-3.5 mr-1" />
-                Add Photos
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onClearWorkspace}
-                className="text-[#64748B] hover:text-[#DC2626] dark:text-[#94A3B8] dark:hover:text-[#F87171]"
-                title="Clear Workspace"
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </>
+          {isAuthenticated ? (
+            <UserMenu />
+          ) : (
+            <button
+              type="button"
+              onClick={() => openAuthModal()}
+              className="text-sm font-medium text-[#20232B] dark:text-[#F8FAFC] hover:text-[#536BCE] dark:hover:text-[#93A5F5] px-3 py-2 rounded-lg hover:bg-[#F7F8FA] dark:hover:bg-[#1A2030] transition cursor-pointer"
+            >
+              Sign In
+            </button>
           )}
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onOpenShortcuts}
-            className="text-[#475569] dark:text-[#CBD5E1]"
-            title="Keyboard Shortcuts"
+          <Link
+            href="/workspace"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#20232B] dark:bg-[#536BCE] hover:bg-[#343A46] dark:hover:bg-[#4157B5] text-white text-sm font-medium transition shadow-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-[#536BCE]"
           >
-            <Keyboard className="w-4 h-4" />
-          </Button>
+            <span>Get Started</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
+        {/* Mobile menu trigger */}
+        <div className="flex sm:hidden items-center gap-2">
+          <ThemeToggle />
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
+            className="p-2 rounded-lg text-[#20232B] dark:text-[#F8FAFC] hover:bg-[#F7F8FA] dark:hover:bg-[#1A2030]"
+            aria-label="Toggle navigation menu"
+          >
+            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
         </div>
       </div>
 
-      {/* Mobile Category Nav Bar */}
-      <div className="md:hidden flex items-center justify-start px-4 py-2 border-t border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] overflow-x-auto no-scrollbar">
-        <NavigationTabs
-          activeCategory={activeCategory}
-          onSelectCategory={onSelectCategory}
-          queueCount={queueLength}
-        />
-      </div>
+      {/* ======================================================== */}
+      {/* RESPONSIVE MOBILE MENU DRAWER                            */}
+      {/* ======================================================== */}
+      {mobileMenuOpen && (
+        <div className="sm:hidden border-t border-[#E9EBF0] dark:border-[#222632] bg-white dark:bg-[#0D1017] px-4 pt-3 pb-6 flex flex-col gap-4 shadow-lg animate-in slide-in-from-top-2 duration-150">
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold text-[#727783] uppercase tracking-wider px-2 pt-2">
+              Products
+            </span>
+            {productItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.title}
+                  href={item.href}
+                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-[#F7F8FA] dark:hover:bg-[#1A2030] text-sm font-medium text-[#20232B] dark:text-[#F8FAFC]"
+                >
+                  <Icon className="w-4 h-4 text-[#536BCE]" />
+                  <span>{item.title}</span>
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="border-t border-[#E9EBF0] dark:border-[#222632] pt-2 flex flex-col gap-1">
+            <Link
+              href="/pdf"
+              className="p-2 rounded-lg text-sm font-medium text-[#20232B] dark:text-[#F8FAFC] hover:bg-[#F7F8FA] dark:hover:bg-[#1A2030]"
+            >
+              Explore Tools
+            </Link>
+            <Link
+              href="/#how-it-works"
+              className="p-2 rounded-lg text-sm font-medium text-[#20232B] dark:text-[#F8FAFC] hover:bg-[#F7F8FA] dark:hover:bg-[#1A2030]"
+            >
+              How It Works
+            </Link>
+            <Link
+              href="/pricing"
+              className="p-2 rounded-lg text-sm font-medium text-[#20232B] dark:text-[#F8FAFC] hover:bg-[#F7F8FA] dark:hover:bg-[#1A2030]"
+            >
+              Pricing
+            </Link>
+          </div>
+
+          <div className="border-t border-[#E9EBF0] dark:border-[#222632] pt-3 flex flex-col gap-2">
+            {!isAuthenticated && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  openAuthModal();
+                }}
+                className="w-full text-center py-2.5 rounded-xl border border-[#E9EBF0] dark:border-[#28314A] text-sm font-medium text-[#20232B] dark:text-[#F8FAFC]"
+              >
+                Sign In
+              </button>
+            )}
+            <Link
+              href="/workspace"
+              className="w-full text-center py-2.5 rounded-xl bg-[#536BCE] text-white text-sm font-medium shadow-xs"
+            >
+              Enter Workspace
+            </Link>
+          </div>
+        </div>
+      )}
+
       <AuthModal />
     </header>
   );

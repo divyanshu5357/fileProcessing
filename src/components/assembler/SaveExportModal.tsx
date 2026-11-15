@@ -49,7 +49,7 @@ export function SaveExportModal({
 
   // Default mode selection
   const [exportMode, setExportMode] = useState<ExportMode>('merge-selected');
-  const [customFileName, setCustomFileName] = useState('PixelKit_Assembled_Document.pdf');
+  const [customFileName, setCustomFileName] = useState('Gyanvatsala_Assembled_Document.pdf');
   const [destination, setDestination] = useState<'local' | 'cloud'>('local');
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -134,8 +134,34 @@ export function SaveExportModal({
         setProgress(100);
         setSuccessMsg(`Document saved to your private S3 storage: ${finalName}`);
       } else {
-        // Direct local download
-        downloadBlob(finalBlob, finalName);
+        // Local saving: use native local folder picker if available
+        let savedLocally = false;
+        if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
+          try {
+            const ext = finalName.endsWith('.zip') ? 'zip' : 'pdf';
+            const handle = await (window as any).showSaveFilePicker({
+              suggestedName: finalName,
+              types: [
+                {
+                  description: `${ext.toUpperCase()} Document`,
+                  accept: { [finalBlob.type || 'application/octet-stream']: [`.${ext}`] },
+                },
+              ],
+            });
+            const writable = await handle.createWritable();
+            await writable.write(finalBlob);
+            await writable.close();
+            savedLocally = true;
+          } catch (e: any) {
+            if (e.name === 'AbortError') {
+              setIsProcessing(false);
+              return;
+            }
+          }
+        }
+        if (!savedLocally) {
+          downloadBlob(finalBlob, finalName);
+        }
         setProgress(100);
         setSuccessMsg(`Document exported successfully: ${finalName}`);
       }

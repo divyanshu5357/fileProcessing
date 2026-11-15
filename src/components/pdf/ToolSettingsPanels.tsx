@@ -401,7 +401,7 @@ export function ToolSettingsPanels({
 
       {/* 9. PAGE NUMBERS SETTINGS */}
       {toolId === 'page-numbers' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
               Number Format
@@ -432,7 +432,51 @@ export function ToolSettingsPanels({
               <option value="bottom-left">Bottom Left</option>
               <option value="top-center">Top Center</option>
               <option value="top-right">Top Right</option>
+              <option value="top-left">Top Left</option>
             </select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+              Start Number
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={settings.startNumber ?? 1}
+              onChange={(e) => update('startNumber', Math.max(1, parseInt(e.target.value, 10) || 1))}
+              className="text-xs p-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] font-medium"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+              Font Size & Margin
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={settings.fontSize || 10}
+                onChange={(e) => update('fontSize', parseInt(e.target.value, 10))}
+                className="text-xs p-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] font-medium cursor-pointer"
+              >
+                <option value={8}>8 pt</option>
+                <option value={9}>9 pt</option>
+                <option value={10}>10 pt (Default)</option>
+                <option value={11}>11 pt</option>
+                <option value={12}>12 pt</option>
+                <option value={14}>14 pt</option>
+              </select>
+
+              <select
+                value={typeof settings.margin === 'number' ? settings.margin : (settings.margin === 'small' ? 15 : (settings.margin === 'wide' ? 40 : 25))}
+                onChange={(e) => update('margin', parseInt(e.target.value, 10))}
+                className="text-xs p-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] font-medium cursor-pointer"
+              >
+                <option value={15}>Tight (15pt)</option>
+                <option value={25}>Normal (25pt)</option>
+                <option value={40}>Wide (40pt)</option>
+              </select>
+            </div>
           </div>
         </div>
       )}

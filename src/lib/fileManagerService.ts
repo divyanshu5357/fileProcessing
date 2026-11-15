@@ -1,6 +1,6 @@
 /**
  * PixelKit Cloud File Manager & Storage Service
- * Handles S3 Presigned Uploads, Metadata in Neon PostgreSQL, and Celery Job Triggers
+ * Handles S3 Presigned Uploads, Metadata in Neon PostgreSQL, Quota Enforcement & Data Retention
  */
 
 export interface CloudFile {
@@ -16,6 +16,9 @@ export interface CloudFile {
   status: 'ready' | 'processing' | 'uploading' | 'error';
   createdAt: string;
   updatedAt: string;
+  expiresAt: string;
+  notified48h?: boolean;
+  notified24h?: boolean;
 }
 
 export interface CloudFolder {
@@ -47,154 +50,54 @@ const LOCAL_FILES_KEY = 'pixelkit_saas_cloud_files';
 const LOCAL_FOLDERS_KEY = 'pixelkit_saas_cloud_folders';
 const LOCAL_JOBS_KEY = 'pixelkit_saas_cloud_jobs';
 
-const initialFolders: CloudFolder[] = [
-  { id: 'fld-1', userId: 'usr-1', parentFolderId: null, folderName: 'Client Presentations', createdAt: new Date(Date.now() - 86400000 * 4).toISOString(), fileCount: 3 },
-  { id: 'fld-2', userId: 'usr-1', parentFolderId: null, folderName: 'Signed Contracts', createdAt: new Date(Date.now() - 86400000 * 2).toISOString(), fileCount: 2 },
-  { id: 'fld-3', userId: 'usr-1', parentFolderId: null, folderName: 'Processed Images', createdAt: new Date(Date.now() - 86400000 * 1).toISOString(), fileCount: 4 },
-];
+// Plan retention and quota rules
+export const PLAN_LIMITS: Record<string, { storageBytes: number; maxFileBytes: number; retentionDays: number; name: string }> = {
+  Free: { storageBytes: 15728640, maxFileBytes: 15728640, retentionDays: 7, name: 'Free' },
+  Prime: { storageBytes: 52428800, maxFileBytes: 26214400, retentionDays: 14, name: 'Prime' },
+  PrimePlus: { storageBytes: 104857600, maxFileBytes: 52428800, retentionDays: 30, name: 'PrimePlus' },
+  PrimeUltra: { storageBytes: 524288000, maxFileBytes: 104857600, retentionDays: 365, name: 'PrimeUltra' },
+  Pro: { storageBytes: 104857600, maxFileBytes: 52428800, retentionDays: 30, name: 'PrimePlus' },
+  Business: { storageBytes: 524288000, maxFileBytes: 104857600, retentionDays: 365, name: 'PrimeUltra' },
+};
 
-const initialFiles: CloudFile[] = [
-  {
-    id: 'fil-101',
-    userId: 'usr-1',
-    folderId: 'fld-1',
-    originalName: 'Quarterly_Financial_Report_2026.pdf',
-    storedName: 'financial_q3_signed.pdf',
-    mimeType: 'application/pdf',
-    fileExtension: 'pdf',
-    fileSize: 4520000, // 4.5 MB
-    s3Key: 'users/usr-1/originals/fil-101/Quarterly_Financial_Report_2026.pdf',
-    status: 'ready',
-    createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
-    updatedAt: new Date(Date.now() - 3600000 * 3).toISOString(),
-  },
-  {
-    id: 'fil-102',
-    userId: 'usr-1',
-    folderId: 'fld-3',
-    originalName: 'Hero_Banner_Retouch_4K.webp',
-    storedName: 'hero_banner_compressed.webp',
-    mimeType: 'image/webp',
-    fileExtension: 'webp',
-    fileSize: 1850000, // 1.8 MB
-    s3Key: 'users/usr-1/originals/fil-102/Hero_Banner_Retouch_4K.webp',
-    status: 'ready',
-    createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-    updatedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-  },
-  {
-    id: 'fil-103',
-    userId: 'usr-1',
-    folderId: 'fld-2',
-    originalName: 'Master_Services_Agreement_Signed.pdf',
-    storedName: 'msa_executed.pdf',
-    mimeType: 'application/pdf',
-    fileExtension: 'pdf',
-    fileSize: 2840000,
-    s3Key: 'users/usr-1/originals/fil-103/Master_Services_Agreement_Signed.pdf',
-    status: 'ready',
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: 'fil-104',
-    userId: 'usr-1',
-    folderId: null,
-    originalName: 'Product_Catalog_Export.xlsx',
-    storedName: 'catalog_q3.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    fileExtension: 'xlsx',
-    fileSize: 840000,
-    s3Key: 'users/usr-1/originals/fil-104/Product_Catalog_Export.xlsx',
-    status: 'ready',
-    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-  },
-];
-
-const initialJobs: ProcessingJob[] = [
-  {
-    id: 'job-9821',
-    userId: 'usr-1',
-    fileId: 'fil-101',
-    fileName: 'Quarterly_Financial_Report_2026.pdf',
-    operation: 'PDF Compression & Linearization',
-    jobStatus: 'completed',
-    progress: 100,
-    inputS3Key: 'users/usr-1/originals/fil-101/Quarterly_Financial_Report_2026.pdf',
-    outputS3Key: 'users/usr-1/processed/fil-101/Quarterly_Financial_Report_2026_compressed.pdf',
-    startedAt: new Date(Date.now() - 3600000 * 3).toISOString(),
-    completedAt: new Date(Date.now() - 3600000 * 3 + 12000).toISOString(),
-    createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
-  },
-  {
-    id: 'job-9822',
-    userId: 'usr-1',
-    fileId: 'fil-102',
-    fileName: 'Hero_Banner_Retouch_4K.webp',
-    operation: 'Lossless EXIF Strip & WebP Re-encode',
-    jobStatus: 'completed',
-    progress: 100,
-    inputS3Key: 'users/usr-1/originals/fil-102/Hero_Banner_Retouch_4K.webp',
-    outputS3Key: 'users/usr-1/processed/fil-102/Hero_Banner_Retouch_4K_clean.webp',
-    startedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-    completedAt: new Date(Date.now() - 3600000 * 5 + 4000).toISOString(),
-    createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-  },
-  {
-    id: 'job-9823',
-    userId: 'usr-1',
-    fileId: 'fil-103',
-    fileName: 'Legal_Addendum_Scanned.pdf',
-    operation: 'Tesseract OCR Text Layer Injection',
-    jobStatus: 'processing',
-    progress: 68,
-    inputS3Key: 'users/usr-1/originals/fil-103/Legal_Addendum_Scanned.pdf',
-    startedAt: new Date(Date.now() - 60000).toISOString(),
-    createdAt: new Date(Date.now() - 75000).toISOString(),
-  },
-];
+const initialFolders: CloudFolder[] = [];
+const initialFiles: CloudFile[] = [];
+const initialJobs: ProcessingJob[] = [];
 
 export const fileManagerService = {
   getFiles: (): CloudFile[] => {
-    if (typeof window === 'undefined') return initialFiles;
+    if (typeof window === 'undefined') return [];
     try {
       const data = localStorage.getItem(LOCAL_FILES_KEY);
-      if (!data) {
-        localStorage.setItem(LOCAL_FILES_KEY, JSON.stringify(initialFiles));
-        return initialFiles;
-      }
-      return JSON.parse(data);
+      if (!data) return [];
+      const parsed = JSON.parse(data);
+      // Strip any legacy mock dummy data
+      return Array.isArray(parsed) ? parsed.filter((f) => !f.id.startsWith('fil-10')) : [];
     } catch {
-      return initialFiles;
+      return [];
     }
   },
 
   getFolders: (): CloudFolder[] => {
-    if (typeof window === 'undefined') return initialFolders;
+    if (typeof window === 'undefined') return [];
     try {
       const data = localStorage.getItem(LOCAL_FOLDERS_KEY);
-      if (!data) {
-        localStorage.setItem(LOCAL_FOLDERS_KEY, JSON.stringify(initialFolders));
-        return initialFolders;
-      }
-      return JSON.parse(data);
+      if (!data) return [];
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed.filter((f) => !f.id.startsWith('fld-')) : [];
     } catch {
-      return initialFolders;
+      return [];
     }
   },
-
   getJobs: (): ProcessingJob[] => {
-    if (typeof window === 'undefined') return initialJobs;
+    if (typeof window === 'undefined') return [];
     try {
       const data = localStorage.getItem(LOCAL_JOBS_KEY);
-      if (!data) {
-        localStorage.setItem(LOCAL_JOBS_KEY, JSON.stringify(initialJobs));
-        return initialJobs;
-      }
-      return JSON.parse(data);
+      if (!data) return [];
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed.filter((j) => !j.id.startsWith('job-98')) : [];
     } catch {
-      return initialJobs;
+      return [];
     }
   },
 
@@ -221,16 +124,37 @@ export const fileManagerService = {
   uploadFile: async (
     file: File,
     folderId: string | null = null,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    userPlan: string = 'Free'
   ): Promise<CloudFile> => {
-    // Simulated S3 Multipart Upload with realistic chunking progress
+    // 1. Quota & Plan Enforcement
+    const planConfig = PLAN_LIMITS[userPlan] || PLAN_LIMITS.Free;
+    const currentFiles = fileManagerService.getFiles();
+    const currentUsedBytes = currentFiles.reduce((acc, f) => acc + f.fileSize, 0);
+
+    if (file.size > planConfig.maxFileBytes) {
+      throw new Error(
+        `File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds the ${planConfig.name} plan limit of ${(planConfig.maxFileBytes / (1024 * 1024)).toFixed(0)} MB.`
+      );
+    }
+
+    if (currentUsedBytes + file.size > planConfig.storageBytes) {
+      throw new Error(
+        `Storage quota exceeded! You are using ${(currentUsedBytes / (1024 * 1024)).toFixed(1)} MB of ${(planConfig.storageBytes / (1024 * 1024)).toFixed(0)} MB. Upgrade to Prime or PrimePlus for more storage.`
+      );
+    }
+
+    // 2. Simulated Direct S3 Multipart Upload with progress
     for (let p = 15; p <= 95; p += 25) {
       if (onProgress) onProgress(p);
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 100));
     }
     if (onProgress) onProgress(100);
 
+    // 3. Assign Expiration Date based on Plan Retention Days
+    const expiresAt = new Date(Date.now() + planConfig.retentionDays * 86400000).toISOString();
     const ext = file.name.split('.').pop() || 'bin';
+
     const newFile: CloudFile = {
       id: 'fil-' + Math.random().toString(36).substring(2, 9),
       userId: 'usr-current',
@@ -244,9 +168,10 @@ export const fileManagerService = {
       status: 'ready',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      expiresAt,
     };
 
-    const files = [newFile, ...fileManagerService.getFiles()];
+    const files = [newFile, ...currentFiles];
     localStorage.setItem(LOCAL_FILES_KEY, JSON.stringify(files));
     return newFile;
   },
@@ -270,6 +195,26 @@ export const fileManagerService = {
     localStorage.setItem(LOCAL_FILES_KEY, JSON.stringify(files));
   },
 
+  getExpiringFiles: (hours: number = 48): CloudFile[] => {
+    const files = fileManagerService.getFiles();
+    const thresholdMs = Date.now() + hours * 3600000;
+    return files.filter((f) => {
+      const exp = new Date(f.expiresAt).getTime();
+      return exp <= thresholdMs && exp > Date.now();
+    });
+  },
+
+  runRetentionCleanup: (): { expiredCount: number } => {
+    const files = fileManagerService.getFiles();
+    const now = Date.now();
+    const validFiles = files.filter((f) => new Date(f.expiresAt).getTime() > now);
+    const expiredCount = files.length - validFiles.length;
+    if (expiredCount > 0) {
+      localStorage.setItem(LOCAL_FILES_KEY, JSON.stringify(validFiles));
+    }
+    return { expiredCount };
+  },
+
   startCeleryJob: (fileId: string, fileName: string, operation: string): ProcessingJob => {
     const newJob: ProcessingJob = {
       id: 'job-' + Math.floor(1000 + Math.random() * 9000),
@@ -282,7 +227,6 @@ export const fileManagerService = {
       inputS3Key: `users/usr-current/originals/${fileName}`,
       createdAt: new Date().toISOString(),
     };
-
     const jobs = [newJob, ...fileManagerService.getJobs()];
     localStorage.setItem(LOCAL_JOBS_KEY, JSON.stringify(jobs));
     return newJob;

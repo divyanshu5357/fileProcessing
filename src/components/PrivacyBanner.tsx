@@ -71,7 +71,7 @@ export function PrivacyBanner({ isOpen, onClose }: PrivacyBannerProps) {
                 EXIF GPS Sanitization
               </strong>
               <span>
-                PixelKit provides dedicated metadata stripping to prevent accidental disclosure of geolocation and device serial numbers.
+                Gyanvatsala provides dedicated metadata stripping to prevent accidental disclosure of geolocation and device serial numbers.
               </span>
             </div>
           </div>

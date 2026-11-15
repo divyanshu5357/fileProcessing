@@ -2,14 +2,16 @@
 
 import React from 'react';
 import {
+  MousePointer,
+  Hand,
   Type,
-  Link as LinkIcon,
-  CheckSquare,
+  Edit3,
   Image as ImageIcon,
+  Square,
   PenTool,
   Eraser,
   Highlighter,
-  Shapes,
+  CheckSquare,
   Undo2,
   Redo2,
   ZoomIn,
@@ -19,9 +21,7 @@ import {
   Plus,
   Trash2,
   Download,
-  FileCheck,
-  ChevronDown,
-  Sparkles,
+  Layers,
 } from 'lucide-react';
 import { EditorToolMode } from '@/types/pdfEditor';
 import { Button } from '../ui/Button';
@@ -44,6 +44,9 @@ interface TopToolbarProps {
   onApplyChanges: () => void;
   isSaving: boolean;
   onOpenSignModal: () => void;
+  isLayersOpen: boolean;
+  onToggleLayers: () => void;
+  onTriggerImageUpload: () => void;
 }
 
 export function TopToolbar({
@@ -64,22 +67,79 @@ export function TopToolbar({
   onApplyChanges,
   isSaving,
   onOpenSignModal,
+  isLayersOpen,
+  onToggleLayers,
+  onTriggerImageUpload,
 }: TopToolbarProps) {
-  const tools = [
-    { id: 'text' as EditorToolMode, label: 'Text', icon: Type, tooltip: 'Select & edit existing text or add new text' },
-    { id: 'links' as EditorToolMode, label: 'Links', icon: LinkIcon, tooltip: 'Add clickable web or page links' },
-    { id: 'forms' as EditorToolMode, label: 'Forms', icon: CheckSquare, tooltip: 'Add text input or checkboxes' },
-    { id: 'images' as EditorToolMode, label: 'Images', icon: ImageIcon, tooltip: 'Insert or replace images' },
-    { id: 'sign' as EditorToolMode, label: 'Sign', icon: PenTool, tooltip: 'Sign document or add signature' },
-    { id: 'whiteout' as EditorToolMode, label: 'Whiteout', icon: Eraser, tooltip: 'Erase or redact sensitive content' },
-    { id: 'annotate' as EditorToolMode, label: 'Annotate', icon: Highlighter, tooltip: 'Highlight, strikeout, or underline' },
-    { id: 'shapes' as EditorToolMode, label: 'Shapes', icon: Shapes, tooltip: 'Draw rectangles, circles, or arrows' },
+  const tools: { id: EditorToolMode; label: string; icon: any; tooltip: string; action?: () => void }[] = [
+    {
+      id: 'select',
+      label: 'Select',
+      icon: MousePointer,
+      tooltip: 'Select, move and resize objects (V)',
+    },
+    {
+      id: 'hand',
+      label: 'Hand',
+      icon: Hand,
+      tooltip: 'Pan and scroll viewport (H)',
+    },
+    {
+      id: 'text',
+      label: 'Add Text',
+      icon: Type,
+      tooltip: 'Click anywhere to place a new multiline text box (T)',
+    },
+    {
+      id: 'editText',
+      label: 'Edit PDF Text',
+      icon: Edit3,
+      tooltip: 'Click existing PDF text to edit in-place with auto-detected font (E)',
+    },
+    {
+      id: 'images',
+      label: 'Images',
+      icon: ImageIcon,
+      tooltip: 'Upload and click anywhere to place an image (I)',
+      action: onTriggerImageUpload,
+    },
+    {
+      id: 'shapes',
+      label: 'Shapes',
+      icon: Square,
+      tooltip: 'Drag on page to draw rectangles or shapes',
+    },
+    {
+      id: 'annotate',
+      label: 'Highlight',
+      icon: Highlighter,
+      tooltip: 'Drag to highlight or annotate text runs',
+    },
+    {
+      id: 'whiteout',
+      label: 'Whiteout',
+      icon: Eraser,
+      tooltip: 'Drag over text or graphics to erase or redact',
+    },
+    {
+      id: 'sign',
+      label: 'Sign',
+      icon: PenTool,
+      tooltip: 'Add digital signature or stamp',
+      action: onOpenSignModal,
+    },
+    {
+      id: 'forms',
+      label: 'Forms',
+      icon: CheckSquare,
+      tooltip: 'Add form inputs and checkboxes',
+    },
   ];
 
   return (
     <div className="w-full bg-white dark:bg-[#111827] border-b border-[#CBD5E1] dark:border-[#334155] sticky top-16 z-20 shadow-xs select-none">
-      <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-3">
-        {/* Left: Core 10 Sejda-inspired Editing Tools */}
+      <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+        {/* Left: Professional Tool Palette */}
         <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
           {tools.map((t) => {
             const Icon = t.icon;
@@ -91,8 +151,8 @@ export function TopToolbar({
                 type="button"
                 title={t.tooltip}
                 onClick={() => {
-                  if (t.id === 'sign') {
-                    onOpenSignModal();
+                  if (t.action) {
+                    t.action();
                   } else {
                     onSelectMode(t.id);
                   }
@@ -125,15 +185,32 @@ export function TopToolbar({
             type="button"
             disabled={!canRedo}
             onClick={onRedo}
-            title="Redo (Ctrl+Y)"
+            title="Redo (Ctrl+Shift+Z / Ctrl+Y)"
             className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
           >
             <Redo2 className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Right: Zoom controls, Page Actions & Primary Export */}
+        {/* Right: Layers Toggle, Zoom controls, Page Actions & Primary Export */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Layers Toggle Button */}
+          <button
+            type="button"
+            onClick={onToggleLayers}
+            title="Toggle Layers & Objects Sidebar"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer border ${
+              isLayersOpen
+                ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-400 dark:border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Layers</span>
+          </button>
+
+          <div className="w-[1px] h-5 bg-[#CBD5E1] dark:bg-[#334155] mx-0.5 shrink-0" />
+
           {/* Zoom controls */}
           <div className="flex items-center bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-1 py-0.5">
             <button
@@ -165,13 +242,14 @@ export function TopToolbar({
             </button>
           </div>
 
-          {/* Page Counter & Actions */}
+          {/* Page Counter */}
           <div className="hidden sm:flex items-center gap-1.5 text-xs text-[#475569] dark:text-[#CBD5E1] font-mono font-semibold px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800">
             <span>
               Page {currentPage} of {totalPages}
             </span>
           </div>
 
+          {/* Rotate Page */}
           <button
             type="button"
             onClick={onRotateCurrentPage}
@@ -181,11 +259,12 @@ export function TopToolbar({
             <RotateCw className="w-3.5 h-3.5" />
           </button>
 
+          {/* Blank Page */}
           <button
             type="button"
             onClick={onInsertBlankPage}
             title="Insert Blank Page"
-            className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer"
+            className="hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Blank Page</span>

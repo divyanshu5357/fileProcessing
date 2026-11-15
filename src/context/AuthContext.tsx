@@ -2,14 +2,20 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { authClient } from '@/lib/auth-client';
+import { fileManagerService, CloudFile } from '@/lib/fileManagerService';
 
 export type ProcessingMode = 'local' | 'cloud' | 'auto';
+export type PlanTier = 'Free' | 'Prime' | 'PrimePlus' | 'PrimeUltra' | 'Pro' | 'Business';
 
 export interface StorageQuota {
   usedBytes: number;
   limitBytes: number;
+  remainingBytes: number;
+  percentageUsed: number;
+  isWarningThreshold: boolean;
   fileCount: number;
-  plan: 'Free' | 'Pro' | 'Business';
+  plan: PlanTier;
+  retentionDays: number;
 }
 
 export interface UserProfile {
@@ -17,7 +23,7 @@ export interface UserProfile {
   name: string;
   email: string;
   avatarUrl?: string;
-  plan: 'Free' | 'Pro' | 'Business';
+  plan: PlanTier;
 }
 
 interface AuthContextType {
@@ -36,13 +42,19 @@ interface AuthContextType {
   verifyEmailOtp: (email: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   signOut: () => Promise<void>;
   refreshStorageUsage: () => Promise<void>;
+  updateUserPlan: (newPlan: PlanTier) => void;
 }
 
+// Default Free Tier for new accounts (0 bytes used)
 const defaultStorageUsage: StorageQuota = {
-  usedBytes: 142000000, // 142 MB
-  limitBytes: 524288000, // 500 MB (Free tier default)
-  fileCount: 8,
+  usedBytes: 0,
+  limitBytes: 15728640, // 15 MB
+  remainingBytes: 15728640,
+  percentageUsed: 0,
+  isWarningThreshold: false,
+  fileCount: 0,
   plan: 'Free',
+  retentionDays: 7,
 };
 
 const defaultContext: AuthContextType = {
@@ -60,6 +72,7 @@ const defaultContext: AuthContextType = {
   verifyEmailOtp: async () => ({ success: false }),
   signOut: async () => {},
   refreshStorageUsage: async () => {},
+  updateUserPlan: () => {},
 };
 
 const AuthContext = createContext<AuthContextType>(defaultContext);
@@ -78,26 +91,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Restore stored session and mode on mount
   useEffect(() => {
-    try {
-      const savedMode = localStorage.getItem(LOCAL_STORAGE_MODE_KEY) as ProcessingMode | null;
-      if (savedMode && ['local', 'cloud', 'auto'].includes(savedMode)) {
-        setProcessingModeState(savedMode);
-      }
+    const initAuth = async () => {
+      try {
+        const savedMode = localStorage.getItem(LOCAL_STORAGE_MODE_KEY) as ProcessingMode | null;
+        if (savedMode && ['local', 'cloud', 'auto'].includes(savedMode)) {
+          setProcessingModeState(savedMode);
+        }
 
-      const savedUser = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-      if (savedUser) {
-        setUser(JSON.parse(savedUser));
-      }
+        // Purge any legacy dummy user accounts
+        const savedUser = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+        if (savedUser) {
+          const parsed = JSON.parse(savedUser);
+          if (parsed?.email === 'alex.developer@pixelkit.io' || parsed?.name === 'Alex Developer') {
+            localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+            localStorage.removeItem(LOCAL_STORAGE_STORAGE_KEY);
+            setUser(null);
+          } else {
+            setUser(parsed);
+          }
+        }
 
-      const savedStorage = localStorage.getItem(LOCAL_STORAGE_STORAGE_KEY);
-      if (savedStorage) {
-        setStorageUsage(JSON.parse(savedStorage));
+        // Sync real session from Better Auth server
+        try {
+          const sessionRes = await authClient.getSession();
+          if (sessionRes?.data?.user) {
+            const u = sessionRes.data.user;
+            const realUser: UserProfile = {
+              id: u.id,
+              name: u.name || u.email?.split('@')[0] || 'User',
+              email: u.email,
+              avatarUrl: u.image || undefined,
+              plan: 'Free',
+            };
+            setUser(realUser);
+            localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(realUser));
+          }
+        } catch (sessErr) {
+          console.debug('No active Better Auth session', sessErr);
+        }
+
+        const savedStorage = localStorage.getItem(LOCAL_STORAGE_STORAGE_KEY);
+        if (savedStorage) {
+          setStorageUsage(JSON.parse(savedStorage));
+        }
+      } catch (e) {
+        console.warn('Failed to parse local auth state', e);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (e) {
-      console.warn('Failed to parse local auth state', e);
-    } finally {
-      setIsLoading(false);
-    }
+    };
+
+    initAuth();
   }, []);
 
   const setProcessingMode = (mode: ProcessingMode) => {
@@ -120,30 +164,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     setIsLoading(true);
     try {
-      // First attempt official Better Auth social login
+      // Official Better Auth social login with Google OAuth
       const res = await authClient.signIn.social({
         provider: 'google',
-        callbackURL: '/dashboard',
+        callbackURL: '/workspace',
       });
-      if (res?.data) return;
+      if (res?.data?.url) {
+        window.location.href = res.data.url;
+        return;
+      }
     } catch (e) {
-      console.info('[Better Auth] Using local demo session for Google OAuth test:', e);
+      console.error('Better Auth Google Sign In error:', e);
+      throw e;
+    } finally {
+      setIsLoading(false);
     }
-
-    // High quality local fallback session for immediate testing & preview
-    const sampleUser: UserProfile = {
-      id: 'usr_' + Math.random().toString(36).substring(2, 9),
-      name: 'Senior Architect',
-      email: 'alex.architect@pixelkit.io',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=128&h=128&fit=crop&crop=faces',
-      plan: 'Pro',
-    };
-    setUser(sampleUser);
-    try {
-      localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(sampleUser));
-    } catch {}
-    setIsLoading(false);
-    closeAuthModal();
   };
 
   const sendEmailOtp = async (email: string) => {
@@ -159,7 +194,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.info('[Email OTP Fallback]: simulated OTP generation for', email);
     }
 
-    // Store temporary verification token locally for fallback validation
     if (typeof window !== 'undefined') {
       sessionStorage.setItem(`otp_pending_${email}`, '123456');
     }
@@ -169,7 +203,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const verifyEmailOtp = async (email: string, otp: string) => {
     setIsLoading(true);
     try {
-      // Try Better Auth OTP verify
       const res = await (authClient as any).emailOTP?.verifyEmail({
         email,
         otp,
@@ -200,7 +233,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const profile: UserProfile = {
         id: 'usr_' + Math.random().toString(36).substring(2, 9),
         name: email.split('@')[0],
-        email: email,
+        email,
+        avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${email}`,
         plan: 'Free',
       };
       setUser(profile);
@@ -213,7 +247,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     setIsLoading(false);
-    return { success: false, message: 'Invalid or expired OTP code. Use 123456 for testing.' };
+    return { success: false, message: 'Invalid verification code. Please enter 123456 in dev mode.' };
   };
 
   const signOut = async () => {
@@ -221,22 +255,73 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await authClient.signOut();
     } catch {}
     setUser(null);
+    setStorageUsage(defaultStorageUsage);
     try {
       localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+      localStorage.removeItem(LOCAL_STORAGE_STORAGE_KEY);
+      localStorage.removeItem('pixelkit_saas_cloud_files');
+      localStorage.removeItem('pixelkit_saas_cloud_jobs');
+      localStorage.removeItem('pixelkit_saas_cloud_folders');
     } catch {}
   };
 
-  const refreshStorageUsage = async () => {
+  const updateUserPlan = (newPlan: PlanTier) => {
     if (!user) return;
+    const updated = { ...user, plan: newPlan };
+    setUser(updated);
+    localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(updated));
+
+    // Update storage limits
+    let limit = 15728640;
+    let retention = 7;
+    if (newPlan === 'Prime') {
+      limit = 52428800; // 50 MB
+      retention = 14;
+    } else if (newPlan === 'PrimePlus') {
+      limit = 104857600; // 100 MB
+      retention = 30;
+    } else if (newPlan === 'PrimeUltra') {
+      limit = 524288000; // 500 MB
+      retention = 365;
+    }
+
+    const remaining = Math.max(0, limit - storageUsage.usedBytes);
+    const pct = Math.round((storageUsage.usedBytes / limit) * 100);
+    const updatedQuota: StorageQuota = {
+      ...storageUsage,
+      limitBytes: limit,
+      remainingBytes: remaining,
+      percentageUsed: pct,
+      isWarningThreshold: pct >= 80,
+      plan: newPlan,
+      retentionDays: retention,
+    };
+    setStorageUsage(updatedQuota);
+    localStorage.setItem(LOCAL_STORAGE_STORAGE_KEY, JSON.stringify(updatedQuota));
+  };
+
+  const refreshStorageUsage = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const res = await fetch(`${apiUrl}/api/users/${user.id}/storage`);
-      if (res.ok) {
-        const data = await res.json();
-        setStorageUsage(data);
-        localStorage.setItem(LOCAL_STORAGE_STORAGE_KEY, JSON.stringify(data));
-      }
-    } catch {}
+      const files = fileManagerService.getFiles();
+      const totalBytes = files.reduce((acc: number, f: CloudFile) => acc + (f.fileSize || 0), 0);
+      const limit = storageUsage.limitBytes || 15728640;
+      const remaining = Math.max(0, limit - totalBytes);
+      const pct = Math.min(100, Math.round((totalBytes / limit) * 100));
+      const quota: StorageQuota = {
+        usedBytes: totalBytes,
+        limitBytes: limit,
+        remainingBytes: remaining,
+        percentageUsed: pct,
+        isWarningThreshold: pct >= 80,
+        fileCount: files.length,
+        plan: user?.plan || 'Free',
+        retentionDays: storageUsage.retentionDays || 7,
+      };
+      setStorageUsage(quota);
+      localStorage.setItem(LOCAL_STORAGE_STORAGE_KEY, JSON.stringify(quota));
+    } catch (e) {
+      console.warn('Storage refresh error:', e);
+    }
   };
 
   return (
@@ -257,6 +342,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         verifyEmailOtp,
         signOut,
         refreshStorageUsage,
+        updateUserPlan,
       }}
     >
       {children}

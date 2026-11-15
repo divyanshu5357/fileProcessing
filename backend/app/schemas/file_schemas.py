@@ -40,10 +40,18 @@ class MultipartCompleteRequest(BaseModel):
     content_type: str
     folder_id: Optional[str] = None
 
+class SingleUploadCompleteRequest(BaseModel):
+    file_id: str
+    s3_key: str
+    original_name: str
+    content_type: str
+    folder_id: Optional[str] = None
+    file_size: Optional[int] = None
+
 class FileResponse(BaseModel):
     id: str
     user_id: str
-    folder_id: Optional[str]
+    folder_id: Optional[str] = None
     original_name: str
     mime_type: str
     file_extension: str
@@ -51,6 +59,7 @@ class FileResponse(BaseModel):
     s3_key: str
     status: str
     created_at: datetime
+    expires_at: Optional[datetime] = None
 
 class FolderCreateRequest(BaseModel):
     folder_name: str

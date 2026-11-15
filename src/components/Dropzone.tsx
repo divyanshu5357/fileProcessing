@@ -1,17 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UploadCloud, ShieldCheck, Sparkles, Image as ImageIcon } from 'lucide-react';
-import { SAMPLE_IMAGES, createSampleFile } from '@/lib/sampleData';
+import { UploadCloud, ShieldCheck, Image as ImageIcon } from 'lucide-react';
 
 interface DropzoneProps {
   onFilesSelected: (files: File[]) => void;
-  onSampleSelected: (file: File) => void;
-  isLoadingSample?: boolean;
 }
 
 export function Dropzone({
   onFilesSelected,
-  onSampleSelected,
-  isLoadingSample = false,
 }: DropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -71,15 +66,6 @@ export function Dropzone({
         f.type.startsWith('image/')
       );
       onFilesSelected(files);
-    }
-  };
-
-  const handleLoadSample = async (sampleId: string) => {
-    try {
-      const file = await createSampleFile(sampleId);
-      onSampleSelected(file);
-    } catch (err) {
-      console.error('Failed to load sample:', err);
     }
   };
 
@@ -158,40 +144,6 @@ export function Dropzone({
           <span className="px-2 py-0.5 rounded-md bg-[#F1F5F9] dark:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155]">
             SVG
           </span>
-        </div>
-      </div>
-
-      {/* Tool Cards for Instant Samples */}
-      <div className="w-full mt-8 flex flex-col items-center">
-        <div className="flex items-center gap-2 mb-3">
-          <Sparkles className="w-4 h-4 text-[#2563EB] dark:text-[#60A5FA]" />
-          <span className="text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#CBD5E1]">
-            Or test instantly with pre-built benchmark images
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 w-full">
-          {SAMPLE_IMAGES.map((sample) => (
-            <button
-              key={sample.id}
-              type="button"
-              disabled={isLoadingSample}
-              onClick={() => handleLoadSample(sample.id)}
-              className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#334155] hover:border-[#93C5FD] dark:hover:border-[#3B82F6] text-left transition-all flex flex-col gap-2 group cursor-pointer shadow-xs"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA] transition-colors">
-                  {sample.title}
-                </span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#EFF6FF] dark:bg-[#1E3A8A] text-[#2563EB] dark:text-[#93C5FD] border border-[#BFDBFE] dark:border-[#3B82F6]/50">
-                  {sample.category}
-                </span>
-              </div>
-              <p className="text-xs text-[#475569] dark:text-[#CBD5E1] line-clamp-2 leading-relaxed">
-                {sample.description}
-              </p>
-            </button>
-          ))}
         </div>
       </div>
     </div>

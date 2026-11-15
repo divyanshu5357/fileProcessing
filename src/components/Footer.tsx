@@ -1,77 +1,163 @@
-import React from 'react';
-import { ShieldCheck, Sparkles, Heart } from 'lucide-react';
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { ShieldCheck, Lock, Globe } from 'lucide-react';
+import { GyanvatsalaLogo } from './common/GyanvatsalaLogo';
 
 interface FooterProps {
   onOpenPrivacyInfo?: () => void;
 }
 
 export function Footer({ onOpenPrivacyInfo }: FooterProps) {
+  const [currentYear, setCurrentYear] = useState(2026);
+
+  useEffect(() => {
+    setCurrentYear(new Date().getFullYear());
+  }, []);
+
   return (
-    <footer className="w-full bg-[#F1F5F9] dark:bg-[#020617] border-t border-[#CBD5E1] dark:border-[#334155] py-12 px-4 transition-colors">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start justify-between gap-8">
-        {/* Brand & Guarantee */}
-        <div className="flex flex-col gap-3 max-w-sm">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-[#2563EB] dark:bg-[#3B82F6] flex items-center justify-center text-white shadow-xs">
-              <Sparkles className="w-4 h-4" />
+    <footer className="w-full bg-white dark:bg-[#0B0E14] border-t border-[#E9EBF0] dark:border-[#222632] py-16 px-4 sm:px-6 lg:px-8 transition-colors">
+      <div className="max-w-7xl mx-auto flex flex-col gap-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10">
+          {/* Brand Column (2 cols wide) */}
+          <div className="lg:col-span-2 flex flex-col gap-4 max-w-sm">
+            <Link href="/" className="inline-block">
+              <GyanvatsalaLogo size={32} showWordmark={true} descriptor="Your Digital Document Workspace" />
+            </Link>
+
+            <p className="text-xs sm:text-sm text-[#727783] dark:text-[#9DA3AE] leading-relaxed">
+              A thoughtfully designed workspace for documents, images and digital files. Everything you need to edit, convert, transform and create with confidence.
+            </p>
+
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#159B75]">
+              <ShieldCheck className="w-4 h-4 shrink-0" />
+              <span>Client-Side Processing Available</span>
             </div>
-            <span className="font-bold text-base text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">
-              PixelKit
-            </span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#DCFCE7] dark:bg-[#14532D] text-[#166534] dark:text-[#BBF7D0] border border-[#86EFAC] dark:border-[#22C55E] font-semibold">
-              100% Client-Side
-            </span>
+
+            <div className="text-xs text-[#727783] font-mono">
+              <span>https://www.gyanvatsala.in</span>
+            </div>
           </div>
 
-          <p className="text-xs text-[#475569] dark:text-[#CBD5E1] leading-relaxed">
-            All-in-One browser image utility. Your images are processed locally in your browser using the HTML5 Canvas API and WebAssembly, and are never uploaded to any remote server.
-          </p>
+          {/* Product Column */}
+          <div className="flex flex-col gap-3">
+            <h4 className="text-xs font-semibold text-[#20232B] dark:text-[#F8FAFC] uppercase tracking-wider">
+              Product
+            </h4>
+            <ul className="text-xs sm:text-sm text-[#727783] dark:text-[#9DA3AE] flex flex-col gap-2.5">
+              <li>
+                <Link href="/workspace" className="hover:text-[#536BCE] transition font-medium">
+                  Workspace
+                </Link>
+              </li>
+              <li>
+                <Link href="/pdf" className="hover:text-[#536BCE] transition">
+                  Document Studio
+                </Link>
+              </li>
+              <li>
+                <Link href="/scan-studio" className="hover:text-[#536BCE] transition">
+                  Scan Studio
+                </Link>
+              </li>
+              <li>
+                <Link href="/image-converter" className="hover:text-[#536BCE] transition">
+                  Media Studio
+                </Link>
+              </li>
+              <li>
+                <Link href="/tools/pdf-editor" className="hover:text-[#536BCE] transition">
+                  Canvas Editor
+                </Link>
+              </li>
+            </ul>
+          </div>
 
-          <div className="flex items-center gap-2 text-xs font-semibold text-[#15803D] dark:text-[#4ADE80]">
-            <ShieldCheck className="w-4 h-4" />
-            <span>Zero-Upload Privacy Architecture</span>
+          {/* Resources Column */}
+          <div className="flex flex-col gap-3">
+            <h4 className="text-xs font-semibold text-[#20232B] dark:text-[#F8FAFC] uppercase tracking-wider">
+              Resources
+            </h4>
+            <ul className="text-xs sm:text-sm text-[#727783] dark:text-[#9DA3AE] flex flex-col gap-2.5">
+              <li>
+                <Link href="/pdf" className="hover:text-[#536BCE] transition">
+                  Explore Tools
+                </Link>
+              </li>
+              <li>
+                <Link href="/pricing" className="hover:text-[#536BCE] transition">
+                  Help Center & Plans
+                </Link>
+              </li>
+              <li>
+                <Link href="/#how-it-works" className="hover:text-[#536BCE] transition">
+                  How It Works
+                </Link>
+              </li>
+              {onOpenPrivacyInfo ? (
+                <li>
+                  <button
+                    type="button"
+                    onClick={onOpenPrivacyInfo}
+                    className="hover:text-[#536BCE] text-left transition cursor-pointer"
+                  >
+                    Privacy Architecture
+                  </button>
+                </li>
+              ) : (
+                <li>
+                  <Link href="/privacy" className="hover:text-[#536BCE] transition">
+                    Privacy Architecture
+                  </Link>
+                </li>
+              )}
+            </ul>
+          </div>
+
+          {/* Company Column */}
+          <div className="flex flex-col gap-3">
+            <h4 className="text-xs font-semibold text-[#20232B] dark:text-[#F8FAFC] uppercase tracking-wider">
+              Company
+            </h4>
+            <ul className="text-xs sm:text-sm text-[#727783] dark:text-[#9DA3AE] flex flex-col gap-2.5">
+              <li>
+                <Link href="/about" className="hover:text-[#536BCE] transition">
+                  About
+                </Link>
+              </li>
+              <li>
+                <Link href="/contact" className="hover:text-[#536BCE] transition">
+                  Contact & Support
+                </Link>
+              </li>
+              <li>
+                <Link href="/privacy" className="hover:text-[#536BCE] transition">
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link href="/terms" className="hover:text-[#536BCE] transition">
+                  Terms and Conditions
+                </Link>
+              </li>
+            </ul>
           </div>
         </div>
 
-        {/* Quick Tools Navigation */}
-        <div className="flex flex-col gap-2">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-[#0F172A] dark:text-[#F8FAFC]">
-            Toolkit Features
-          </h4>
-          <ul className="text-xs text-[#475569] dark:text-[#CBD5E1] flex flex-col gap-1.5">
-            <li>• Image Compression & WebP Encoding</li>
-            <li>• Dimension Resizing with Aspect Lock</li>
-            <li>• Multi-Format Conversion (PNG, JPG, AVIF, PDF)</li>
-            <li>• Custom & Biometric Passport Framing</li>
-            <li>• EXIF Metadata Stripping & Privacy Inspector</li>
-          </ul>
-        </div>
+        {/* Bottom Sub-Footer Bar */}
+        <div className="pt-8 border-t border-[#E9EBF0] dark:border-[#222632] flex flex-col sm:flex-row items-center justify-between text-xs text-[#727783] dark:text-[#9DA3AE] gap-4">
+          <div className="flex items-center gap-2">
+            <span>© {currentYear} Gyanvatsala. All rights reserved.</span>
+            <span>•</span>
+            <span>gyanvatsala.in</span>
+          </div>
 
-        {/* Privacy & Resources */}
-        <div className="flex flex-col gap-2">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-[#0F172A] dark:text-[#F8FAFC]">
-            Privacy & Trust
-          </h4>
-          <p className="text-xs text-[#475569] dark:text-[#CBD5E1] max-w-xs">
-            No cookies, no user registration, and no tracking scripts. Closing this browser session frees all memory blobs.
-          </p>
-          {onOpenPrivacyInfo && (
-            <button
-              type="button"
-              onClick={onOpenPrivacyInfo}
-              className="text-xs font-medium text-[#1D4ED8] dark:text-[#60A5FA] hover:underline self-start mt-1 cursor-pointer"
-            >
-              Learn about our zero-upload architecture →
-            </button>
-          )}
+          <div className="flex items-center gap-2 text-xs">
+            <Lock className="w-3.5 h-3.5 text-[#159B75]" />
+            <span>Built for speed, privacy and document precision</span>
+          </div>
         </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto mt-8 pt-6 border-t border-[#CBD5E1] dark:border-[#334155] flex flex-col sm:flex-row items-center justify-between text-xs text-[#64748B] dark:text-[#94A3B8] gap-4">
-        <span>© 2026 PixelKit. Free & Open Client-Side Image Utility.</span>
-        <span className="flex items-center gap-1">
-          Crafted for privacy & high performance.
-        </span>
       </div>
     </footer>
   );

@@ -24,7 +24,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Check saved theme or system preference
-    const saved = localStorage.getItem('pixelkit-theme') as Theme | null;
+    const saved = (localStorage.getItem('gyanvatsala-theme') || localStorage.getItem('pixelkit-theme')) as Theme | null;
     let initialTheme: Theme = 'dark';
 
     if (saved === 'light' || saved === 'dark') {
@@ -52,6 +52,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const setTheme = (t: Theme) => {
     setThemeState(t);
     try {
+      localStorage.setItem('gyanvatsala-theme', t);
       localStorage.setItem('pixelkit-theme', t);
     } catch {}
     applyTheme(t);

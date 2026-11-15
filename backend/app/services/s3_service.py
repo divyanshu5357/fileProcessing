@@ -12,18 +12,22 @@ class S3Service:
         self.region = settings.AWS_REGION
         self.expires = settings.S3_PRESIGNED_URL_EXPIRES_SECONDS
 
+        client_kwargs = {
+            "service_name": "s3",
+            "region_name": self.region,
+            "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
+            "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
+            "config": Config(signature_version="s3v4")
+        }
+        if settings.AWS_ENDPOINT_URL_S3:
+            client_kwargs["endpoint_url"] = settings.AWS_ENDPOINT_URL_S3
+
         # S3 client with SigV4 signature enforcement
-        self.client = boto3.client(
-            "s3",
-            region_name=self.region,
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            config=Config(signature_version="s3v4")
-        )
+        self.client = boto3.client(**client_kwargs)
 
     def generate_s3_key(self, user_id: str, file_id: str, file_name: str, folder: str = "originals") -> str:
         """
-        Suggested S3 organization:
+        Organized S3 object hierarchy:
         users/{user_id}/originals/{file_id}/{file_name}
         users/{user_id}/processed/{file_id}/{file_name}
         """
@@ -45,10 +49,11 @@ class S3Service:
             )
         except Exception as e:
             logger.warning(f"Using mock S3 upload URL in dev: {e}")
-            return f"https://{self.bucket}.s3.{self.region}.amazonaws.com/{s3_key}?mock_signature=dev"
+            endpoint = settings.AWS_ENDPOINT_URL_S3 or f"https://{self.bucket}.s3.{self.region}.amazonaws.com"
+            return f"{endpoint}/{s3_key}?mock_signature=dev"
 
     def create_multipart_upload(self, s3_key: str, content_type: str) -> str:
-        """Initiates an S3 multipart upload session for large files (>25MB)."""
+        """Initiates an S3 multipart upload session for large files."""
         try:
             res = self.client.create_multipart_upload(
                 Bucket=self.bucket,
@@ -75,7 +80,8 @@ class S3Service:
                 ExpiresIn=self.expires,
             )
         except Exception as e:
-            return f"https://{self.bucket}.s3.{self.region}.amazonaws.com/{s3_key}?uploadId={upload_id}&partNumber={part_number}&mock=1"
+            endpoint = settings.AWS_ENDPOINT_URL_S3 or f"https://{self.bucket}.s3.{self.region}.amazonaws.com"
+            return f"{endpoint}/{s3_key}?uploadId={upload_id}&partNumber={part_number}&mock=1"
 
     def complete_multipart_upload(self, s3_key: str, upload_id: str, parts: list) -> bool:
         """Finalizes multipart upload by verifying and merging all chunks in S3."""
@@ -121,7 +127,20 @@ class S3Service:
             )
         except Exception as e:
             logger.warning(f"Using mock S3 download URL: {e}")
-            return f"https://{self.bucket}.s3.{self.region}.amazonaws.com/{s3_key}?download=1&filename={original_name}"
+            endpoint = settings.AWS_ENDPOINT_URL_S3 or f"https://{self.bucket}.s3.{self.region}.amazonaws.com"
+            return f"{endpoint}/{s3_key}?download=1&filename={original_name}"
+
+    def get_actual_object_size(self, s3_key: str) -> int:
+        """
+        Calculates and verifies the actual byte size of an object stored in S3.
+        Does NOT trust frontend-supplied sizes.
+        """
+        try:
+            res = self.client.head_object(Bucket=self.bucket, Key=s3_key)
+            return int(res.get("ContentLength", 0))
+        except Exception as e:
+            logger.warning(f"Could not head_object for {s3_key}: {e}")
+            return 0
 
     def delete_object(self, s3_key: str) -> bool:
         """Permanently deletes an object from private S3 bucket."""

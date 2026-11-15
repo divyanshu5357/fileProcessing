@@ -8,6 +8,7 @@ import {
   FileSpreadsheet,
   Layers,
   Sparkles,
+  ScanLine,
 } from 'lucide-react';
 
 interface NavigationTabsProps {
@@ -32,16 +33,22 @@ export function NavigationTabs({
       id: 'pdf-tools' as MainCategory,
       label: 'PDF Tools',
       icon: FileText,
-      badge: '22 Tools',
+      badge: '22',
+    },
+    {
+      id: 'scan-studio' as MainCategory,
+      label: 'Scan Studio',
+      icon: ScanLine,
+      badge: 'NEW',
     },
     {
       id: 'document-converter' as MainCategory,
-      label: 'Document Converter',
+      label: 'Documents',
       icon: FileSpreadsheet,
     },
     {
       id: 'image-converter' as MainCategory,
-      label: 'Image Converter',
+      label: 'Converter',
       icon: Layers,
     },
   ];
@@ -57,7 +64,7 @@ export function NavigationTabs({
             key={tab.id}
             type="button"
             onClick={() => onSelectCategory(tab.id)}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-150 shrink-0 cursor-pointer select-none ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-150 shrink-0 cursor-pointer select-none ${
               isActive
                 ? 'bg-[#2563EB] text-white shadow-xs'
                 : 'text-[#334155] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-slate-800'

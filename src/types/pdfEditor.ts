@@ -20,6 +20,7 @@ export interface PdfTextItem {
   fontName: string;
   isBold: boolean;
   isItalic: boolean;
+  isUnderline?: boolean;
   color: string; // hex
   isEdited: boolean;
   isDeleted: boolean;
@@ -29,82 +30,117 @@ export interface AddedTextElement {
   id: string;
   pageNumber: number;
   text: string;
-  x: number; // percentage 0-100 or points
-  y: number;
+  name?: string;
+  // PDF coordinates (points)
   pdfX: number;
   pdfY: number;
-  fontSize: number;
+  pdfWidth: number;
+  pdfHeight: number;
+  fontSize: number; // points
   fontFamily: string;
   color: string;
   isBold: boolean;
   isItalic: boolean;
+  isUnderline?: boolean;
+  isStrikethrough?: boolean;
+  alignment?: 'left' | 'center' | 'right';
+  backgroundColor?: string;
+  rotation?: number; // degrees 0-360
+  opacity?: number; // 0-1
+  locked?: boolean;
+  hidden?: boolean;
+  zIndex?: number;
 }
 
 export interface WhiteoutElement {
   id: string;
   pageNumber: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+  name?: string;
   pdfX: number;
   pdfY: number;
   pdfWidth: number;
   pdfHeight: number;
   color: string; // e.g. '#FFFFFF'
+  opacity?: number;
+  locked?: boolean;
+  hidden?: boolean;
+  zIndex?: number;
+  // Backward compatibility
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface ImageElement {
   id: string;
   pageNumber: number;
+  name?: string;
   dataUrl: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
   pdfX: number;
   pdfY: number;
   pdfWidth: number;
   pdfHeight: number;
+  rotation?: number; // degrees 0-360
+  opacity?: number; // 0-1
+  aspectRatio?: number; // width / height
+  locked?: boolean;
+  hidden?: boolean;
+  zIndex?: number;
+  // Backward compatibility
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface SignatureElement {
   id: string;
   pageNumber: number;
+  name?: string;
   dataUrl: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
   pdfX: number;
   pdfY: number;
   pdfWidth: number;
   pdfHeight: number;
+  rotation?: number;
+  opacity?: number;
+  locked?: boolean;
+  hidden?: boolean;
+  zIndex?: number;
+  // Backward compatibility
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface AnnotationElement {
   id: string;
   pageNumber: number;
+  name?: string;
   type: 'highlight' | 'strikeout' | 'underline';
-  x: number;
-  y: number;
-  width: number;
-  height: number;
   pdfX: number;
   pdfY: number;
   pdfWidth: number;
   pdfHeight: number;
   color: string; // e.g. '#FEF08A'
+  opacity?: number;
+  locked?: boolean;
+  hidden?: boolean;
+  zIndex?: number;
+  // Backward compatibility
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface ShapeElement {
   id: string;
   pageNumber: number;
+  name?: string;
   type: 'rectangle' | 'ellipse' | 'line' | 'arrow';
-  x: number;
-  y: number;
-  width: number;
-  height: number;
   pdfX: number;
   pdfY: number;
   pdfWidth: number;
@@ -112,34 +148,93 @@ export interface ShapeElement {
   strokeColor: string;
   fillColor?: string;
   strokeWidth: number;
+  rotation?: number;
+  opacity?: number;
+  locked?: boolean;
+  hidden?: boolean;
+  zIndex?: number;
+  // Backward compatibility
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}
+
+export interface FreehandDrawingElement {
+  id: string;
+  pageNumber: number;
+  name?: string;
+  points: { x: number; y: number }[]; // PDF points
+  pdfX: number;
+  pdfY: number;
+  pdfWidth: number;
+  pdfHeight: number;
+  color: string;
+  strokeWidth: number;
+  opacity?: number;
+  locked?: boolean;
+  hidden?: boolean;
+  zIndex?: number;
 }
 
 export interface FormFieldElement {
   id: string;
   pageNumber: number;
+  name?: string;
   type: 'text' | 'checkbox' | 'radio';
-  x: number;
-  y: number;
-  width: number;
-  height: number;
   pdfX: number;
   pdfY: number;
   pdfWidth: number;
   pdfHeight: number;
   value: string | boolean;
   label?: string;
+  locked?: boolean;
+  hidden?: boolean;
+  zIndex?: number;
+  // Backward compatibility
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export type EditorToolMode =
   | 'select'
+  | 'hand'
   | 'text'
-  | 'link'
-  | 'forms'
+  | 'editText'
   | 'images'
-  | 'sign'
+  | 'shapes'
+  | 'draw'
   | 'whiteout'
   | 'annotate'
-  | 'shapes';
+  | 'sign'
+  | 'forms'
+  | 'links';
+
+export type EditableObjectType =
+  | 'addedText'
+  | 'image'
+  | 'signature'
+  | 'shape'
+  | 'whiteout'
+  | 'annotation'
+  | 'drawing'
+  | 'formField'
+  | 'existingText';
+
+export interface SelectedObjectRef {
+  id: string;
+  type: EditableObjectType;
+  pageNumber: number;
+}
+
+export interface PendingImagePlacement {
+  dataUrl: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  name: string;
+}
 
 export interface PageInfo {
   pageNumber: number;
@@ -147,11 +242,4 @@ export interface PageInfo {
   height: number; // points
   rotation: number; // 0, 90, 180, 270
   isDeleted?: boolean;
-}
-
-export interface EditorAction {
-  type: string;
-  payload: any;
-  undo: () => void;
-  redo: () => void;
 }

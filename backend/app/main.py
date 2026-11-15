@@ -18,17 +18,20 @@ from backend.app.api.processing import router as processing_router
 from backend.app.api.jobs import router as jobs_router
 from backend.app.api.users import router as users_router
 from backend.app.api.auth import router as auth_router
+from backend.app.api.subscriptions import router as subscriptions_router
+from backend.app.api.retention import router as retention_router
+from backend.app.api.admin import router as admin_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Initializing PixelKit Scalable SaaS FastAPI Engine...")
+    logger.info("Initializing Gyanvatsala Scalable SaaS FastAPI Engine...")
     yield
-    logger.info("Gracefully shutting down PixelKit FastAPI Engine...")
+    logger.info("Gracefully shutting down Gyanvatsala FastAPI Engine...")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Scalable Multi-Tenant Backend for PixelKit SaaS Platform",
+    description="Scalable Multi-Tenant Backend for Gyanvatsala SaaS Platform",
     lifespan=lifespan
 )
 
@@ -36,7 +39,8 @@ app = FastAPI(
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://pixelkit.app",
+    "https://www.gyanvatsala.in",
+    "https://gyanvatsala.in",
     "*"
 ]
 
@@ -90,7 +94,7 @@ async def health_check():
     """Liveness probe returning 200 OK."""
     return {
         "status": "healthy",
-        "service": "pixelkit-api",
+        "service": "gyanvatsala-api",
         "version": settings.VERSION,
         "timestamp": time.time()
     }
@@ -114,3 +118,6 @@ app.include_router(processing_router, prefix=settings.API_V1_STR)
 app.include_router(jobs_router, prefix=settings.API_V1_STR)
 app.include_router(users_router, prefix=settings.API_V1_STR)
 app.include_router(auth_router, prefix=settings.API_V1_STR)
+app.include_router(subscriptions_router, prefix=settings.API_V1_STR)
+app.include_router(retention_router, prefix=settings.API_V1_STR)
+app.include_router(admin_router, prefix=settings.API_V1_STR)

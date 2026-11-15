@@ -118,7 +118,7 @@ export async function copyBlobToClipboard(blob: Blob): Promise<boolean> {
 
 export async function createZip(items: { name: string; blob: Blob }[]): Promise<Blob> {
   const zip = new JSZip();
-  const folder = zip.folder('pixelkit_processed') || zip;
+  const folder = zip.folder('gyanvatsala_processed') || zip;
 
   // Track filenames to avoid collision
   const seenNames = new Map<string, number>();

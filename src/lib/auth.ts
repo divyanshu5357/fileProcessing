@@ -9,19 +9,19 @@ const pool = databaseUrl
   ? new Pool({
       connectionString: databaseUrl,
       max: 10,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+      ssl: { rejectUnauthorized: false },
     })
   : null;
 
 export const auth = betterAuth({
-  appName: 'PixelKit SaaS',
+  appName: 'Gyanvatsala Workspace',
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
   secret: process.env.BETTER_AUTH_SECRET || 'pixelkit_super_secret_auth_key_must_be_at_least_32_characters_long',
   database: pool || undefined,
   socialProviders: {
     google: {
-      clientId: process.env.GOOGLE_CLIENT_ID || 'dummy_google_client_id_for_dev.apps.googleusercontent.com',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'dummy_google_client_secret_for_dev',
+      clientId: process.env.GOOGLE_CLIENT_ID || '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
       enabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
     },
   },
@@ -34,14 +34,6 @@ export const auth = betterAuth({
       },
     }),
   ],
-  user: {
-    additionalFields: {
-      avatarUrl: {
-        type: 'string',
-        required: false,
-      },
-    },
-  },
 });
 
 export type Session = typeof auth.$Infer.Session;

@@ -41,14 +41,16 @@ export function ModeBadge() {
       case 'local':
         return {
           icon: ShieldCheck,
-          label: 'Local (In-Browser)',
+          label: 'Local',
+          fullLabel: 'Local (In-Browser)',
           color: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700/60',
           dot: 'bg-emerald-500',
         };
       case 'cloud':
         return {
           icon: Cloud,
-          label: 'Cloud SaaS (S3+Celery)',
+          label: 'Cloud',
+          fullLabel: 'Cloud SaaS (S3+Celery)',
           color: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700/60',
           dot: 'bg-blue-500',
         };
@@ -56,7 +58,8 @@ export function ModeBadge() {
       default:
         return {
           icon: Zap,
-          label: 'Auto (Smart Route)',
+          label: 'Auto',
+          fullLabel: 'Auto (Smart Route)',
           color: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700/60',
           dot: 'bg-indigo-500',
         };

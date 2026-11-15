@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { getPdfJs } from '@/lib/pdfjsLoader';
 import {
   PdfTextItem,
@@ -13,9 +13,13 @@ import {
   FormFieldElement,
   EditorToolMode,
   PageInfo,
+  SelectedObjectRef,
+  PendingImagePlacement,
+  EditableObjectType,
 } from '@/types/pdfEditor';
-import { FloatingFormatBar } from './FloatingFormatBar';
-import { Trash2, Move, RotateCw, Plus } from 'lucide-react';
+import { SelectionBoundingBox, ResizeHandleType } from './SelectionBoundingBox';
+import { ContextualToolbar } from './ContextualToolbar';
+import { RotateCw, Trash2, ImagePlus } from 'lucide-react';
 
 interface PageCanvasViewProps {
   pageMeta: PageInfo;
@@ -23,28 +27,52 @@ interface PageCanvasViewProps {
   pdfDoc?: any;
   scale: number;
   activeMode: EditorToolMode;
+  pendingImage: PendingImagePlacement | null;
+  onClearPendingImage: () => void;
+  selectedObject: SelectedObjectRef | null;
+  onSelectObject: (ref: SelectedObjectRef | null) => void;
+  // Existing PDF text items
   textItems: PdfTextItem[];
   onUpdateTextItem: (id: string, updates: Partial<PdfTextItem>) => void;
   onDeleteTextItem: (id: string) => void;
+  // Added texts
   addedTexts: AddedTextElement[];
   onAddText: (text: AddedTextElement) => void;
-  onUpdateAddedText: (id: string, text: string) => void;
+  onUpdateAddedText: (id: string, updates: Partial<AddedTextElement>) => void;
   onDeleteAddedText: (id: string) => void;
+  // Whiteouts
   whiteouts: WhiteoutElement[];
   onAddWhiteout: (w: WhiteoutElement) => void;
+  onUpdateWhiteout: (id: string, updates: Partial<WhiteoutElement>) => void;
   onDeleteWhiteout: (id: string) => void;
+  // Images
   images: ImageElement[];
+  onAddImage: (img: ImageElement) => void;
+  onUpdateImage: (id: string, updates: Partial<ImageElement>) => void;
   onDeleteImage: (id: string) => void;
+  onReplaceImageRequest?: (id: string) => void;
+  // Signatures
   signatures: SignatureElement[];
+  onAddSignature: (sig: SignatureElement) => void;
+  onUpdateSignature: (id: string, updates: Partial<SignatureElement>) => void;
   onDeleteSignature: (id: string) => void;
+  // Annotations
   annotations: AnnotationElement[];
   onAddAnnotation: (a: AnnotationElement) => void;
+  onUpdateAnnotation: (id: string, updates: Partial<AnnotationElement>) => void;
   onDeleteAnnotation: (id: string) => void;
+  // Shapes
   shapes: ShapeElement[];
   onAddShape: (s: ShapeElement) => void;
+  onUpdateShape: (id: string, updates: Partial<ShapeElement>) => void;
   onDeleteShape: (id: string) => void;
+  // Form fields
   formFields: FormFieldElement[];
   onAddFormField: (f: FormFieldElement) => void;
+  // Common object actions
+  onDuplicateObject: (type: EditableObjectType, id: string) => void;
+  onReorderZIndex: (type: EditableObjectType, id: string, direction: 'up' | 'down') => void;
+  // Page actions
   onRotatePage: (pageNum: number) => void;
   onDeletePage: (pageNum: number) => void;
 }
@@ -55,6 +83,10 @@ export function PageCanvasView({
   pdfDoc,
   scale,
   activeMode,
+  pendingImage,
+  onClearPendingImage,
+  selectedObject,
+  onSelectObject,
   textItems,
   onUpdateTextItem,
   onDeleteTextItem,
@@ -64,74 +96,100 @@ export function PageCanvasView({
   onDeleteAddedText,
   whiteouts,
   onAddWhiteout,
+  onUpdateWhiteout,
   onDeleteWhiteout,
   images,
+  onAddImage,
+  onUpdateImage,
   onDeleteImage,
+  onReplaceImageRequest,
   signatures,
+  onAddSignature,
+  onUpdateSignature,
   onDeleteSignature,
   annotations,
   onAddAnnotation,
+  onUpdateAnnotation,
   onDeleteAnnotation,
   shapes,
   onAddShape,
+  onUpdateShape,
   onDeleteShape,
   formFields,
   onAddFormField,
+  onDuplicateObject,
+  onReorderZIndex,
   onRotatePage,
   onDeletePage,
 }: PageCanvasViewProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Active editing text item
-  const [activeTextId, setActiveTextId] = useState<string | null>(null);
-  const [floatingBarPos, setFloatingBarPos] = useState<{ top: number; left: number } | null>(null);
-
-  // Drag-to-create state for whiteout / annotations / shapes
+  // Drag-creation state (for shapes, whiteout, annotations)
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragCurrent, setDragCurrent] = useState<{ x: number; y: number } | null>(null);
 
-  // Page dimensions scaled
-  const pageW = pageMeta.width * scale;
-  const pageH = pageMeta.height * scale;
+  // In-line editing state for existing PDF text
+  const [activeExistingTextId, setActiveExistingTextId] = useState<string | null>(null);
 
-  // Render PDF page to canvas
+  // In-line editing state for added text
+  const [editingAddedTextId, setEditingAddedTextId] = useState<string | null>(null);
+
+  // Cursor position preview for pending image placement
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+
+  // Computed page display dimensions in CSS pixels at current scale
+  const is90or270 = pageMeta.rotation === 90 || pageMeta.rotation === 270;
+  const pageW = (is90or270 ? pageMeta.height : pageMeta.width) * scale;
+  const pageH = (is90or270 ? pageMeta.width : pageMeta.height) * scale;
+
+  // 1. RENDER PDF PAGE VIA PDF.JS WITH HI-DPI SUPPORT
   useEffect(() => {
     let isCancelled = false;
+    let renderTask: any = null;
 
     async function renderPage() {
+      if (!canvasRef.current) return;
       try {
-        let pdf = pdfDoc;
-        if (!pdf) {
-          const pdfjs = await getPdfJs();
+        const pdfjs = await getPdfJs();
+        let doc = pdfDoc;
+        if (!doc) {
           const bytes =
-            pdfData instanceof Uint8Array
-              ? pdfData.slice()
-              : new Uint8Array(pdfData).slice();
-          pdf = await pdfjs.getDocument({ data: bytes }).promise;
+            pdfData instanceof Uint8Array ? pdfData.slice() : new Uint8Array(pdfData).slice();
+          const loadingTask = pdfjs.getDocument({ data: bytes });
+          doc = await loadingTask.promise;
         }
-        const page = await pdf.getPage(pageMeta.pageNumber);
 
         if (isCancelled) return;
+        const page = await doc.getPage(pageMeta.pageNumber);
+        if (isCancelled) return;
 
-        const viewport = page.getViewport({ scale, rotation: pageMeta.rotation });
+        const viewport = page.getViewport({ scale, rotation: pageMeta.rotation || 0 });
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d');
+        const dpr = Math.max(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+        const ctx = canvas.getContext('2d', { alpha: false });
         if (!ctx) return;
 
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr);
 
-        await page.render({
+        renderTask = page.render({
           canvasContext: ctx,
           viewport,
-        }).promise;
-      } catch (err) {
-        console.warn('Error rendering page:', err);
+        });
+
+        await renderTask.promise;
+      } catch (err: any) {
+        if (err?.name !== 'RenderingCancelledException') {
+          console.warn('PDF render error:', err);
+        }
       }
     }
 
@@ -139,141 +197,400 @@ export function PageCanvasView({
 
     return () => {
       isCancelled = true;
+      if (renderTask && renderTask.cancel) {
+        try {
+          renderTask.cancel();
+        } catch {
+          // ignore
+        }
+      }
     };
   }, [pageMeta.pageNumber, pageMeta.rotation, scale, pdfData, pdfDoc]);
 
-  // Click on canvas container to handle placement
-  const handleContainerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+  // Coordinate conversion helpers:
+  // PDF coordinates: origin (0, 0) is BOTTOM-LEFT of page.
+  // Screen coordinates: origin (0, 0) is TOP-LEFT of page container.
+  const pdfToScreen = useCallback(
+    (pdfX: number, pdfY: number, pdfWidth: number, pdfHeight: number) => {
+      const screenX = pdfX * scale;
+      const screenY = (pageMeta.height - (pdfY + pdfHeight)) * scale;
+      const screenW = pdfWidth * scale;
+      const screenH = pdfHeight * scale;
+      return { x: screenX, y: screenY, width: screenW, height: screenH };
+    },
+    [scale, pageMeta.height]
+  );
+
+  const screenToPdf = useCallback(
+    (screenX: number, screenY: number, screenWidth: number, screenHeight: number) => {
+      const pdfX = screenX / scale;
+      const pdfWidth = screenWidth / scale;
+      const pdfHeight = screenHeight / scale;
+      const pdfY = pageMeta.height - (screenY + screenHeight) / scale;
+      return { pdfX, pdfY, pdfWidth, pdfHeight };
+    },
+    [scale, pageMeta.height]
+  );
+
+  // 2. CONTAINER POINTER INTERACTIONS (PLACEMENT & DRAGGING)
+  const handleContainerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
 
-    // In PDF coordinates:
-    const pdfX = clickX / scale;
-    const pdfY = (rect.height - clickY) / scale;
+    // A. Pending Image Placement Mode
+    if (pendingImage) {
+      e.stopPropagation();
+      e.preventDefault();
 
-    if (activeMode === 'whiteout' || activeMode === 'annotate' || activeMode === 'shapes') {
-      setDragStart({ x: clickX, y: clickY });
-      setDragCurrent({ x: clickX, y: clickY });
-    } else if (activeMode === 'text') {
-      // If clicking empty space in text mode: place a new text box
-      const target = e.target as HTMLElement;
-      if (target === containerRef.current || target.tagName === 'CANVAS') {
-        onAddText({
-          id: `new_txt_${Date.now()}`,
-          pageNumber: pageMeta.pageNumber,
-          text: 'Type text here...',
-          x: clickX,
-          y: clickY,
-          pdfX,
-          pdfY: pdfY - 12,
-          fontSize: 14,
-          fontFamily: 'Helvetica',
-          color: '#0F172A',
-          isBold: false,
-          isItalic: false,
-        });
-      }
-    } else if (activeMode === 'forms') {
-      // Add text input form field
-      onAddFormField({
-        id: `form_${Date.now()}`,
+      const naturalW = pendingImage.naturalWidth || 200;
+      const naturalH = pendingImage.naturalHeight || 150;
+      const aspect = naturalW / (naturalH || 1);
+
+      // Default placed width: 220 points, clamped to page width
+      const initialPdfWidth = Math.min(220, pageMeta.width * 0.6);
+      const initialPdfHeight = initialPdfWidth / aspect;
+
+      // Center placed image on the clicked location
+      const clickedPdfX = clickX / scale;
+      const clickedPdfY = (rect.height - clickY) / scale;
+
+      let pdfX = clickedPdfX - initialPdfWidth / 2;
+      let pdfY = clickedPdfY - initialPdfHeight / 2;
+
+      // Clamp within page bounds
+      pdfX = Math.max(0, Math.min(pdfX, pageMeta.width - initialPdfWidth));
+      pdfY = Math.max(0, Math.min(pdfY, pageMeta.height - initialPdfHeight));
+
+      const newImgId = `img_${Date.now()}`;
+      const newImg: ImageElement = {
+        id: newImgId,
         pageNumber: pageMeta.pageNumber,
-        type: 'text',
-        x: clickX,
-        y: clickY,
-        width: 140 * scale,
-        height: 28 * scale,
+        name: pendingImage.name || `Image`,
+        dataUrl: pendingImage.dataUrl,
         pdfX,
-        pdfY: pdfY - 28,
-        pdfWidth: 140,
-        pdfHeight: 28,
-        value: '',
+        pdfY,
+        pdfWidth: initialPdfWidth,
+        pdfHeight: initialPdfHeight,
+        aspectRatio: aspect,
+        rotation: 0,
+        opacity: 1,
+        zIndex: 20,
+      };
+
+      onAddImage(newImg);
+      onClearPendingImage();
+      onSelectObject({
+        id: newImgId,
+        type: 'image',
+        pageNumber: pageMeta.pageNumber,
       });
+      return;
+    }
+
+    // B. Text Tool Click-to-Place Mode
+    if (activeMode === 'text') {
+      const target = e.target as HTMLElement;
+      // Allow clicking canvas or blank space to place text
+      if (target === containerRef.current || target.tagName === 'CANVAS' || target.getAttribute('data-canvas-bg') === 'true') {
+        e.stopPropagation();
+
+        const pdfClickX = clickX / scale;
+        const pdfClickY = (rect.height - clickY) / scale;
+
+        // Auto-detect font family & size from nearest ambient PDF text run
+        let autoFontFamily = 'Helvetica';
+        let autoFontSize = 14;
+        let autoColor = '#0F172A';
+        let autoBold = false;
+        let autoItalic = false;
+
+        if (textItems && textItems.length > 0) {
+          let minDist = Infinity;
+          for (const it of textItems) {
+            if (it.isDeleted) continue;
+            const dist = Math.hypot(it.pdfX - pdfClickX, it.pdfY - pdfClickY);
+            if (dist < minDist) {
+              minDist = dist;
+              autoFontFamily = it.fontFamily || 'Helvetica';
+              autoFontSize = Math.round(it.pdfFontSize || it.fontSize || 14);
+              autoColor = it.color || '#0F172A';
+              autoBold = !!it.isBold;
+              autoItalic = !!it.isItalic;
+            }
+          }
+        }
+
+        const boxWidthPt = 200;
+        const boxHeightPt = Math.max(32, autoFontSize * 2);
+
+        const newTextId = `txt_${Date.now()}`;
+        const newText: AddedTextElement = {
+          id: newTextId,
+          pageNumber: pageMeta.pageNumber,
+          name: `Text Box`,
+          text: 'Type your text...',
+          pdfX: Math.max(10, Math.min(pdfClickX, pageMeta.width - boxWidthPt - 10)),
+          pdfY: Math.max(10, Math.min(pdfClickY - boxHeightPt, pageMeta.height - boxHeightPt - 10)),
+          pdfWidth: boxWidthPt,
+          pdfHeight: boxHeightPt,
+          fontSize: autoFontSize,
+          fontFamily: autoFontFamily,
+          color: autoColor,
+          isBold: autoBold,
+          isItalic: autoItalic,
+          alignment: 'left',
+          rotation: 0,
+          opacity: 1,
+          zIndex: 25,
+        };
+
+        onAddText(newText);
+        onSelectObject({
+          id: newTextId,
+          type: 'addedText',
+          pageNumber: pageMeta.pageNumber,
+        });
+        setEditingAddedTextId(newTextId);
+        return;
+      }
+    }
+
+    // C. Drag-creation modes (whiteout, annotate, shapes)
+    if (activeMode === 'whiteout' || activeMode === 'annotate' || activeMode === 'shapes') {
+      const target = e.target as HTMLElement;
+      if (target === containerRef.current || target.tagName === 'CANVAS' || target.getAttribute('data-canvas-bg') === 'true') {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setDragStart({ x: clickX, y: clickY });
+        setDragCurrent({ x: clickX, y: clickY });
+      }
+    } else if (activeMode === 'select') {
+      // Clicking empty background deselects current selection
+      const target = e.target as HTMLElement;
+      if (target === containerRef.current || target.tagName === 'CANVAS' || target.getAttribute('data-canvas-bg') === 'true') {
+        onSelectObject(null);
+        setActiveExistingTextId(null);
+        setEditingAddedTextId(null);
+      }
     }
   };
 
-  const handleContainerMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!dragStart || !containerRef.current) return;
+  const handleContainerPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const currX = e.clientX - rect.left;
     const currY = e.clientY - rect.top;
-    setDragCurrent({ x: currX, y: currY });
+
+    if (pendingImage) {
+      setMousePos({ x: currX, y: currY });
+    }
+
+    if (dragStart) {
+      setDragCurrent({ x: currX, y: currY });
+    }
   };
 
-  const handleContainerMouseUp = () => {
-    if (dragStart && dragCurrent) {
+  const handleContainerPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+
+    if (dragStart && dragCurrent && containerRef.current) {
       const x1 = Math.min(dragStart.x, dragCurrent.x);
       const y1 = Math.min(dragStart.y, dragCurrent.y);
       const w = Math.abs(dragCurrent.x - dragStart.x);
       const h = Math.abs(dragCurrent.y - dragStart.y);
 
-      // Only create if dimensions are at least 10x10 px
-      if (w > 10 && h > 10 && containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        const pdfX = x1 / scale;
-        const pdfY = (rect.height - (y1 + h)) / scale;
-        const pdfW = w / scale;
-        const pdfH = h / scale;
+      // Require minimal 8x8 px drag
+      if (w > 8 && h > 8) {
+        const { pdfX, pdfY, pdfWidth, pdfHeight } = screenToPdf(x1, y1, w, h);
 
         if (activeMode === 'whiteout') {
+          const newId = `wo_${Date.now()}`;
           onAddWhiteout({
-            id: `wo_${Date.now()}`,
+            id: newId,
             pageNumber: pageMeta.pageNumber,
-            x: x1,
-            y: y1,
-            width: w,
-            height: h,
+            name: 'Whiteout',
             pdfX,
             pdfY,
-            pdfWidth: pdfW,
-            pdfHeight: pdfH,
+            pdfWidth,
+            pdfHeight,
             color: '#FFFFFF',
+            opacity: 1,
+            zIndex: 10,
           });
+          onSelectObject({ id: newId, type: 'whiteout', pageNumber: pageMeta.pageNumber });
         } else if (activeMode === 'annotate') {
+          const newId = `ann_${Date.now()}`;
           onAddAnnotation({
-            id: `ann_${Date.now()}`,
+            id: newId,
             pageNumber: pageMeta.pageNumber,
+            name: 'Highlight',
             type: 'highlight',
-            x: x1,
-            y: y1,
-            width: w,
-            height: h,
             pdfX,
             pdfY,
-            pdfWidth: pdfW,
-            pdfHeight: pdfH,
+            pdfWidth,
+            pdfHeight,
             color: '#FEF08A',
+            opacity: 0.45,
+            zIndex: 15,
           });
+          onSelectObject({ id: newId, type: 'annotation', pageNumber: pageMeta.pageNumber });
         } else if (activeMode === 'shapes') {
+          const newId = `shp_${Date.now()}`;
           onAddShape({
-            id: `shp_${Date.now()}`,
+            id: newId,
             pageNumber: pageMeta.pageNumber,
+            name: 'Rectangle',
             type: 'rectangle',
-            x: x1,
-            y: y1,
-            width: w,
-            height: h,
             pdfX,
             pdfY,
-            pdfWidth: pdfW,
-            pdfHeight: pdfH,
+            pdfWidth,
+            pdfHeight,
             strokeColor: '#2563EB',
             strokeWidth: 2,
+            fillColor: '#FFFFFF',
+            opacity: 1,
+            zIndex: 20,
           });
+          onSelectObject({ id: newId, type: 'shape', pageNumber: pageMeta.pageNumber });
         }
       }
     }
+
     setDragStart(null);
     setDragCurrent(null);
   };
 
-  const activeEditingItem = textItems.find((it) => it.id === activeTextId) || null;
+  // Find currently selected element and compute its screen bounding box
+  let selectedElementData: any = null;
+  let selectedScreenBounds: { x: number; y: number; width: number; height: number } | null = null;
+  let selectedRotation = 0;
+  let selectedLocked = false;
+  let isAspectLocked = false;
+
+  if (selectedObject && selectedObject.pageNumber === pageMeta.pageNumber) {
+    if (selectedObject.type === 'addedText') {
+      const item = addedTexts.find((t) => t.id === selectedObject.id);
+      if (item) {
+        selectedElementData = item;
+        selectedScreenBounds = pdfToScreen(item.pdfX, item.pdfY, item.pdfWidth, item.pdfHeight);
+        selectedRotation = item.rotation || 0;
+        selectedLocked = !!item.locked;
+      }
+    } else if (selectedObject.type === 'image') {
+      const item = images.find((i) => i.id === selectedObject.id);
+      if (item) {
+        selectedElementData = item;
+        selectedScreenBounds = pdfToScreen(item.pdfX, item.pdfY, item.pdfWidth, item.pdfHeight);
+        selectedRotation = item.rotation || 0;
+        selectedLocked = !!item.locked;
+        isAspectLocked = true; // Lock aspect ratio by default for images
+      }
+    } else if (selectedObject.type === 'signature') {
+      const item = signatures.find((s) => s.id === selectedObject.id);
+      if (item) {
+        selectedElementData = item;
+        selectedScreenBounds = pdfToScreen(item.pdfX, item.pdfY, item.pdfWidth, item.pdfHeight);
+        selectedRotation = item.rotation || 0;
+        selectedLocked = !!item.locked;
+        isAspectLocked = true;
+      }
+    } else if (selectedObject.type === 'shape') {
+      const item = shapes.find((s) => s.id === selectedObject.id);
+      if (item) {
+        selectedElementData = item;
+        selectedScreenBounds = pdfToScreen(item.pdfX, item.pdfY, item.pdfWidth, item.pdfHeight);
+        selectedRotation = item.rotation || 0;
+        selectedLocked = !!item.locked;
+      }
+    } else if (selectedObject.type === 'whiteout') {
+      const item = whiteouts.find((w) => w.id === selectedObject.id);
+      if (item) {
+        selectedElementData = item;
+        selectedScreenBounds = pdfToScreen(item.pdfX, item.pdfY, item.pdfWidth, item.pdfHeight);
+        selectedLocked = !!item.locked;
+      }
+    } else if (selectedObject.type === 'annotation') {
+      const item = annotations.find((a) => a.id === selectedObject.id);
+      if (item) {
+        selectedElementData = item;
+        selectedScreenBounds = pdfToScreen(item.pdfX, item.pdfY, item.pdfWidth, item.pdfHeight);
+        selectedLocked = !!item.locked;
+      }
+    }
+  }
+
+  // Handle bounding box transformation
+  const handleObjectMove = (deltaScreenX: number, deltaScreenY: number) => {
+    if (!selectedObject || !selectedElementData) return;
+    const deltaPdfX = deltaScreenX / scale;
+    const deltaPdfY = -deltaScreenY / scale; // PDF Y is inverted
+
+    const newPdfX = Math.max(
+      0,
+      Math.min(selectedElementData.pdfX + deltaPdfX, pageMeta.width - selectedElementData.pdfWidth)
+    );
+    const newPdfY = Math.max(
+      0,
+      Math.min(selectedElementData.pdfY + deltaPdfY, pageMeta.height - selectedElementData.pdfHeight)
+    );
+
+    const updates = { pdfX: newPdfX, pdfY: newPdfY };
+
+    if (selectedObject.type === 'addedText') onUpdateAddedText(selectedObject.id, updates);
+    else if (selectedObject.type === 'image') onUpdateImage(selectedObject.id, updates);
+    else if (selectedObject.type === 'signature') onUpdateSignature(selectedObject.id, updates);
+    else if (selectedObject.type === 'shape') onUpdateShape(selectedObject.id, updates);
+    else if (selectedObject.type === 'whiteout') onUpdateWhiteout(selectedObject.id, updates);
+    else if (selectedObject.type === 'annotation') onUpdateAnnotation(selectedObject.id, updates);
+  };
+
+  const handleObjectResize = (
+    handle: ResizeHandleType,
+    newScreenX: number,
+    newScreenY: number,
+    newScreenWidth: number,
+    newScreenHeight: number
+  ) => {
+    if (!selectedObject) return;
+    const { pdfX, pdfY, pdfWidth, pdfHeight } = screenToPdf(
+      newScreenX,
+      newScreenY,
+      newScreenWidth,
+      newScreenHeight
+    );
+
+    const updates = {
+      pdfX: Math.max(0, pdfX),
+      pdfY: Math.max(0, pdfY),
+      pdfWidth: Math.max(10, pdfWidth),
+      pdfHeight: Math.max(10, pdfHeight),
+    };
+
+    if (selectedObject.type === 'addedText') onUpdateAddedText(selectedObject.id, updates);
+    else if (selectedObject.type === 'image') onUpdateImage(selectedObject.id, updates);
+    else if (selectedObject.type === 'signature') onUpdateSignature(selectedObject.id, updates);
+    else if (selectedObject.type === 'shape') onUpdateShape(selectedObject.id, updates);
+    else if (selectedObject.type === 'whiteout') onUpdateWhiteout(selectedObject.id, updates);
+    else if (selectedObject.type === 'annotation') onUpdateAnnotation(selectedObject.id, updates);
+  };
+
+  const handleObjectRotate = (angle: number) => {
+    if (!selectedObject) return;
+    const updates = { rotation: angle };
+    if (selectedObject.type === 'addedText') onUpdateAddedText(selectedObject.id, updates);
+    else if (selectedObject.type === 'image') onUpdateImage(selectedObject.id, updates);
+    else if (selectedObject.type === 'signature') onUpdateSignature(selectedObject.id, updates);
+    else if (selectedObject.type === 'shape') onUpdateShape(selectedObject.id, updates);
+  };
 
   return (
     <div className="flex flex-col items-center mb-10 select-none">
-      {/* Page Header Bar */}
+      {/* Page Header Information Bar */}
       <div
         style={{ width: pageW }}
         className="flex items-center justify-between pb-2 mb-1 text-xs text-[#475569] dark:text-[#CBD5E1]"
@@ -291,8 +608,8 @@ export function PageCanvasView({
           <button
             type="button"
             onClick={() => onRotatePage(pageMeta.pageNumber)}
-            title="Rotate Page"
-            className="p-1 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+            title="Rotate Page 90° Clockwise"
+            className="p-1 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition-colors"
           >
             <RotateCw className="w-3.5 h-3.5" />
           </button>
@@ -300,69 +617,81 @@ export function PageCanvasView({
             type="button"
             onClick={() => onDeletePage(pageMeta.pageNumber)}
             title="Delete Page"
-            className="p-1 rounded-md text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+            className="p-1 rounded-md text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer transition-colors"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Main Page Sheet Viewport */}
+      {/* Main Page Sheet Viewport with 4 Layers */}
       <div
         ref={containerRef}
         style={{ width: pageW, height: pageH }}
-        onMouseDown={handleContainerMouseDown}
-        onMouseMove={handleContainerMouseMove}
-        onMouseUp={handleContainerMouseUp}
-        className={`relative bg-white shadow-xl border border-slate-300 dark:border-slate-700 transition-transform ${
-          activeMode === 'whiteout' || activeMode === 'annotate' || activeMode === 'shapes'
-            ? 'cursor-crosshair'
+        onPointerDown={handleContainerPointerDown}
+        onPointerMove={handleContainerPointerMove}
+        onPointerUp={handleContainerPointerUp}
+        data-canvas-bg="true"
+        className={`relative bg-white shadow-2xl border border-slate-300 dark:border-slate-700 transition-shadow ${
+          pendingImage
+            ? 'cursor-copy'
             : activeMode === 'text'
             ? 'cursor-text'
+            : activeMode === 'whiteout' || activeMode === 'annotate' || activeMode === 'shapes'
+            ? 'cursor-crosshair'
             : 'cursor-default'
         }`}
       >
-        {/* 1. Underlying PDF Canvas */}
-        <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
+        {/* ======================================================== */}
+        {/* LAYER 1: Underlying High-DPI PDF.js Canvas Layer         */}
+        {/* ======================================================== */}
+        <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none select-none" />
 
-        {/* 2. Overlays Layer */}
-        <div className="absolute inset-0 pointer-events-auto">
+        {/* ======================================================== */}
+        {/* LAYER 2: Editable Object Layer (DOM Elements)            */}
+        {/* ======================================================== */}
+        <div className="absolute inset-0 pointer-events-none">
           {/* A. User Whiteouts */}
           {whiteouts
-            .filter((w) => w.pageNumber === pageMeta.pageNumber)
-            .map((w) => (
-              <div
-                key={w.id}
-                style={{
-                  position: 'absolute',
-                  left: w.x * (scale / (w.pdfWidth > 0 ? w.width / w.pdfWidth : 1)),
-                  top: w.y * (scale / (w.pdfHeight > 0 ? w.height / w.pdfHeight : 1)),
-                  width: w.pdfWidth * scale,
-                  height: w.pdfHeight * scale,
-                  backgroundColor: w.color || '#FFFFFF',
-                }}
-                className="group border border-transparent hover:border-slate-300"
-              >
-                <button
-                  type="button"
-                  onClick={() => onDeleteWhiteout(w.id)}
-                  className="opacity-0 group-hover:opacity-100 absolute -top-3 -right-3 p-1 bg-rose-600 text-white rounded-full shadow-xs cursor-pointer"
-                >
-                  <Trash2 className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            ))}
+            .filter((w) => w.pageNumber === pageMeta.pageNumber && !w.hidden)
+            .map((w) => {
+              const bounds = pdfToScreen(w.pdfX, w.pdfY, w.pdfWidth, w.pdfHeight);
+              const isSelected = selectedObject?.id === w.id;
+
+              return (
+                <div
+                  key={w.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectObject({ id: w.id, type: 'whiteout', pageNumber: pageMeta.pageNumber });
+                  }}
+                  style={{
+                    position: 'absolute',
+                    left: bounds.x,
+                    top: bounds.y,
+                    width: bounds.width,
+                    height: bounds.height,
+                    backgroundColor: w.color || '#FFFFFF',
+                    opacity: w.opacity ?? 1,
+                    zIndex: w.zIndex || 10,
+                  }}
+                  className={`pointer-events-auto cursor-pointer border ${
+                    isSelected ? 'border-blue-500' : 'border-transparent hover:border-slate-300'
+                  }`}
+                />
+              );
+            })}
 
           {/* B. Existing PDF Text Overlays (IN-PLACE DIRECT EDITING) */}
           {textItems.map((item) => {
             if (item.isDeleted) return null;
 
-            const isEditing = activeTextId === item.id;
+            const isEditing = activeExistingTextId === item.id;
             const itemLeft = item.x * scale;
             const itemTop = item.y * scale;
             const itemWidth = item.width * scale;
             const itemHeight = item.height * scale;
-            const fontSizePx = Math.max(9, item.fontSize * scale);
+            const itemFontSize = (item.fontSize || 12) * scale;
 
             return (
               <div
@@ -371,38 +700,44 @@ export function PageCanvasView({
                   position: 'absolute',
                   left: itemLeft,
                   top: itemTop,
+                  zIndex: isEditing ? 35 : 12,
                   minWidth: Math.max(20, itemWidth),
                   minHeight: Math.max(14, itemHeight),
                 }}
                 onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveTextId(item.id);
-                  setFloatingBarPos({ top: itemTop, left: itemLeft });
+                  if (activeMode === 'editText') {
+                    e.stopPropagation();
+                    setActiveExistingTextId(item.id);
+                    onSelectObject(null);
+                  }
                 }}
-                className={`group transition-all select-none ${
-                  isEditing
-                    ? 'ring-2 ring-[#2563EB] bg-white rounded-xs z-30 shadow-md'
-                    : 'hover:bg-blue-100/40 hover:ring-1 hover:ring-blue-400/60 rounded-xs cursor-text'
-                } ${item.isEdited ? 'bg-white z-10' : ''}`}
+                className={`pointer-events-auto transition-colors rounded-xs ${
+                  activeMode === 'editText'
+                    ? isEditing
+                      ? 'ring-2 ring-blue-500 bg-white shadow-md'
+                      : item.isEdited
+                      ? 'bg-white border border-blue-300 px-0.5'
+                      : 'hover:bg-blue-500/15 cursor-text border border-transparent hover:border-blue-400'
+                    : item.isEdited
+                    ? 'bg-white px-0.5 shadow-2xs'
+                    : 'pointer-events-none'
+                }`}
               >
-                {/* When edited, white out the original text area so it doesn't duplicate */}
-                {item.isEdited && !isEditing && (
-                  <span
+                {/* Whiteout background to hide original raster text if edited */}
+                {item.isEdited && (
+                  <div
                     style={{
-                      fontFamily: item.fontFamily,
-                      fontSize: `${fontSizePx}px`,
-                      fontWeight: item.isBold ? 'bold' : 'normal',
-                      fontStyle: item.isItalic ? 'italic' : 'normal',
-                      color: item.color,
-                      lineHeight: '1.2',
+                      position: 'absolute',
+                      left: -2,
+                      top: -1,
+                      width: itemWidth + 4,
+                      height: itemHeight + 2,
+                      backgroundColor: '#FFFFFF',
+                      zIndex: -1,
                     }}
-                    className="block px-0.5 whitespace-pre bg-white"
-                  >
-                    {item.str}
-                  </span>
+                  />
                 )}
 
-                {/* When actively editing: in-place input field */}
                 {isEditing ? (
                   <input
                     type="text"
@@ -410,12 +745,12 @@ export function PageCanvasView({
                     value={item.str}
                     style={{
                       fontFamily: item.fontFamily,
-                      fontSize: `${fontSizePx}px`,
+                      fontSize: `${itemFontSize}px`,
                       fontWeight: item.isBold ? 'bold' : 'normal',
                       fontStyle: item.isItalic ? 'italic' : 'normal',
-                      color: item.color,
-                      width: '100%',
-                      background: '#FFFFFF',
+                      color: item.color || '#0F172A',
+                      width: `${Math.max(itemWidth + 30, 60)}px`,
+                      height: `${Math.max(itemHeight, 20)}px`,
                     }}
                     onChange={(e) => {
                       onUpdateTextItem(item.id, {
@@ -424,238 +759,417 @@ export function PageCanvasView({
                       });
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        setActiveTextId(null);
-                        setFloatingBarPos(null);
+                      if (e.key === 'Enter' || e.key === 'Escape') {
+                        setActiveExistingTextId(null);
                       }
                     }}
-                    className="outline-none border-none p-0 m-0 text-slate-900"
+                    onBlur={() => setActiveExistingTextId(null)}
+                    className="outline-none border-none p-0 m-0 text-slate-900 bg-transparent"
                   />
-                ) : !item.isEdited ? (
-                  // Invisible selectable bounding zone
-                  <div
+                ) : item.isEdited ? (
+                  <span
                     style={{
-                      width: itemWidth,
-                      height: itemHeight,
+                      fontFamily: item.fontFamily,
+                      fontSize: `${itemFontSize}px`,
+                      fontWeight: item.isBold ? 'bold' : 'normal',
+                      fontStyle: item.isItalic ? 'italic' : 'normal',
+                      color: item.color || '#0F172A',
+                      display: 'inline-block',
+                      whiteSpace: 'nowrap',
                     }}
-                    className="w-full h-full"
-                  />
+                  >
+                    {item.str}
+                  </span>
                 ) : null}
               </div>
             );
           })}
 
-          {/* C. User-Added Text Elements */}
+          {/* C. User-Added Text Elements (MULTILINE WRAPPING) */}
           {addedTexts
-            .filter((t) => t.pageNumber === pageMeta.pageNumber)
-            .map((t) => (
-              <div
-                key={t.id}
-                style={{
-                  position: 'absolute',
-                  left: t.pdfX * scale,
-                  top: pageH - (t.pdfY + t.fontSize) * scale,
-                  zIndex: 25,
-                }}
-                className="group p-1 bg-white/90 border border-dashed border-[#2563EB] rounded-xs"
-              >
-                <input
-                  type="text"
-                  value={t.text}
-                  style={{
-                    fontFamily: t.fontFamily,
-                    fontSize: `${t.fontSize * scale}px`,
-                    fontWeight: t.isBold ? 'bold' : 'normal',
-                    fontStyle: t.isItalic ? 'italic' : 'normal',
-                    color: t.color,
+            .filter((t) => t.pageNumber === pageMeta.pageNumber && !t.hidden)
+            .map((t) => {
+              const bounds = pdfToScreen(t.pdfX, t.pdfY, t.pdfWidth, t.pdfHeight);
+              const isSelected = selectedObject?.id === t.id;
+              const isInlineEditing = editingAddedTextId === t.id;
+
+              return (
+                <div
+                  key={t.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectObject({
+                      id: t.id,
+                      type: 'addedText',
+                      pageNumber: pageMeta.pageNumber,
+                    });
                   }}
-                  onChange={(e) => onUpdateAddedText(t.id, e.target.value)}
-                  className="bg-transparent outline-none border-none p-0 m-0"
-                />
-                <button
-                  type="button"
-                  onClick={() => onDeleteAddedText(t.id)}
-                  className="opacity-0 group-hover:opacity-100 absolute -top-3 -right-3 p-1 bg-rose-600 text-white rounded-full cursor-pointer shadow-xs"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setEditingAddedTextId(t.id);
+                  }}
+                  style={{
+                    position: 'absolute',
+                    left: bounds.x,
+                    top: bounds.y,
+                    width: bounds.width,
+                    minHeight: bounds.height,
+                    zIndex: t.zIndex || 25,
+                    transform: t.rotation ? `rotate(${t.rotation}deg)` : undefined,
+                    transformOrigin: 'center center',
+                    opacity: t.opacity ?? 1,
+                  }}
+                  className={`pointer-events-auto group p-1 transition-all rounded-xs ${
+                    isSelected
+                      ? 'border border-blue-400 bg-blue-50/20'
+                      : 'hover:border hover:border-dashed hover:border-slate-300'
+                  }`}
                 >
-                  <Trash2 className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            ))}
+                  {isInlineEditing ? (
+                    <textarea
+                      autoFocus
+                      value={t.text}
+                      style={{
+                        fontFamily: t.fontFamily,
+                        fontSize: `${t.fontSize * scale}px`,
+                        fontWeight: t.isBold ? 'bold' : 'normal',
+                        fontStyle: t.isItalic ? 'italic' : 'normal',
+                        textDecoration: `${t.isUnderline ? 'underline' : ''} ${
+                          t.isStrikethrough ? 'line-through' : ''
+                        }`.trim(),
+                        color: t.color,
+                        textAlign: t.alignment || 'left',
+                        width: '100%',
+                        minHeight: `${bounds.height}px`,
+                      }}
+                      onChange={(e) => onUpdateAddedText(t.id, { text: e.target.value })}
+                      onBlur={() => setEditingAddedTextId(null)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setEditingAddedTextId(null);
+                      }}
+                      className="w-full bg-transparent outline-none border-none p-0 m-0 resize-none overflow-hidden"
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        fontFamily: t.fontFamily,
+                        fontSize: `${t.fontSize * scale}px`,
+                        fontWeight: t.isBold ? 'bold' : 'normal',
+                        fontStyle: t.isItalic ? 'italic' : 'normal',
+                        textDecoration: `${t.isUnderline ? 'underline' : ''} ${
+                          t.isStrikethrough ? 'line-through' : ''
+                        }`.trim(),
+                        color: t.color,
+                        textAlign: t.alignment || 'left',
+                        wordBreak: 'break-word',
+                        whiteSpace: 'pre-wrap',
+                      }}
+                      className="w-full h-full cursor-pointer"
+                    >
+                      {t.text || <span className="text-slate-400 italic">Empty text</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
           {/* D. User Annotations (Highlights) */}
           {annotations
-            .filter((a) => a.pageNumber === pageMeta.pageNumber)
-            .map((a) => (
-              <div
-                key={a.id}
-                style={{
-                  position: 'absolute',
-                  left: a.pdfX * scale,
-                  top: pageH - (a.pdfY + a.pdfHeight) * scale,
-                  width: a.pdfWidth * scale,
-                  height: a.pdfHeight * scale,
-                  backgroundColor: a.color || '#FEF08A',
-                  opacity: 0.4,
-                }}
-                className="group border border-yellow-400 pointer-events-auto"
-              >
-                <button
-                  type="button"
-                  onClick={() => onDeleteAnnotation(a.id)}
-                  className="opacity-0 group-hover:opacity-100 absolute -top-3 -right-3 p-1 bg-rose-600 text-white rounded-full cursor-pointer shadow-xs"
-                >
-                  <Trash2 className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            ))}
+            .filter((a) => a.pageNumber === pageMeta.pageNumber && !a.hidden)
+            .map((a) => {
+              const bounds = pdfToScreen(a.pdfX, a.pdfY, a.pdfWidth, a.pdfHeight);
+              const isSelected = selectedObject?.id === a.id;
+
+              return (
+                <div
+                  key={a.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectObject({
+                      id: a.id,
+                      type: 'annotation',
+                      pageNumber: pageMeta.pageNumber,
+                    });
+                  }}
+                  style={{
+                    position: 'absolute',
+                    left: bounds.x,
+                    top: bounds.y,
+                    width: bounds.width,
+                    height: bounds.height,
+                    backgroundColor: a.color || '#FEF08A',
+                    opacity: a.opacity ?? 0.45,
+                    zIndex: a.zIndex || 15,
+                  }}
+                  className={`pointer-events-auto cursor-pointer border ${
+                    isSelected ? 'border-amber-500' : 'border-transparent hover:border-amber-300'
+                  }`}
+                />
+              );
+            })}
 
           {/* E. User Shapes */}
           {shapes
-            .filter((s) => s.pageNumber === pageMeta.pageNumber)
-            .map((s) => (
-              <div
-                key={s.id}
-                style={{
-                  position: 'absolute',
-                  left: s.pdfX * scale,
-                  top: pageH - (s.pdfY + s.pdfHeight) * scale,
-                  width: s.pdfWidth * scale,
-                  height: s.pdfHeight * scale,
-                  border: `${s.strokeWidth * scale}px solid ${s.strokeColor}`,
-                  borderRadius: s.type === 'ellipse' ? '50%' : '4px',
-                }}
-                className="group pointer-events-auto"
-              >
-                <button
-                  type="button"
-                  onClick={() => onDeleteShape(s.id)}
-                  className="opacity-0 group-hover:opacity-100 absolute -top-3 -right-3 p-1 bg-rose-600 text-white rounded-full cursor-pointer shadow-xs"
-                >
-                  <Trash2 className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            ))}
+            .filter((s) => s.pageNumber === pageMeta.pageNumber && !s.hidden)
+            .map((s) => {
+              const bounds = pdfToScreen(s.pdfX, s.pdfY, s.pdfWidth, s.pdfHeight);
+              const isSelected = selectedObject?.id === s.id;
+
+              return (
+                <div
+                  key={s.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectObject({
+                      id: s.id,
+                      type: 'shape',
+                      pageNumber: pageMeta.pageNumber,
+                    });
+                  }}
+                  style={{
+                    position: 'absolute',
+                    left: bounds.x,
+                    top: bounds.y,
+                    width: bounds.width,
+                    height: bounds.height,
+                    border: `${s.strokeWidth * scale}px solid ${s.strokeColor}`,
+                    backgroundColor: s.fillColor || 'transparent',
+                    borderRadius: s.type === 'ellipse' ? '50%' : '4px',
+                    transform: s.rotation ? `rotate(${s.rotation}deg)` : undefined,
+                    transformOrigin: 'center center',
+                    opacity: s.opacity ?? 1,
+                    zIndex: s.zIndex || 20,
+                  }}
+                  className={`pointer-events-auto cursor-pointer ${
+                    isSelected ? 'ring-2 ring-blue-500' : 'hover:opacity-90'
+                  }`}
+                />
+              );
+            })}
 
           {/* F. Signatures */}
           {signatures
-            .filter((sig) => sig.pageNumber === pageMeta.pageNumber)
-            .map((sig) => (
-              <div
-                key={sig.id}
-                style={{
-                  position: 'absolute',
-                  left: sig.pdfX * scale,
-                  top: pageH - (sig.pdfY + sig.pdfHeight) * scale,
-                  width: sig.pdfWidth * scale,
-                  height: sig.pdfHeight * scale,
-                  zIndex: 25,
-                }}
-                className="group border border-dashed border-blue-400 p-1 bg-white/70 rounded-md cursor-move"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={sig.dataUrl} alt="Signature" className="w-full h-full object-contain" />
-                <button
-                  type="button"
-                  onClick={() => onDeleteSignature(sig.id)}
-                  className="opacity-0 group-hover:opacity-100 absolute -top-3 -right-3 p-1 bg-rose-600 text-white rounded-full cursor-pointer shadow-xs"
+            .filter((sig) => sig.pageNumber === pageMeta.pageNumber && !sig.hidden)
+            .map((sig) => {
+              const bounds = pdfToScreen(sig.pdfX, sig.pdfY, sig.pdfWidth, sig.pdfHeight);
+              const isSelected = selectedObject?.id === sig.id;
+
+              return (
+                <div
+                  key={sig.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectObject({
+                      id: sig.id,
+                      type: 'signature',
+                      pageNumber: pageMeta.pageNumber,
+                    });
+                  }}
+                  style={{
+                    position: 'absolute',
+                    left: bounds.x,
+                    top: bounds.y,
+                    width: bounds.width,
+                    height: bounds.height,
+                    transform: sig.rotation ? `rotate(${sig.rotation}deg)` : undefined,
+                    transformOrigin: 'center center',
+                    opacity: sig.opacity ?? 1,
+                    zIndex: sig.zIndex || 25,
+                  }}
+                  className={`pointer-events-auto cursor-pointer p-0.5 ${
+                    isSelected ? 'ring-2 ring-blue-500' : 'hover:ring-1 hover:ring-slate-300'
+                  }`}
                 >
-                  <Trash2 className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            ))}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={sig.dataUrl}
+                    alt="Signature"
+                    className="w-full h-full object-contain pointer-events-none"
+                  />
+                </div>
+              );
+            })}
 
           {/* G. Images */}
           {images
-            .filter((img) => img.pageNumber === pageMeta.pageNumber)
-            .map((img) => (
-              <div
-                key={img.id}
-                style={{
-                  position: 'absolute',
-                  left: img.pdfX * scale,
-                  top: pageH - (img.pdfY + img.pdfHeight) * scale,
-                  width: img.pdfWidth * scale,
-                  height: img.pdfHeight * scale,
-                  zIndex: 25,
-                }}
-                className="group border border-dashed border-emerald-400 p-1 bg-white/70 rounded-md cursor-move"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={img.dataUrl} alt="Inserted Graphic" className="w-full h-full object-contain" />
-                <button
-                  type="button"
-                  onClick={() => onDeleteImage(img.id)}
-                  className="opacity-0 group-hover:opacity-100 absolute -top-3 -right-3 p-1 bg-rose-600 text-white rounded-full cursor-pointer shadow-xs"
+            .filter((img) => img.pageNumber === pageMeta.pageNumber && !img.hidden)
+            .map((img) => {
+              const bounds = pdfToScreen(img.pdfX, img.pdfY, img.pdfWidth, img.pdfHeight);
+              const isSelected = selectedObject?.id === img.id;
+
+              return (
+                <div
+                  key={img.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectObject({
+                      id: img.id,
+                      type: 'image',
+                      pageNumber: pageMeta.pageNumber,
+                    });
+                  }}
+                  style={{
+                    position: 'absolute',
+                    left: bounds.x,
+                    top: bounds.y,
+                    width: bounds.width,
+                    height: bounds.height,
+                    transform: img.rotation ? `rotate(${img.rotation}deg)` : undefined,
+                    transformOrigin: 'center center',
+                    opacity: img.opacity ?? 1,
+                    zIndex: img.zIndex || 20,
+                  }}
+                  className={`pointer-events-auto cursor-pointer p-0.5 ${
+                    isSelected ? 'ring-2 ring-blue-500' : 'hover:ring-1 hover:ring-slate-300'
+                  }`}
                 >
-                  <Trash2 className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            ))}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={img.dataUrl}
+                    alt={img.name || 'Inserted Graphic'}
+                    className="w-full h-full object-contain pointer-events-none"
+                  />
+                </div>
+              );
+            })}
 
           {/* H. Interactive Form Fields */}
           {formFields
-            .filter((f) => f.pageNumber === pageMeta.pageNumber)
-            .map((f) => (
-              <div
-                key={f.id}
-                style={{
-                  position: 'absolute',
-                  left: f.pdfX * scale,
-                  top: pageH - (f.pdfY + f.pdfHeight) * scale,
-                  width: f.pdfWidth * scale,
-                  height: f.pdfHeight * scale,
-                  zIndex: 25,
-                }}
-                className="bg-blue-50/70 border border-blue-400 rounded-sm p-1"
-              >
-                <input
-                  type="text"
-                  placeholder="Form Input..."
-                  className="w-full h-full bg-transparent outline-none text-xs text-slate-800"
-                />
-              </div>
-            ))}
-
-          {/* Live Dragging Preview Rectangle */}
-          {dragStart && dragCurrent && (
-            <div
-              style={{
-                position: 'absolute',
-                left: Math.min(dragStart.x, dragCurrent.x),
-                top: Math.min(dragStart.y, dragCurrent.y),
-                width: Math.abs(dragCurrent.x - dragStart.x),
-                height: Math.abs(dragCurrent.y - dragStart.y),
-                backgroundColor:
-                  activeMode === 'whiteout'
-                    ? '#FFFFFF'
-                    : activeMode === 'annotate'
-                    ? '#FEF08A'
-                    : 'transparent',
-                opacity: activeMode === 'annotate' ? 0.4 : 1,
-                border: '1.5px dashed #2563EB',
-              }}
-              className="pointer-events-none"
-            />
-          )}
-
-          {/* Floating Contextual Toolbar over Active Text Item */}
-          {activeEditingItem && floatingBarPos && (
-            <FloatingFormatBar
-              item={activeEditingItem}
-              position={floatingBarPos}
-              onUpdateItem={(updates) => onUpdateTextItem(activeEditingItem.id, updates)}
-              onDeleteItem={() => {
-                onDeleteTextItem(activeEditingItem.id);
-                setActiveTextId(null);
-                setFloatingBarPos(null);
-              }}
-              onClose={() => {
-                setActiveTextId(null);
-                setFloatingBarPos(null);
-              }}
-            />
-          )}
+            .filter((f) => f.pageNumber === pageMeta.pageNumber && !f.hidden)
+            .map((f) => {
+              const bounds = pdfToScreen(f.pdfX, f.pdfY, f.pdfWidth, f.pdfHeight);
+              return (
+                <div
+                  key={f.id}
+                  style={{
+                    position: 'absolute',
+                    left: bounds.x,
+                    top: bounds.y,
+                    width: bounds.width,
+                    height: bounds.height,
+                    zIndex: f.zIndex || 25,
+                  }}
+                  className="pointer-events-auto bg-blue-50/70 border border-blue-400 rounded-sm p-1"
+                >
+                  <input
+                    type="text"
+                    placeholder="Form Input..."
+                    className="w-full h-full bg-transparent outline-none text-xs text-slate-800"
+                  />
+                </div>
+              );
+            })}
         </div>
+
+        {/* ======================================================== */}
+        {/* LAYER 3: Selection Bounding Box & Contextual Toolbar     */}
+        {/* ======================================================== */}
+        {selectedScreenBounds && (
+          <SelectionBoundingBox
+            x={selectedScreenBounds.x}
+            y={selectedScreenBounds.y}
+            width={selectedScreenBounds.width}
+            height={selectedScreenBounds.height}
+            rotation={selectedRotation}
+            locked={selectedLocked}
+            lockAspectRatio={isAspectLocked}
+            onMove={handleObjectMove}
+            onResize={handleObjectResize}
+            onRotate={selectedObject?.type !== 'whiteout' ? handleObjectRotate : undefined}
+          />
+        )}
+
+        {selectedObject && selectedElementData && selectedScreenBounds && (
+          <ContextualToolbar
+            objectType={selectedObject.type}
+            objectData={selectedElementData}
+            position={{
+              top: selectedScreenBounds.y,
+              left: selectedScreenBounds.x,
+            }}
+            containerBounds={{ width: pageW, height: pageH }}
+            onUpdate={(updates) => {
+              if (selectedObject.type === 'addedText') {
+                onUpdateAddedText(selectedObject.id, updates);
+              } else if (selectedObject.type === 'image') {
+                onUpdateImage(selectedObject.id, updates);
+              } else if (selectedObject.type === 'shape') {
+                onUpdateShape(selectedObject.id, updates);
+              } else if (selectedObject.type === 'signature') {
+                onUpdateSignature(selectedObject.id, updates);
+              } else if (selectedObject.type === 'whiteout') {
+                onUpdateWhiteout(selectedObject.id, updates);
+              } else if (selectedObject.type === 'annotation') {
+                onUpdateAnnotation(selectedObject.id, updates);
+              }
+            }}
+            onDuplicate={() => onDuplicateObject(selectedObject.type, selectedObject.id)}
+            onDelete={() => {
+              if (selectedObject.type === 'addedText') onDeleteAddedText(selectedObject.id);
+              else if (selectedObject.type === 'image') onDeleteImage(selectedObject.id);
+              else if (selectedObject.type === 'shape') onDeleteShape(selectedObject.id);
+              else if (selectedObject.type === 'signature') onDeleteSignature(selectedObject.id);
+              else if (selectedObject.type === 'whiteout') onDeleteWhiteout(selectedObject.id);
+              else if (selectedObject.type === 'annotation') onDeleteAnnotation(selectedObject.id);
+              onSelectObject(null);
+            }}
+            onBringForward={() => onReorderZIndex(selectedObject.type, selectedObject.id, 'up')}
+            onSendBackward={() => onReorderZIndex(selectedObject.type, selectedObject.id, 'down')}
+            onReplaceImage={
+              selectedObject.type === 'image' && onReplaceImageRequest
+                ? () => onReplaceImageRequest(selectedObject.id)
+                : undefined
+            }
+            onClose={() => onSelectObject(null)}
+          />
+        )}
+
+        {/* ======================================================== */}
+        {/* LAYER 4: Temporary Drag Interaction & Placement Previews */}
+        {/* ======================================================== */}
+        {/* Drag creation preview rectangle */}
+        {dragStart && dragCurrent && (
+          <div
+            style={{
+              position: 'absolute',
+              left: Math.min(dragStart.x, dragCurrent.x),
+              top: Math.min(dragStart.y, dragCurrent.y),
+              width: Math.abs(dragCurrent.x - dragStart.x),
+              height: Math.abs(dragCurrent.y - dragStart.y),
+              backgroundColor:
+                activeMode === 'whiteout'
+                  ? '#FFFFFF'
+                  : activeMode === 'annotate'
+                  ? '#FEF08A'
+                  : 'transparent',
+              opacity: activeMode === 'annotate' ? 0.45 : 1,
+              border: '1.5px dashed #2563EB',
+              zIndex: 60,
+            }}
+            className="pointer-events-none"
+          />
+        )}
+
+        {/* Image placement cursor hover indicator */}
+        {pendingImage && mousePos && (
+          <div
+            style={{
+              position: 'absolute',
+              left: mousePos.x,
+              top: mousePos.y,
+              transform: 'translate(-50%, -50%)',
+              zIndex: 70,
+            }}
+            className="pointer-events-none flex flex-col items-center gap-1 animate-pulse"
+          >
+            <div className="w-16 h-12 border-2 border-dashed border-blue-600 bg-blue-50/70 rounded-md flex items-center justify-center shadow-lg">
+              <ImagePlus className="w-5 h-5 text-blue-600" />
+            </div>
+            <span className="text-[10px] font-bold font-sans bg-blue-600 text-white px-2 py-0.5 rounded-full shadow-md whitespace-nowrap">
+              Click anywhere to place
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

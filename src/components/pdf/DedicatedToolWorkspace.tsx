@@ -39,9 +39,12 @@ import {
   Sparkles,
   ArrowRight,
   FileCheck,
+  Eye,
 } from 'lucide-react';
 import { PdfEditorWorkspace } from '../editor/PdfEditorWorkspace';
 import { PdfAssemblerWorkspace } from '../assembler/PdfAssemblerWorkspace';
+import { PdfPreviewer } from '../common/PdfPreviewer';
+import { fileTransferService } from '@/lib/fileTransferService';
 
 interface DedicatedToolWorkspaceProps {
   toolId: PdfToolId;
@@ -67,6 +70,7 @@ export function DedicatedToolWorkspace({
   // Files in workspace
   const [files, setFiles] = useState<UploadedFileItem[]>([]);
   const [results, setResults] = useState<ConversionResultItem[]>([]);
+  const [previewFileIndex, setPreviewFileIndex] = useState<number>(0);
 
   // Processing state
   const [isProcessing, setIsProcessing] = useState(false);
@@ -79,35 +83,99 @@ export function DedicatedToolWorkspace({
   const [excelPreviewRows, setExcelPreviewRows] = useState<(string | number)[][]>([]);
 
   // Default settings based on tool
-  const [settings, setSettings] = useState<any>({
-    pageSize: 'a4',
-    orientation: 'auto',
-    margin: 'normal',
-    imageFit: 'fit',
-    combineIntoOne: true,
-    quality: 90,
-    dpi: 150,
-    format: 'image/jpeg',
-    pageRange: 'all',
-    customPages: '',
-    conformance: 'pdfa-1b',
-    text: 'CONFIDENTIAL',
-    opacity: 0.3,
-    fontSize: 48,
-    rotation: 45,
-    position: 'center',
-    splitMode: 'all-pages',
-    pageRanges: '',
-    rotationAngle: 90,
-    applyTo: 'all',
-    compressionLevel: 'recommended',
-    showGridLines: true,
-    fitToPage: true,
-    slideAspect: '16:9',
-    includeSlideNumbers: true,
-    sourceType: 'file',
-    pastedHtml: '',
-  });
+  const getDefaultSettingsForTool = (currentToolId: PdfToolId): Record<string, any> => {
+    const baseSettings: Record<string, any> = {
+      pageSize: 'a4',
+      orientation: 'auto',
+      margin: 'normal',
+      imageFit: 'fit',
+      combineIntoOne: true,
+      quality: 90,
+      dpi: 150,
+      format: 'image/jpeg',
+      pageRange: 'all',
+      customPages: '',
+      conformance: 'pdfa-1b',
+      text: 'CONFIDENTIAL',
+      opacity: 0.3,
+      fontSize: 48,
+      rotation: 45,
+      position: 'center',
+      splitMode: 'all-pages',
+      pageRanges: '',
+      rotationAngle: 90,
+      applyTo: 'all',
+      compressionLevel: 'recommended',
+      showGridLines: true,
+      fitToPage: true,
+      slideAspect: '16:9',
+      includeSlideNumbers: true,
+      sourceType: 'file',
+      pastedHtml: '',
+      startNumber: 1,
+    };
+
+    if (currentToolId === 'page-numbers') {
+      return {
+        ...baseSettings,
+        format: 'page-x-of-y',
+        position: 'bottom-center',
+        fontSize: 10,
+        startNumber: 1,
+        margin: 25,
+      };
+    }
+
+    if (currentToolId === 'watermark-pdf') {
+      return {
+        ...baseSettings,
+        text: 'CONFIDENTIAL',
+        position: 'center',
+        fontSize: 48,
+        opacity: 0.3,
+        rotation: 45,
+      };
+    }
+
+    if (currentToolId === 'pdf-to-jpg') {
+      return {
+        ...baseSettings,
+        format: 'image/jpeg',
+        dpi: 150,
+        quality: 90,
+        pageRange: 'all',
+      };
+    }
+
+    return baseSettings;
+  };
+
+  const [settings, setSettings] = useState<any>(() => getDefaultSettingsForTool(tool.id));
+
+  // Reset settings whenever active tool changes
+  React.useEffect(() => {
+    setSettings(getDefaultSettingsForTool(tool.id));
+    setResults([]);
+    setErrorMessage(null);
+    setStatusMessage('');
+    setProgressPercent(0);
+  }, [tool.id]);
+
+  // Automatically load any pending file passed from the main Workspace
+  React.useEffect(() => {
+    const pending = fileTransferService.consumePendingFile();
+    if (pending && pending.file) {
+      const pendingItem: UploadedFileItem = {
+        id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        file: pending.file,
+        name: pending.file.name,
+        size: pending.file.size,
+        type: pending.file.type || 'application/octet-stream',
+        rotation: 0,
+      };
+      setFiles([pendingItem]);
+    }
+  }, []);
 
   const handleAddFiles = (newFiles: File[]) => {
     const items: UploadedFileItem[] = newFiles.map((file) => ({
@@ -433,7 +501,12 @@ export function DedicatedToolWorkspace({
       // 12. SPLIT PDF
       else if (tool.id === 'split-pdf') {
         for (const fileItem of files) {
-          const splitResults = await splitPdfDocument(fileItem.file, settings, (p, msg) => {
+          const splitSettings = {
+            splitMode: settings.splitMode || 'all-pages',
+            pageRanges: settings.pageRanges || '',
+            everyN: Number(settings.everyN) || 1,
+          };
+          const splitResults = await splitPdfDocument(fileItem.file, splitSettings, (p, msg) => {
             setProgressPercent(p);
             setStatusMessage(msg);
           });
@@ -482,7 +555,12 @@ export function DedicatedToolWorkspace({
           setStatusMessage(`Rotating pages of ${fileItem.name}...`);
           setProgressPercent(70);
 
-          const rotatedBlob = await rotatePdfPages(fileItem.file, settings);
+          const rotateSettings = {
+            rotationAngle: Number(settings.rotationAngle) || 90,
+            applyTo: settings.applyTo || 'all',
+            customPages: settings.customPages || '',
+          };
+          const rotatedBlob = await rotatePdfPages(fileItem.file, rotateSettings as any);
           const url = URL.createObjectURL(rotatedBlob);
 
           generatedResults.push({
@@ -501,8 +579,11 @@ export function DedicatedToolWorkspace({
       else if (tool.id === 'delete-pdf-pages') {
         for (let i = 0; i < files.length; i++) {
           const fileItem = files[i];
-          const pagesToDelete = settings.pagesToDelete || [1];
-          const newBlob = await deletePdfPages(fileItem.file, pagesToDelete);
+          const rawPages = settings.pagesToDelete || [1];
+          const pagesToDelete = (Array.isArray(rawPages) ? rawPages : [rawPages])
+            .map((p: any) => Number(p))
+            .filter((p: number) => !isNaN(p) && p >= 1);
+          const newBlob = await deletePdfPages(fileItem.file, pagesToDelete.length > 0 ? pagesToDelete : [1]);
           const url = URL.createObjectURL(newBlob);
 
           generatedResults.push({
@@ -547,7 +628,17 @@ export function DedicatedToolWorkspace({
           setStatusMessage(`Stamping watermark on ${fileItem.name}...`);
           setProgressPercent(70);
 
-          const watermarkedBlob = await watermarkPdf(fileItem.file, settings);
+          const watermarkSettings = {
+            type: 'text' as const,
+            text: settings.text || 'CONFIDENTIAL',
+            fontSize: Number(settings.fontSize) >= 12 ? Number(settings.fontSize) : 48,
+            opacity: typeof settings.opacity === 'number' && !isNaN(settings.opacity) ? settings.opacity : 0.3,
+            rotation: typeof settings.rotation === 'number' && !isNaN(settings.rotation) ? settings.rotation : (settings.position === 'center' ? 45 : 0),
+            color: settings.color || '#dc2626',
+            position: settings.position || 'center',
+          };
+
+          const watermarkedBlob = await watermarkPdf(fileItem.file, watermarkSettings);
           const url = URL.createObjectURL(watermarkedBlob);
 
           generatedResults.push({
@@ -569,7 +660,19 @@ export function DedicatedToolWorkspace({
           setStatusMessage(`Adding page numbers to ${fileItem.name}...`);
           setProgressPercent(70);
 
-          const numberedBlob = await addPageNumbers(fileItem.file, settings);
+          const pageNumberSettings = {
+            format: (settings.format && ['page-x-of-y', 'page-x', 'x-of-y', 'x'].includes(settings.format))
+              ? settings.format
+              : 'page-x-of-y',
+            position: (settings.position && settings.position !== 'center') ? settings.position : 'bottom-center',
+            fontSize: Number(settings.fontSize) >= 6 && Number(settings.fontSize) <= 36 ? Number(settings.fontSize) : 10,
+            startNumber: Number(settings.startNumber) >= 0 ? Math.floor(Number(settings.startNumber)) : 1,
+            margin: typeof settings.margin === 'number' && !isNaN(settings.margin)
+              ? settings.margin
+              : (settings.margin === 'small' ? 15 : (settings.margin === 'wide' ? 40 : 25)),
+          };
+
+          const numberedBlob = await addPageNumbers(fileItem.file, pageNumberSettings);
           const url = URL.createObjectURL(numberedBlob);
 
           generatedResults.push({
@@ -732,6 +835,39 @@ export function DedicatedToolWorkspace({
             allowRotation={tool.id === 'jpg-to-pdf'}
             allowReorder={tool.id === 'jpg-to-pdf' || tool.id === 'merge-pdf'}
           />
+
+          {/* Live Document Preview Before Conversion */}
+          {files.length > 0 &&
+            (files[previewFileIndex]?.file.type === 'application/pdf' ||
+              files[previewFileIndex]?.name.toLowerCase().endsWith('.pdf')) && (
+              <div className="flex flex-col gap-2 p-5 bg-white dark:bg-[#111827] border border-[#CBD5E1] dark:border-[#334155] rounded-2xl shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+                  <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-1.5">
+                    <Eye className="w-4 h-4 text-[#2563EB] dark:text-[#60A5FA]" />
+                    Live Document Preview: {files[previewFileIndex]?.name}
+                  </span>
+                  {files.length > 1 && (
+                    <div className="flex items-center gap-1 text-xs">
+                      <span className="text-[#64748B] dark:text-[#94A3B8] text-[11px] mr-1">Previewing file:</span>
+                      {files.map((f, idx) => (
+                        <button
+                          key={f.id}
+                          onClick={() => setPreviewFileIndex(idx)}
+                          className={`px-2 py-0.5 rounded text-[11px] font-bold transition cursor-pointer ${
+                            idx === previewFileIndex
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                          }`}
+                        >
+                          {idx + 1}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <PdfPreviewer file={files[previewFileIndex]?.file || null} maxHeight="500px" />
+              </div>
+            )}
 
           {/* 2. Tool Settings Section */}
           <ToolSettingsPanels

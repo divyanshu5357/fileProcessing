@@ -1,4 +1,4 @@
-export type MainCategory = 'image-tools' | 'pdf-tools' | 'document-converter' | 'image-converter';
+export type MainCategory = 'image-tools' | 'pdf-tools' | 'scan-studio' | 'document-converter' | 'image-converter';
 
 export type PdfToolCategory = 'to-pdf' | 'from-pdf' | 'pdf-utility';
 
@@ -192,7 +192,7 @@ export interface WatermarkPdfSettings {
 
 export interface PageNumberSettings {
   format: 'page-x-of-y' | 'page-x' | 'x-of-y' | 'x';
-  position: 'bottom-center' | 'bottom-right' | 'bottom-left' | 'top-center' | 'top-right';
+  position: 'bottom-center' | 'bottom-right' | 'bottom-left' | 'top-center' | 'top-right' | 'top-left';
   fontSize: number;
   startNumber: number;
   margin: number;

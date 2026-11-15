@@ -615,7 +615,7 @@ export async function generatePassportPhoto(
   ctx.textAlign = 'center';
   const sheetName = settings.sheetLayout === '4x6_grid' ? '4 × 6 inch' : 'A4';
   ctx.fillText(
-    `PixelKit Passport Sheet (${sheetName}) • ${preset.name} (${widthMm}×${heightMm}mm @ ${settings.dpi} DPI) • Print at 100% scale (Do not fit to page)`,
+    `Gyanvatsala Passport Sheet (${sheetName}) • ${preset.name} (${widthMm}×${heightMm}mm @ ${settings.dpi} DPI) • Print at 100% scale (Do not fit to page)`,
     sheetW / 2,
     sheetH - Math.round(5 * pxPerMm)
   );

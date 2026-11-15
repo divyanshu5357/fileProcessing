@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { ToolDefinition, PdfToolId } from '@/types/document';
 import { ALL_PDF_TOOLS, getToolsByCategory } from '@/lib/toolRegistry';
 import { ConversionCard } from './ConversionCard';
@@ -16,6 +17,7 @@ import {
   Wrench,
   PenTool,
   LayoutGrid,
+  ScanLine,
 } from 'lucide-react';
 
 interface PdfToolsHubProps {
@@ -133,6 +135,38 @@ export function PdfToolsHub({ onSelectTool }: PdfToolsHubProps) {
             </div>
           </div>
         </div>
+
+        {/* Scan Studio Featured Banner */}
+        <Link
+          href="/scan-studio"
+          className="mt-4 w-full max-w-4xl p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-md flex items-center justify-between gap-4 cursor-pointer hover:opacity-95 transition-all select-none hover:scale-[1.01] border border-emerald-400/30"
+        >
+          <div className="flex items-center gap-4 text-left">
+            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0 border border-white/30">
+              <ScanLine className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white text-emerald-800">
+                  Scan Studio
+                </span>
+                <span className="text-[10px] text-emerald-200 font-semibold">LookScanned Engine</span>
+                <span className="text-[10px] bg-emerald-950/40 text-emerald-100 px-2 py-0.2 rounded-full border border-emerald-300/30">Zero Uploads</span>
+              </div>
+              <h3 className="text-sm sm:text-base font-extrabold text-white mt-1 leading-tight">
+                Gyanvatsala Scan Studio – Realistic Scanner Transformation
+              </h3>
+              <p className="text-xs text-emerald-100 mt-0.5 line-clamp-1">
+                Convert digital PDFs & images into realistic scanned documents with grain, paper textures, feeder skew, and deterministic noise.
+              </p>
+            </div>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-1.5 font-bold text-xs bg-white text-emerald-700 px-4 py-2 rounded-xl shadow-xs shrink-0 hover:bg-emerald-50 transition">
+            <span>Open Studio</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </div>
+        </Link>
       </div>
 
       {/* If Search Active: Show Flat Search Grid */}

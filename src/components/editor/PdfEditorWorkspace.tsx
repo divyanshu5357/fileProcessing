@@ -12,6 +12,9 @@ import {
   FormFieldElement,
   EditorToolMode,
   PageInfo,
+  SelectedObjectRef,
+  PendingImagePlacement,
+  EditableObjectType,
 } from '@/types/pdfEditor';
 import {
   extractPdfDocumentModel,
@@ -19,23 +22,18 @@ import {
 } from '@/lib/pdfEditorEngine';
 import { TopToolbar } from './TopToolbar';
 import { PageCanvasView } from './PageCanvasView';
+import { LayersPanel } from './LayersPanel';
 import { SignatureModal } from './SignatureModal';
-import { downloadBlob, formatBytes } from '@/lib/utils';
+import { ExportPreviewModal } from '@/components/common/ExportPreviewModal';
+import { formatBytes } from '@/lib/utils';
+import { fileTransferService } from '@/lib/fileTransferService';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import {
   UploadCloud,
-  FileText,
   Sparkles,
-  ShieldCheck,
-  CheckCircle2,
-  AlertCircle,
-  Eye,
-  Plus,
-  RotateCw,
-  Trash2,
-  Download,
   ArrowLeft,
+  Info,
 } from 'lucide-react';
-import { Button } from '../ui/Button';
 
 interface PdfEditorWorkspaceProps {
   onBackToTools?: () => void;
@@ -53,9 +51,16 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
   const [statusMessage, setStatusMessage] = useState('');
 
   // Editor modes and viewport
-  const [activeMode, setActiveMode] = useState<EditorToolMode>('text');
+  const [activeMode, setActiveMode] = useState<EditorToolMode>('select');
   const [zoomScale, setZoomScale] = useState(1.0);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Selection & Placement States
+  const [selectedObject, setSelectedObject] = useState<SelectedObjectRef | null>(null);
+  const [pendingImage, setPendingImage] = useState<PendingImagePlacement | null>(null);
+  const [replaceImageId, setReplaceImageId] = useState<string | null>(null);
+  const [isLayersOpen, setIsLayersOpen] = useState(false);
+  const [copiedObject, setCopiedObject] = useState<{ type: EditableObjectType; data: any } | null>(null);
 
   // Overlay elements state
   const [addedTexts, setAddedTexts] = useState<AddedTextElement[]>([]);
@@ -68,6 +73,9 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
 
   // Modals & File inputs
   const [signModalOpen, setSignModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportPreviewBlob, setExportPreviewBlob] = useState<Blob | null>(null);
+  const [exportPreviewFilename, setExportPreviewFilename] = useState<string>('');
   const imageInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
 
@@ -96,7 +104,18 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
     };
     setHistory((prev) => [...prev.slice(0, historyIndex + 1), snapshot]);
     setHistoryIndex((prev) => prev + 1);
-  }, [textItemsByPage, addedTexts, whiteouts, images, signatures, annotations, shapes, formFields, pages, historyIndex]);
+  }, [
+    textItemsByPage,
+    addedTexts,
+    whiteouts,
+    images,
+    signatures,
+    annotations,
+    shapes,
+    formFields,
+    pages,
+    historyIndex,
+  ]);
 
   const handleUndo = () => {
     if (historyIndex > 0) {
@@ -111,6 +130,7 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
       setFormFields(prev.formFields);
       setPages(prev.pages);
       setHistoryIndex((idx) => idx - 1);
+      setSelectedObject(null);
     }
   };
 
@@ -127,79 +147,202 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
       setFormFields(next.formFields);
       setPages(next.pages);
       setHistoryIndex((idx) => idx + 1);
+      setSelectedObject(null);
     }
   };
 
-  // Load PDF file
-  const handlePdfLoaded = async (uploadedFile: File) => {
-    setFile(uploadedFile);
-    setIsLoading(true);
-    setStatusMessage('Reading PDF structure and extracting selectable text...');
-
-    try {
-      const buffer = await uploadedFile.arrayBuffer();
-      const safeBuffer = buffer.slice(0);
-      setPdfBuffer(safeBuffer);
-
-      const { pages: extractedPages, textItemsByPage: extractedTexts, pdfDoc: loadedDoc } =
-        await extractPdfDocumentModel(buffer.slice(0));
-
-      setPdfDoc(loadedDoc);
-      setPages(extractedPages);
-      setTextItemsByPage(extractedTexts);
-      setCurrentPage(1);
-
-      // Initial history point
-      setHistory([
-        {
-          textItemsByPage: extractedTexts,
-          addedTexts: [],
-          whiteouts: [],
-          images: [],
-          signatures: [],
-          annotations: [],
-          shapes: [],
-          formFields: [],
-          pages: extractedPages,
-        },
-      ]);
-      setHistoryIndex(0);
-    } catch (err: any) {
-      console.error('Failed to parse PDF document:', err);
-      alert('Failed to load PDF document: ' + err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadSamplePdf = async () => {
-    setIsLoading(true);
-    setStatusMessage('Loading demo PDF document...');
-    try {
-      const res = await fetch('/test-sample.pdf');
-      const blob = await res.blob();
-      const sampleFile = new File([blob], 'sample_document.pdf', { type: 'application/pdf' });
-      await handlePdfLoaded(sampleFile);
-    } catch (err: any) {
-      console.error('Failed to load sample document:', err);
-    } finally {
-      setIsLoading(false);
-      setStatusMessage('');
-    }
-  };
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('sample') === 'true') {
-        loadSamplePdf();
+  // 1. DUPLICATION LOGIC
+  const handleDuplicateObject = useCallback(
+    (type: EditableObjectType, id: string) => {
+      const newId = `${type}_${Date.now()}`;
+      if (type === 'addedText') {
+        const item = addedTexts.find((t) => t.id === id);
+        if (item) {
+          const clone: AddedTextElement = {
+            ...item,
+            id: newId,
+            name: `${item.name || 'Text'} Copy`,
+            pdfX: item.pdfX + 20,
+            pdfY: Math.max(10, item.pdfY - 20),
+          };
+          setAddedTexts((prev) => [...prev, clone]);
+          setSelectedObject({ id: newId, type: 'addedText', pageNumber: item.pageNumber });
+          saveSnapshot();
+        }
+      } else if (type === 'image') {
+        const item = images.find((i) => i.id === id);
+        if (item) {
+          const clone: ImageElement = {
+            ...item,
+            id: newId,
+            name: `${item.name || 'Image'} Copy`,
+            pdfX: item.pdfX + 20,
+            pdfY: Math.max(10, item.pdfY - 20),
+          };
+          setImages((prev) => [...prev, clone]);
+          setSelectedObject({ id: newId, type: 'image', pageNumber: item.pageNumber });
+          saveSnapshot();
+        }
+      } else if (type === 'shape') {
+        const item = shapes.find((s) => s.id === id);
+        if (item) {
+          const clone: ShapeElement = {
+            ...item,
+            id: newId,
+            name: `${item.name || 'Shape'} Copy`,
+            pdfX: item.pdfX + 20,
+            pdfY: Math.max(10, item.pdfY - 20),
+          };
+          setShapes((prev) => [...prev, clone]);
+          setSelectedObject({ id: newId, type: 'shape', pageNumber: item.pageNumber });
+          saveSnapshot();
+        }
+      } else if (type === 'signature') {
+        const item = signatures.find((s) => s.id === id);
+        if (item) {
+          const clone: SignatureElement = {
+            ...item,
+            id: newId,
+            name: `${item.name || 'Signature'} Copy`,
+            pdfX: item.pdfX + 20,
+            pdfY: Math.max(10, item.pdfY - 20),
+          };
+          setSignatures((prev) => [...prev, clone]);
+          setSelectedObject({ id: newId, type: 'signature', pageNumber: item.pageNumber });
+          saveSnapshot();
+        }
+      } else if (type === 'whiteout') {
+        const item = whiteouts.find((w) => w.id === id);
+        if (item) {
+          const clone: WhiteoutElement = {
+            ...item,
+            id: newId,
+            name: `${item.name || 'Whiteout'} Copy`,
+            pdfX: item.pdfX + 20,
+            pdfY: Math.max(10, item.pdfY - 20),
+          };
+          setWhiteouts((prev) => [...prev, clone]);
+          setSelectedObject({ id: newId, type: 'whiteout', pageNumber: item.pageNumber });
+          saveSnapshot();
+        }
+      } else if (type === 'annotation') {
+        const item = annotations.find((a) => a.id === id);
+        if (item) {
+          const clone: AnnotationElement = {
+            ...item,
+            id: newId,
+            name: `${item.name || 'Highlight'} Copy`,
+            pdfX: item.pdfX + 20,
+            pdfY: Math.max(10, item.pdfY - 20),
+          };
+          setAnnotations((prev) => [...prev, clone]);
+          setSelectedObject({ id: newId, type: 'annotation', pageNumber: item.pageNumber });
+          saveSnapshot();
+        }
       }
-    }
-  }, []);
+    },
+    [addedTexts, images, shapes, signatures, whiteouts, annotations, saveSnapshot]
+  );
 
-  // Keyboard shortcuts listener
+  // 2. STACKING ORDER (Z-INDEX REORDER)
+  const handleReorderZIndex = useCallback(
+    (type: EditableObjectType, id: string, direction: 'up' | 'down') => {
+      const delta = direction === 'up' ? 2 : -2;
+
+      if (type === 'addedText') {
+        setAddedTexts((prev) =>
+          prev.map((t) =>
+            t.id === id ? { ...t, zIndex: Math.max(1, (t.zIndex || 20) + delta) } : t
+          )
+        );
+      } else if (type === 'image') {
+        setImages((prev) =>
+          prev.map((i) =>
+            i.id === id ? { ...i, zIndex: Math.max(1, (i.zIndex || 20) + delta) } : i
+          )
+        );
+      } else if (type === 'shape') {
+        setShapes((prev) =>
+          prev.map((s) =>
+            s.id === id ? { ...s, zIndex: Math.max(1, (s.zIndex || 20) + delta) } : s
+          )
+        );
+      } else if (type === 'signature') {
+        setSignatures((prev) =>
+          prev.map((s) =>
+            s.id === id ? { ...s, zIndex: Math.max(1, (s.zIndex || 25) + delta) } : s
+          )
+        );
+      } else if (type === 'whiteout') {
+        setWhiteouts((prev) =>
+          prev.map((w) =>
+            w.id === id ? { ...w, zIndex: Math.max(1, (w.zIndex || 10) + delta) } : w
+          )
+        );
+      } else if (type === 'annotation') {
+        setAnnotations((prev) =>
+          prev.map((a) =>
+            a.id === id ? { ...a, zIndex: Math.max(1, (a.zIndex || 15) + delta) } : a
+          )
+        );
+      }
+      saveSnapshot();
+    },
+    [saveSnapshot]
+  );
+
+  // 3. OBJECT DELETION
+  const handleDeleteObject = useCallback(
+    (type: EditableObjectType, id: string) => {
+      if (type === 'addedText') {
+        setAddedTexts((prev) => prev.filter((t) => t.id !== id));
+      } else if (type === 'image') {
+        setImages((prev) => prev.filter((i) => i.id !== id));
+      } else if (type === 'shape') {
+        setShapes((prev) => prev.filter((s) => s.id !== id));
+      } else if (type === 'signature') {
+        setSignatures((prev) => prev.filter((s) => s.id !== id));
+      } else if (type === 'whiteout') {
+        setWhiteouts((prev) => prev.filter((w) => w.id !== id));
+      } else if (type === 'annotation') {
+        setAnnotations((prev) => prev.filter((a) => a.id !== id));
+      }
+      if (selectedObject?.id === id) {
+        setSelectedObject(null);
+      }
+      saveSnapshot();
+    },
+    [selectedObject, saveSnapshot]
+  );
+
+  // 4. OBJECT UPDATE (from Layers Panel or Toolbar)
+  const handleUpdateObject = useCallback(
+    (type: EditableObjectType, id: string, updates: any) => {
+      if (type === 'addedText') {
+        setAddedTexts((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+      } else if (type === 'image') {
+        setImages((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates } : i)));
+      } else if (type === 'shape') {
+        setShapes((prev) => prev.map((s) => (s.id === id ? { ...s, ...updates } : s)));
+      } else if (type === 'signature') {
+        setSignatures((prev) => prev.map((s) => (s.id === id ? { ...s, ...updates } : s)));
+      } else if (type === 'whiteout') {
+        setWhiteouts((prev) => prev.map((w) => (w.id === id ? { ...w, ...updates } : w)));
+      } else if (type === 'annotation') {
+        setAnnotations((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
+      }
+    },
+    []
+  );
+
+  // 5. KEYBOARD SHORTCUTS
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is currently typing in an input or textarea
+      const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      const isInput = targetTag === 'input' || targetTag === 'textarea';
+
+      // Undo / Redo
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         if (e.shiftKey) {
           e.preventDefault();
@@ -208,16 +351,103 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
           e.preventDefault();
           handleUndo();
         }
+        return;
       } else if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
         e.preventDefault();
         handleRedo();
+        return;
+      }
+
+      // Escape: Cancel placement or deselect
+      if (e.key === 'Escape') {
+        if (pendingImage) {
+          setPendingImage(null);
+          setActiveMode('select');
+        } else if (selectedObject) {
+          setSelectedObject(null);
+        }
+        return;
+      }
+
+      // If typing inside an input/textarea, do not intercept editing keys
+      if (isInput) return;
+
+      // Delete / Backspace: Delete selected object
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedObject) {
+        e.preventDefault();
+        handleDeleteObject(selectedObject.type, selectedObject.id);
+        return;
+      }
+
+      // Cmd/Ctrl + D: Duplicate selected object
+      if ((e.metaKey || e.ctrlKey) && e.key === 'd' && selectedObject) {
+        e.preventDefault();
+        handleDuplicateObject(selectedObject.type, selectedObject.id);
+        return;
+      }
+
+      // Cmd/Ctrl + C: Copy selected object
+      if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selectedObject) {
+        let data: any = null;
+        if (selectedObject.type === 'addedText') data = addedTexts.find((t) => t.id === selectedObject.id);
+        else if (selectedObject.type === 'image') data = images.find((i) => i.id === selectedObject.id);
+        else if (selectedObject.type === 'shape') data = shapes.find((s) => s.id === selectedObject.id);
+        else if (selectedObject.type === 'signature') data = signatures.find((s) => s.id === selectedObject.id);
+        else if (selectedObject.type === 'whiteout') data = whiteouts.find((w) => w.id === selectedObject.id);
+        else if (selectedObject.type === 'annotation') data = annotations.find((a) => a.id === selectedObject.id);
+
+        if (data) {
+          setCopiedObject({ type: selectedObject.type, data: { ...data } });
+        }
+        return;
+      }
+
+      // Cmd/Ctrl + V: Paste copied object
+      if ((e.metaKey || e.ctrlKey) && e.key === 'v' && copiedObject) {
+        e.preventDefault();
+        const newId = `${copiedObject.type}_${Date.now()}`;
+        const pasted = {
+          ...copiedObject.data,
+          id: newId,
+          pageNumber: currentPage,
+          pdfX: (copiedObject.data.pdfX || 50) + 20,
+          pdfY: Math.max(10, (copiedObject.data.pdfY || 50) - 20),
+        };
+
+        if (copiedObject.type === 'addedText') setAddedTexts((prev) => [...prev, pasted]);
+        else if (copiedObject.type === 'image') setImages((prev) => [...prev, pasted]);
+        else if (copiedObject.type === 'shape') setShapes((prev) => [...prev, pasted]);
+        else if (copiedObject.type === 'signature') setSignatures((prev) => [...prev, pasted]);
+        else if (copiedObject.type === 'whiteout') setWhiteouts((prev) => [...prev, pasted]);
+        else if (copiedObject.type === 'annotation') setAnnotations((prev) => [...prev, pasted]);
+
+        setSelectedObject({ id: newId, type: copiedObject.type, pageNumber: currentPage });
+        saveSnapshot();
+        return;
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [historyIndex, history]);
+  }, [
+    historyIndex,
+    history,
+    pendingImage,
+    selectedObject,
+    copiedObject,
+    currentPage,
+    addedTexts,
+    images,
+    shapes,
+    signatures,
+    whiteouts,
+    annotations,
+    handleDeleteObject,
+    handleDuplicateObject,
+    saveSnapshot,
+  ]);
 
-  // Text Item Updates
+  // Existing Text Item Updates
   const handleUpdateTextItem = (id: string, updates: Partial<PdfTextItem>) => {
     setTextItemsByPage((prev) => {
       const copy = { ...prev };
@@ -233,50 +463,83 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
     saveSnapshot();
   };
 
-  // Image insertion
+  // 6. IMAGE UPLOAD & PLACEMENT ENGINE
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
+      const imgFile = e.target.files[0];
       const reader = new FileReader();
+
       reader.onload = (ev) => {
         if (ev.target?.result) {
-          const newImg: ImageElement = {
-            id: `img_${Date.now()}`,
-            pageNumber: currentPage,
-            dataUrl: ev.target.result as string,
-            x: 80,
-            y: 100,
-            width: 180,
-            height: 120,
-            pdfX: 80,
-            pdfY: (pages[currentPage - 1]?.height || 792) - 220,
-            pdfWidth: 180,
-            pdfHeight: 120,
+          const dataUrl = ev.target.result as string;
+          const img = new Image();
+
+          img.onload = () => {
+            if (replaceImageId) {
+              // Replace existing image in place
+              const aspect = img.naturalWidth / (img.naturalHeight || 1);
+              setImages((prev) =>
+                prev.map((it) => {
+                  if (it.id === replaceImageId) {
+                    return {
+                      ...it,
+                      dataUrl,
+                      aspectRatio: aspect,
+                      pdfHeight: it.pdfWidth / aspect,
+                    };
+                  }
+                  return it;
+                })
+              );
+              setReplaceImageId(null);
+              saveSnapshot();
+            } else {
+              // Activate placement mode: User clicks on page to place!
+              setPendingImage({
+                dataUrl,
+                naturalWidth: img.naturalWidth,
+                naturalHeight: img.naturalHeight,
+                name: imgFile.name,
+              });
+              setActiveMode('images');
+            }
           };
-          setImages((prev) => [...prev, newImg]);
-          saveSnapshot();
+          img.src = dataUrl;
         }
       };
-      reader.readAsDataURL(e.target.files[0]);
+      reader.readAsDataURL(imgFile);
     }
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
+  const handleTriggerImageUpload = () => {
+    setReplaceImageId(null);
+    imageInputRef.current?.click();
+  };
+
+  const handleReplaceImageRequest = (id: string) => {
+    setReplaceImageId(id);
+    imageInputRef.current?.click();
+  };
+
   // Signature insertion
   const handleSaveSignature = (dataUrl: string) => {
+    const newSigId = `sig_${Date.now()}`;
     const newSig: SignatureElement = {
-      id: `sig_${Date.now()}`,
+      id: newSigId,
       pageNumber: currentPage,
+      name: 'Digital Signature',
       dataUrl,
-      x: 100,
-      y: 150,
-      width: 160,
-      height: 60,
       pdfX: 100,
-      pdfY: (pages[currentPage - 1]?.height || 792) - 210,
+      pdfY: Math.max(50, (pages[currentPage - 1]?.height || 792) - 210),
       pdfWidth: 160,
       pdfHeight: 60,
+      rotation: 0,
+      opacity: 1,
+      zIndex: 25,
     };
     setSignatures((prev) => [...prev, newSig]);
+    setSelectedObject({ id: newSigId, type: 'signature', pageNumber: currentPage });
     saveSnapshot();
   };
 
@@ -336,7 +599,11 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
 
       const dotIdx = file.name.lastIndexOf('.');
       const baseName = dotIdx !== -1 ? file.name.substring(0, dotIdx) : file.name;
-      downloadBlob(modifiedBlob, `${baseName}_edited.pdf`);
+      const targetFilename = `${baseName}_edited.pdf`;
+
+      setExportPreviewBlob(modifiedBlob);
+      setExportPreviewFilename(targetFilename);
+      setIsExportModalOpen(true);
     } catch (err: any) {
       console.error('Error applying PDF changes:', err);
       alert('Failed to generate modified PDF: ' + err.message);
@@ -344,6 +611,134 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
       setIsSaving(false);
     }
   };
+
+  // Load PDF file into editor
+  const handlePdfLoaded = async (uploadedFile: File) => {
+    setFile(uploadedFile);
+    setIsLoading(true);
+    setStatusMessage('Reading PDF structure and extracting text...');
+
+    try {
+      const buffer = await uploadedFile.arrayBuffer();
+      const safeBuffer = buffer.slice(0);
+      setPdfBuffer(safeBuffer);
+
+      const { pages: extractedPages, textItemsByPage: extractedTexts, pdfDoc: loadedDoc } =
+        await extractPdfDocumentModel(buffer.slice(0));
+
+      setPdfDoc(loadedDoc);
+      setPages(extractedPages);
+      setTextItemsByPage(extractedTexts);
+      setCurrentPage(1);
+
+      // Initial history state
+      setHistory([
+        {
+          textItemsByPage: extractedTexts,
+          addedTexts: [],
+          whiteouts: [],
+          images: [],
+          signatures: [],
+          annotations: [],
+          shapes: [],
+          formFields: [],
+          pages: extractedPages,
+        },
+      ]);
+      setHistoryIndex(0);
+    } catch (err: any) {
+      console.error('Failed to parse PDF document:', err);
+      alert('Failed to load PDF document: ' + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Demo PDF generator fallback
+  const loadSamplePdf = async () => {
+    setIsLoading(true);
+    setStatusMessage('Generating professional sample PDF...');
+    try {
+      // Create a clean sample PDF in-memory
+      const samplePdf = await PDFDocument.create();
+      const fontBold = await samplePdf.embedFont(StandardFonts.HelveticaBold);
+      const fontRegular = await samplePdf.embedFont(StandardFonts.Helvetica);
+
+      const page1 = samplePdf.addPage([595.28, 841.89]); // A4
+      page1.drawText('Gyanvatsala Document Editor Benchmark', {
+        x: 50,
+        y: 780,
+        size: 22,
+        font: fontBold,
+        color: rgb(0.09, 0.23, 0.54),
+      });
+
+      page1.drawText('Standard Enterprise Document for Testing PDF Editing Engine', {
+        x: 50,
+        y: 752,
+        size: 11,
+        font: fontRegular,
+        color: rgb(0.35, 0.42, 0.53),
+      });
+
+      page1.drawLine({
+        start: { x: 50, y: 738 },
+        end: { x: 545, y: 738 },
+        thickness: 1.5,
+        color: rgb(0.85, 0.88, 0.93),
+      });
+
+      page1.drawText('1. Executive Summary', {
+        x: 50,
+        y: 700,
+        size: 15,
+        font: fontBold,
+        color: rgb(0.06, 0.09, 0.16),
+      });
+
+      const bodyText =
+        'This sample document is provided to test the high-fidelity interactive PDF editing engine. ' +
+        'Users can click on existing text to edit it in place, insert images at precise clicked coordinates, ' +
+        'drag bounding boxes to resize and rotate, and redact areas using the whiteout tool.';
+
+      page1.drawText(bodyText, {
+        x: 50,
+        y: 650,
+        size: 11,
+        font: fontRegular,
+        color: rgb(0.2, 0.25, 0.33),
+        lineHeight: 18,
+        maxWidth: 495,
+      });
+
+      const pdfBytes = await samplePdf.save();
+      const sampleFile = new File([pdfBytes.buffer as ArrayBuffer], 'sample_business_report.pdf', {
+        type: 'application/pdf',
+      });
+      await handlePdfLoaded(sampleFile);
+    } catch (err: any) {
+      console.error('Failed to create sample PDF:', err);
+    } finally {
+      setIsLoading(false);
+      setStatusMessage('');
+    }
+  };
+
+  useEffect(() => {
+    // Automatically load pending file from Workspace
+    const pending = fileTransferService.consumePendingFile();
+    if (pending && pending.file) {
+      handlePdfLoaded(pending.file);
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('sample') === 'true') {
+        loadSamplePdf();
+      }
+    }
+  }, []);
 
   return (
     <div className="w-full flex-1 flex flex-col bg-[#F1F5F9] dark:bg-[#0B1120] text-[#0F172A] dark:text-[#F8FAFC] min-h-[calc(100vh-64px)] select-none">
@@ -361,7 +756,7 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
       <input
         ref={imageInputRef}
         type="file"
-        accept="image/*"
+        accept="image/png,image/jpeg,image/webp,image/jpg"
         onChange={handleImageUpload}
         className="hidden"
       />
@@ -379,13 +774,13 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
           <div className="text-center mb-8">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-[#2563EB] dark:text-[#60A5FA] text-xs font-bold mb-3 shadow-xs">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Full In-Browser PDF Text & Media Editor</span>
+              <span>Professional Interactive PDF Editor Engine</span>
             </div>
             <h1 className="text-3xl sm:text-5xl font-black text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">
-              PDF Editor – Edit Text, Images & Documents
+              PDF Editor – Precision Editing & Layout
             </h1>
             <p className="text-sm text-[#334155] dark:text-[#CBD5E1] mt-2 max-w-xl mx-auto">
-              Click and edit existing text directly on the page. Add signatures, whiteout sensitive info, insert shapes and form fields with zero server uploads.
+              Place images at exact clicked locations, edit text directly, drag to resize with 8 handles, and manage objects with layers.
             </p>
           </div>
 
@@ -405,15 +800,15 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
             </div>
 
             <h3 className="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC]">
-              Upload PDF to Edit Text & Content
+              Upload PDF Document
             </h3>
             <p className="text-xs text-[#475569] dark:text-[#CBD5E1] mt-1 max-w-md">
-              Drag and drop your PDF here, or click to browse files from your device.
+              Drag and drop your PDF here, or click to browse files from your computer.
             </p>
 
             <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
               <span className="text-[11px] font-mono px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-semibold">
-                100% In-Browser • Files Never Leave Your Computer
+                100% In-Browser • Zero Server Uploads
               </span>
               <button
                 type="button"
@@ -441,15 +836,15 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
           )}
         </div>
       ) : (
-        /* When PDF is Loaded: Show Full Sejda-Style Workspace */
-        <div className="flex-1 flex flex-col">
-          {/* Top Sejda Toolbar */}
+        /* When PDF is Loaded: Professional Workspace with Layers Sidebar */
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+          {/* Top Editing Toolbar */}
           <TopToolbar
             activeMode={activeMode}
             onSelectMode={(mode) => {
               setActiveMode(mode);
-              if (mode === 'images') {
-                imageInputRef.current?.click();
+              if (mode === 'select') {
+                setPendingImage(null);
               }
             }}
             canUndo={historyIndex > 0}
@@ -467,26 +862,44 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
             onApplyChanges={handleApplyChanges}
             isSaving={isSaving}
             onOpenSignModal={() => setSignModalOpen(true)}
+            isLayersOpen={isLayersOpen}
+            onToggleLayers={() => setIsLayersOpen((prev) => !prev)}
+            onTriggerImageUpload={handleTriggerImageUpload}
           />
 
-          {/* Mode Sub-banner / Instruction Bar */}
-          <div className="bg-blue-50/70 dark:bg-blue-950/40 border-b border-blue-200 dark:border-blue-800 px-6 py-2 flex items-center justify-between text-xs">
+          {/* Mode Sub-banner / Tool Instruction Bar */}
+          <div className="bg-blue-50/70 dark:bg-blue-950/40 border-b border-blue-200 dark:border-blue-800 px-6 py-2 flex items-center justify-between text-xs shrink-0">
             <div className="flex items-center gap-2 text-[#0F172A] dark:text-[#F8FAFC]">
               <span className="w-2 h-2 rounded-full bg-[#2563EB] animate-pulse" />
               <span className="font-bold">Active Tool:</span>
               <span className="capitalize font-semibold text-[#2563EB] dark:text-[#60A5FA]">
-                {activeMode} Mode
+                {activeMode}
               </span>
-              <span className="text-slate-500 hidden sm:inline">
-                {activeMode === 'text' && '— Click any text on the page to edit it directly, or click empty space to add new text.'}
-                {activeMode === 'whiteout' && '— Drag a rectangle over any area to erase or redact it with whiteout.'}
-                {activeMode === 'annotate' && '— Drag over text to highlight it with yellow.'}
-                {activeMode === 'shapes' && '— Click and drag to draw shapes on the page.'}
+              <span className="text-slate-500 hidden md:inline">
+                {pendingImage && '— Click anywhere on the PDF page to place the selected image.'}
+                {!pendingImage && activeMode === 'select' && '— Click any object to select, move, resize (8 handles) or rotate.'}
+                {activeMode === 'text' && '— Click anywhere on the page to insert a new multiline text box.'}
+                {activeMode === 'editText' && '— Click existing PDF text to edit directly with auto-detected font family and size.'}
+                {activeMode === 'whiteout' && '— Drag a rectangle over any content to erase or redact.'}
+                {activeMode === 'annotate' && '— Drag over text or areas to highlight in yellow.'}
+                {activeMode === 'shapes' && '— Drag to draw customizable rectangles and shapes.'}
                 {activeMode === 'forms' && '— Click anywhere to place an interactive form input field.'}
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              {pendingImage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingImage(null);
+                    setActiveMode('select');
+                  }}
+                  className="text-xs bg-rose-50 text-rose-600 border border-rose-200 px-2 py-0.5 rounded-md font-bold hover:bg-rose-100 cursor-pointer"
+                >
+                  Cancel Image Placement
+                </button>
+              )}
               <span className="text-[11px] font-mono text-slate-500">
                 {file?.name} ({formatBytes(file?.size || 0)})
               </span>
@@ -496,92 +909,172 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
                   setPdfBuffer(null);
                   setPdfDoc(null);
                   setFile(null);
+                  setSelectedObject(null);
+                  setPendingImage(null);
                 }}
-                className="text-xs text-rose-600 dark:text-rose-400 font-bold hover:underline ml-2"
+                className="text-xs text-rose-600 dark:text-rose-400 font-bold hover:underline cursor-pointer"
               >
                 Close PDF
               </button>
             </div>
           </div>
 
-          {/* Document Pages Container */}
-          <div className="flex-1 overflow-y-auto p-8 flex flex-col items-center">
-            {pages
-              .filter((p) => !p.isDeleted)
-              .map((pageMeta) => (
-                <PageCanvasView
-                  key={pageMeta.pageNumber}
-                  pageMeta={pageMeta}
-                  pdfData={pdfBuffer}
-                  pdfDoc={pdfDoc}
-                  scale={zoomScale}
-                  activeMode={activeMode}
-                  textItems={textItemsByPage[pageMeta.pageNumber] || []}
-                  onUpdateTextItem={handleUpdateTextItem}
-                  onDeleteTextItem={handleDeleteTextItem}
-                  addedTexts={addedTexts}
-                  onAddText={(t) => {
-                    setAddedTexts((prev) => [...prev, t]);
-                    saveSnapshot();
-                  }}
-                  onUpdateAddedText={(id, txt) => {
-                    setAddedTexts((prev) =>
-                      prev.map((t) => (t.id === id ? { ...t, text: txt } : t))
-                    );
-                  }}
-                  onDeleteAddedText={(id) => {
-                    setAddedTexts((prev) => prev.filter((t) => t.id !== id));
-                    saveSnapshot();
-                  }}
-                  whiteouts={whiteouts}
-                  onAddWhiteout={(w) => {
-                    setWhiteouts((prev) => [...prev, w]);
-                    saveSnapshot();
-                  }}
-                  onDeleteWhiteout={(id) => {
-                    setWhiteouts((prev) => prev.filter((w) => w.id !== id));
-                    saveSnapshot();
-                  }}
-                  images={images}
-                  onDeleteImage={(id) => {
-                    setImages((prev) => prev.filter((img) => img.id !== id));
-                    saveSnapshot();
-                  }}
-                  signatures={signatures}
-                  onDeleteSignature={(id) => {
-                    setSignatures((prev) => prev.filter((sig) => sig.id !== id));
-                    saveSnapshot();
-                  }}
-                  annotations={annotations}
-                  onAddAnnotation={(a) => {
-                    setAnnotations((prev) => [...prev, a]);
-                    saveSnapshot();
-                  }}
-                  onDeleteAnnotation={(id) => {
-                    setAnnotations((prev) => prev.filter((a) => a.id !== id));
-                    saveSnapshot();
-                  }}
-                  shapes={shapes}
-                  onAddShape={(s) => {
-                    setShapes((prev) => [...prev, s]);
-                    saveSnapshot();
-                  }}
-                  onDeleteShape={(id) => {
-                    setShapes((prev) => prev.filter((s) => s.id !== id));
-                    saveSnapshot();
-                  }}
-                  formFields={formFields}
-                  onAddFormField={(f) => {
-                    setFormFields((prev) => [...prev, f]);
-                    saveSnapshot();
-                  }}
-                  onRotatePage={handleRotateCurrentPage}
-                  onDeletePage={handleDeleteCurrentPage}
-                />
-              ))}
+          {/* Main Workspace Area (Canvas Viewport + Layers Sidebar) */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Scrollable Center Canvas Viewport */}
+            <div className="flex-1 overflow-auto p-8 flex flex-col items-center">
+              {pages
+                .filter((p) => !p.isDeleted)
+                .map((pageMeta) => (
+                  <PageCanvasView
+                    key={pageMeta.pageNumber}
+                    pageMeta={pageMeta}
+                    pdfData={pdfBuffer}
+                    pdfDoc={pdfDoc}
+                    scale={zoomScale}
+                    activeMode={activeMode}
+                    pendingImage={pendingImage}
+                    onClearPendingImage={() => {
+                      setPendingImage(null);
+                      setActiveMode('select');
+                    }}
+                    selectedObject={selectedObject}
+                    onSelectObject={setSelectedObject}
+                    textItems={textItemsByPage[pageMeta.pageNumber] || []}
+                    onUpdateTextItem={handleUpdateTextItem}
+                    onDeleteTextItem={handleDeleteTextItem}
+                    addedTexts={addedTexts}
+                    onAddText={(t) => {
+                      setAddedTexts((prev) => [...prev, t]);
+                      saveSnapshot();
+                    }}
+                    onUpdateAddedText={(id, updates) => {
+                      setAddedTexts((prev) =>
+                        prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
+                      );
+                    }}
+                    onDeleteAddedText={(id) => {
+                      setAddedTexts((prev) => prev.filter((t) => t.id !== id));
+                      saveSnapshot();
+                    }}
+                    whiteouts={whiteouts}
+                    onAddWhiteout={(w) => {
+                      setWhiteouts((prev) => [...prev, w]);
+                      saveSnapshot();
+                    }}
+                    onUpdateWhiteout={(id, updates) => {
+                      setWhiteouts((prev) =>
+                        prev.map((w) => (w.id === id ? { ...w, ...updates } : w))
+                      );
+                    }}
+                    onDeleteWhiteout={(id) => {
+                      setWhiteouts((prev) => prev.filter((w) => w.id !== id));
+                      saveSnapshot();
+                    }}
+                    images={images}
+                    onAddImage={(img) => {
+                      setImages((prev) => [...prev, img]);
+                      saveSnapshot();
+                    }}
+                    onUpdateImage={(id, updates) => {
+                      setImages((prev) =>
+                        prev.map((img) => (img.id === id ? { ...img, ...updates } : img))
+                      );
+                    }}
+                    onDeleteImage={(id) => {
+                      setImages((prev) => prev.filter((img) => img.id !== id));
+                      saveSnapshot();
+                    }}
+                    onReplaceImageRequest={handleReplaceImageRequest}
+                    signatures={signatures}
+                    onAddSignature={(sig) => {
+                      setSignatures((prev) => [...prev, sig]);
+                      saveSnapshot();
+                    }}
+                    onUpdateSignature={(id, updates) => {
+                      setSignatures((prev) =>
+                        prev.map((sig) => (sig.id === id ? { ...sig, ...updates } : sig))
+                      );
+                    }}
+                    onDeleteSignature={(id) => {
+                      setSignatures((prev) => prev.filter((sig) => sig.id !== id));
+                      saveSnapshot();
+                    }}
+                    annotations={annotations}
+                    onAddAnnotation={(a) => {
+                      setAnnotations((prev) => [...prev, a]);
+                      saveSnapshot();
+                    }}
+                    onUpdateAnnotation={(id, updates) => {
+                      setAnnotations((prev) =>
+                        prev.map((a) => (a.id === id ? { ...a, ...updates } : a))
+                      );
+                    }}
+                    onDeleteAnnotation={(id) => {
+                      setAnnotations((prev) => prev.filter((a) => a.id !== id));
+                      saveSnapshot();
+                    }}
+                    shapes={shapes}
+                    onAddShape={(s) => {
+                      setShapes((prev) => [...prev, s]);
+                      saveSnapshot();
+                    }}
+                    onUpdateShape={(id, updates) => {
+                      setShapes((prev) =>
+                        prev.map((s) => (s.id === id ? { ...s, ...updates } : s))
+                      );
+                    }}
+                    onDeleteShape={(id) => {
+                      setShapes((prev) => prev.filter((s) => s.id !== id));
+                      saveSnapshot();
+                    }}
+                    formFields={formFields}
+                    onAddFormField={(f) => {
+                      setFormFields((prev) => [...prev, f]);
+                      saveSnapshot();
+                    }}
+                    onDuplicateObject={handleDuplicateObject}
+                    onReorderZIndex={handleReorderZIndex}
+                    onRotatePage={handleRotateCurrentPage}
+                    onDeletePage={handleDeleteCurrentPage}
+                  />
+                ))}
+            </div>
+
+            {/* Right Side: Layers & Objects Panel */}
+            {isLayersOpen && (
+              <LayersPanel
+                currentPage={currentPage}
+                addedTexts={addedTexts}
+                images={images}
+                shapes={shapes}
+                signatures={signatures}
+                annotations={annotations}
+                whiteouts={whiteouts}
+                selectedObject={selectedObject}
+                onSelectObject={setSelectedObject}
+                onUpdateObject={handleUpdateObject}
+                onDeleteObject={handleDeleteObject}
+                onReorderZIndex={handleReorderZIndex}
+                onClose={() => setIsLayersOpen(false)}
+              />
+            )}
           </div>
         </div>
       )}
+
+      {/* Pre-Download Export Preview Modal with folder selection */}
+      <ExportPreviewModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        blob={exportPreviewBlob}
+        defaultFilename={exportPreviewFilename}
+        title="PDF Editor: Preview & Save"
+        fileType="pdf"
+        metadata={{
+          pageCount: pages.filter((p) => !p.isDeleted).length,
+        }}
+      />
     </div>
   );
 }

@@ -21,6 +21,8 @@ export default function PdfToolsPage() {
       router.push('/');
     } else if (category === 'pdf-tools') {
       setSelectedTool(null);
+    } else if (category === 'scan-studio') {
+      router.push('/scan-studio');
     } else if (category === 'document-converter') {
       router.push('/documents');
     } else if (category === 'image-converter') {

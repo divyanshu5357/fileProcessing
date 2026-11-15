@@ -54,7 +54,7 @@ export default function AccountSettingsPage() {
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">{name}</h2>
-              <p className="text-xs text-slate-500 font-mono">{user?.email || 'alex.architect@pixelkit.io'}</p>
+              <p className="text-xs text-slate-500 font-mono">{user?.email || 'user@gyanvatsala.in'}</p>
               <div className="mt-1 flex items-center gap-2">
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold">
                   Email Verified &bull; Better Auth
@@ -83,7 +83,7 @@ export default function AccountSettingsPage() {
                 <input
                   type="email"
                   disabled
-                  value={user?.email || 'alex.architect@pixelkit.io'}
+                  value={user?.email || 'user@gyanvatsala.in'}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 text-slate-500 cursor-not-allowed font-mono"
                 />
               </div>

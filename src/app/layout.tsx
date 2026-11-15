@@ -4,20 +4,69 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
 
 export const metadata: Metadata = {
-  title: 'PixelKit — All-in-One Image Utility',
+  metadataBase: new URL('https://www.gyanvatsala.in'),
+  title: {
+    default: 'Gyanvatsala — Your Digital Document Workspace',
+    template: '%s | Gyanvatsala',
+  },
   description:
-    'Privacy-first, browser-based image toolkit. Compress, resize, convert, crop, rotate, strip EXIF metadata, extract color palettes, beautify screenshots, and generate passport photos with zero server uploads.',
+    'Everything you need to work with documents. All in one place. Convert PDF to Word with native layout, generate realistic scan effects, merge, split, compress, and edit with 100% client-side privacy.',
   keywords: [
-    'image compression',
-    'resize image',
-    'convert image',
-    'strip exif',
-    'passport photo',
-    'color palette extractor',
-    'beautify screenshot',
-    'client-side image editor',
+    'Gyanvatsala',
+    'document workspace',
+    'PDF to Word converter',
+    'PDF editor',
+    'scan effect generator',
+    'look scanned',
+    'merge PDF',
+    'split PDF',
+    'add page numbers PDF',
+    'image compressor WebP',
+    'privacy first document processing',
+    'zero upload PDF converter',
   ],
-  authors: [{ name: 'PixelKit' }],
+  authors: [{ name: 'Gyanvatsala', url: 'https://www.gyanvatsala.in' }],
+  creator: 'Gyanvatsala',
+  publisher: 'Gyanvatsala',
+  alternates: {
+    canonical: 'https://www.gyanvatsala.in',
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    url: 'https://www.gyanvatsala.in',
+    title: 'Gyanvatsala — Your Digital Document Workspace',
+    description:
+      'Everything you need to work with documents. All in one place. Convert PDF to Word, simulate scanner effects, and edit documents with zero server uploads.',
+    siteName: 'Gyanvatsala',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Gyanvatsala — Your Digital Document Workspace',
+    description:
+      'Everything you need to work with documents. All in one place. 100% client-side document processing.',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+  },
 };
 
 export default function RootLayout({
@@ -25,6 +74,29 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Gyanvatsala',
+    operatingSystem: 'All (Web Browser)',
+    applicationCategory: 'ProductivityApplication',
+    url: 'https://www.gyanvatsala.in',
+    description:
+      'A modern digital workspace that helps people manage, transform, edit, and organize their documents and files with zero server uploads.',
+    offers: {
+      '@type': 'Offer',
+      price: '0.00',
+      priceCurrency: 'USD',
+    },
+    featureList: [
+      'High-Fidelity PDF to Word Conversion with Vector Font & Table Preservation',
+      'Analog Photocopier Scan Studio with Rotational Skew & Noise Shader',
+      'Interactive Acrobat-Grade PDF Canvas Editor',
+      'Lossless WebP, AVIF, and Batch Image Compression',
+      'Zero Server Uploads Client-Side WebAssembly Processing',
+    ],
+  };
+
   return (
     <html lang="en" suppressHydrationWarning className="h-full antialiased">
       <head suppressHydrationWarning>
@@ -34,7 +106,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                var saved = localStorage.getItem('pixelkit-theme');
+                var saved = localStorage.getItem('gyanvatsala-theme') || localStorage.getItem('pixelkit-theme');
                 var isDark = saved ? saved === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
                 if (isDark) {
                   document.documentElement.classList.add('dark');
@@ -48,7 +120,16 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body suppressHydrationWarning className="min-h-full flex flex-col bg-[#F8FAFC] dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] font-sans transition-colors duration-150">
+      <body
+        suppressHydrationWarning
+        className="min-h-full flex flex-col bg-white dark:bg-[#0D1017] text-[#20232B] dark:text-[#F8FAFC] font-sans transition-colors duration-150"
+      >
+        <script
+          id="json-ld-app"
+          type="application/ld+json"
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
         <ThemeProvider>
           <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>

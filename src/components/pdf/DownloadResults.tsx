@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { ConversionResultItem } from '@/types/document';
 import { formatBytes, downloadBlob } from '@/lib/utils';
+import { ExportPreviewModal } from '@/components/common/ExportPreviewModal';
+import { PdfPreviewer } from '@/components/common/PdfPreviewer';
 import {
   CheckCircle2,
   Download,
@@ -41,11 +43,12 @@ export function DownloadResults({
   const [selectedPreview, setSelectedPreview] = useState<ConversionResultItem | null>(
     results.length > 0 ? results[0] : null
   );
+  const [modalItem, setModalItem] = useState<ConversionResultItem | null>(null);
 
   if (results.length === 0) return null;
 
   const handleDownloadItem = (item: ConversionResultItem) => {
-    downloadBlob(item.blob, item.name);
+    setModalItem(item);
   };
 
   const isPdf = selectedPreview?.format === 'application/pdf' || selectedPreview?.name.endsWith('.pdf');
@@ -229,13 +232,7 @@ export function DownloadResults({
             </a>
           </div>
 
-          <div className="w-full h-96 rounded-xl border border-[#CBD5E1] dark:border-[#334155] overflow-hidden bg-slate-100 dark:bg-slate-900">
-            <iframe
-              src={selectedPreview.url}
-              title="PDF Preview"
-              className="w-full h-full border-none"
-            />
-          </div>
+          <PdfPreviewer file={selectedPreview.blob} maxHeight="440px" />
         </div>
       )}
 
@@ -255,6 +252,15 @@ export function DownloadResults({
           </div>
         </div>
       )}
+
+      {/* Pre-Download Export Preview Modal with folder selection */}
+      <ExportPreviewModal
+        isOpen={!!modalItem}
+        onClose={() => setModalItem(null)}
+        blob={modalItem ? modalItem.blob : null}
+        defaultFilename={modalItem ? modalItem.name : ''}
+        fileType={modalItem?.format === 'application/pdf' ? 'pdf' : 'generic'}
+      />
     </div>
   );
 }

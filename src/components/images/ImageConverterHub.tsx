@@ -65,7 +65,7 @@ export function ImageConverterHub({
         </div>
       </div>
 
-      {/* Quick Launch Cards to PixelKit's Existing Image Studio */}
+      {/* Quick Launch Cards to Gyanvatsala's Existing Image Studio */}
       <div className="flex flex-col gap-4 pt-6 border-t border-[#CBD5E1] dark:border-[#334155]">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">

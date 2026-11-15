@@ -103,33 +103,7 @@ export function PdfAssemblerWorkspace({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [historyIndex, history]);
 
-  // Load sample PDFs for demonstration
-  const handleLoadSampleDocuments = async () => {
-    setIsLoading(true);
-    setLoadingStatus('Loading demo multi-document PDFs...');
-    try {
-      const res = await fetch('/test-sample.pdf');
-      const blob = await res.blob();
-      const sampleFile1 = new File([blob], 'Document_A_Financials.pdf', {
-        type: 'application/pdf',
-      });
-      const sampleFile2 = new File([blob], 'Document_B_Addendum.pdf', {
-        type: 'application/pdf',
-      });
 
-      const docA = await loadFileToAssembler(sampleFile1);
-      const docB = await loadFileToAssembler(sampleFile2);
-
-      const newDocs = [docA, docB];
-      setDocuments(newDocs);
-      saveSnapshot(newDocs);
-    } catch (err: any) {
-      console.error('Failed to load sample docs:', err);
-    } finally {
-      setIsLoading(false);
-      setLoadingStatus('');
-    }
-  };
 
   // Add Files (PDFs or Images)
   const handleAddFiles = async (files: File[]) => {
@@ -536,17 +510,6 @@ export function PdfAssemblerWorkspace({
                 <span className="text-[11px] font-mono px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-semibold">
                   100% In-Browser • Zero Server Uploads
                 </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleLoadSampleDocuments();
-                  }}
-                  className="text-[11px] font-bold px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-[#60A5FA] border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <Sparkles className="w-3 h-3" />
-                  <span>Load Sample Documents</span>
-                </button>
               </div>
             </div>
 

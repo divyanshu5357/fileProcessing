@@ -1,6 +1,31 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ==============================================================================
+# Gyanvatsala - Clean Production .gitignore for Vercel & Render
+# ==============================================================================
 
-# dependencies
+# ------------------------------------------------------------------------------
+# 1. Environment & Secret Credentials (CRITICAL - NEVER COMMIT)
+# ------------------------------------------------------------------------------
+.env
+.env*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+credentials.json
+service-account*.json
+# Allow example template only
+!.env.example
+
+# ------------------------------------------------------------------------------
+# 2. Dependencies
+# ------------------------------------------------------------------------------
 /node_modules
 /.pnp
 .pnp.*
@@ -10,45 +35,64 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# next.js
+# ------------------------------------------------------------------------------
+# 3. Next.js & Frontend Build Outputs
+# ------------------------------------------------------------------------------
 /.next/
 /out/
-
-# production
 /build
+/dist
+.vercel
+*.tsbuildinfo
+next-env.d.ts
 
-# misc
+# ------------------------------------------------------------------------------
+# 4. Python, Celery & Backend Artifacts
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/__pycache__/
+backend/*/__pycache__/
+backend/*/*/__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+ENV/
+env/
+backend/.venv/
+celerybeat-schedule
+celerybeat.pid
+*.sqlite3
+
+# ------------------------------------------------------------------------------
+# 5. OS & Editor Artifacts
+# ------------------------------------------------------------------------------
 .DS_Store
-*.pem
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# debug
+# ------------------------------------------------------------------------------
+# 6. Logs & Temp Artifacts
+# ------------------------------------------------------------------------------
+logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-!.env.example
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# agent files
-AGENTS.md
-
-
-# python / backend
-backend/__pycache__/
-backend/*/__pycache__/
-*.pyc
-.venv/
-backend/.venv/
-celerybeat-schedule
+tmp/
+temp/
+scratch/

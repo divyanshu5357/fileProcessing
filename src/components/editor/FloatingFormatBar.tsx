@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Palette,
   X,
+  Sparkles,
 } from 'lucide-react';
 import { PdfTextItem } from '@/types/pdfEditor';
 
@@ -57,6 +58,14 @@ export function FloatingFormatBar({
       className="flex items-center gap-1 p-1.5 bg-white dark:bg-[#111827] border border-[#CBD5E1] dark:border-[#334155] rounded-xl shadow-xl animate-in fade-in duration-100 select-none"
       onClick={(e) => e.stopPropagation()}
     >
+      {/* Auto-detected Font Indicator Badge */}
+      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+        <Sparkles className="w-3 h-3 text-emerald-600 shrink-0" />
+        <span className="max-w-[110px] truncate" title={`Auto-detected: ${item.fontName || item.fontFamily} (${item.fontSize}pt)`}>
+          {item.fontFamily} {item.fontSize}pt
+        </span>
+      </div>
+
       {/* Font Family Selector */}
       <select
         value={item.fontFamily}
