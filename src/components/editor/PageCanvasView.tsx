@@ -21,6 +21,7 @@ import { SelectionBoundingBox, ResizeHandleType } from './SelectionBoundingBox';
 import { ContextualToolbar } from './ContextualToolbar';
 import { FloatingFormatBar } from './FloatingFormatBar';
 import { RotateCw, Trash2, ImagePlus } from 'lucide-react';
+import { getCssFontFamily } from '@/lib/pdfEditorEngine';
 
 interface PageCanvasViewProps {
   pageMeta: PageInfo;
@@ -685,17 +686,61 @@ export function PageCanvasView({
 
           {/* B. Existing PDF Text Overlays (IN-PLACE DIRECT EDITING WITH AUTO-ALIGNMENT) */}
           {textItems.map((item) => {
-            if (item.isDeleted) return null;
+            // 1. If item is deleted, render an opaque whiteout cover over the original position so the PDF raster text is hidden
+            if (item.isDeleted) {
+              const origLeft = (item.originalX ?? item.x) * scale;
+              const origTop = (item.originalY ?? item.y) * scale;
+              const itemW = (item.width || 80) * scale;
+              const itemH = (item.height || 16) * scale;
+              return (
+                <div
+                  key={`deleted_${item.id}`}
+                  style={{
+                    position: 'absolute',
+                    left: Math.max(0, origLeft - 2),
+                    top: Math.max(0, origTop - 2),
+                    width: itemW + 4,
+                    height: itemH + 4,
+                    backgroundColor: '#FFFFFF',
+                    zIndex: 11,
+                    pointerEvents: 'none',
+                  }}
+                />
+              );
+            }
 
             const isEditing = activeExistingTextId === item.id;
             const itemLeft = item.x * scale;
             const itemTop = item.y * scale;
             const itemWidth = item.width * scale;
             const itemHeight = item.height * scale;
-            const itemFontSize = (item.fontSize || 12) * scale;
+            const itemFontSize = (item.fontSize || item.pdfFontSize || 12) * scale;
+            const cssFontFamily = getCssFontFamily(item.fontFamily);
+
+            // Compute dynamic box width and height so styled text never clips or overflows
+            const estCharWidth = itemFontSize * (item.isBold ? 0.68 : 0.58);
+            const dynamicWidth = Math.max(itemWidth + 30, (item.str.length + 3) * estCharWidth);
+            const dynamicHeight = Math.max(itemHeight, itemFontSize * 1.35);
 
             return (
               <React.Fragment key={item.id}>
+                {/* Always whiteout original position if text is edited or currently being edited */}
+                {(item.isEdited || isEditing) && (
+                  <div
+                    key={`orig_whiteout_${item.id}`}
+                    style={{
+                      position: 'absolute',
+                      left: Math.max(0, (item.originalX ?? item.x) * scale - 2),
+                      top: Math.max(0, (item.originalY ?? item.y) * scale - 2),
+                      width: itemWidth + 4,
+                      height: itemHeight + 4,
+                      backgroundColor: '#FFFFFF',
+                      zIndex: 11,
+                      pointerEvents: 'none',
+                    }}
+                  />
+                )}
+
                 {/* Floating Format Bar matching Image 2 */}
                 {isEditing && (
                   <FloatingFormatBar
@@ -710,28 +755,42 @@ export function PageCanvasView({
                       setActiveExistingTextId(null);
                     }}
                     onDuplicateItem={() => {
+                      const newId = `txt_dup_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
                       const dup: AddedTextElement = {
-                        id: `txt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                        id: newId,
                         pageNumber: pageMeta.pageNumber,
+                        name: `${item.str.slice(0, 16)} Copy`,
                         text: item.str,
-                        pdfX: item.pdfX,
-                        pdfY: item.pdfY - (item.pdfHeight || 14) - 4,
-                        pdfWidth: Math.max(100, item.pdfWidth),
-                        pdfHeight: item.pdfHeight || 14,
-                        fontSize: item.pdfFontSize || 12,
-                        fontFamily: item.fontFamily,
+                        pdfX: Math.min(item.pdfX + 15, pageMeta.width - (item.pdfWidth || 80)),
+                        pdfY: Math.max(10, item.pdfY - (item.pdfHeight || 14) - 6),
+                        pdfWidth: Math.max(80, item.pdfWidth || 100),
+                        pdfHeight: Math.max(14, item.pdfHeight || 16),
+                        fontSize: item.pdfFontSize || item.fontSize || 12,
+                        fontFamily: item.fontFamily || 'Helvetica',
                         color: item.color || '#0F172A',
-                        isBold: item.isBold,
-                        isItalic: item.isItalic,
+                        isBold: !!item.isBold,
+                        isItalic: !!item.isItalic,
+                        isUnderline: !!item.isUnderline,
+                        rotation: 0,
+                        opacity: 1,
+                        zIndex: 25,
                       };
                       onAddText(dup);
+                      onSelectObject({
+                        id: newId,
+                        type: 'addedText',
+                        pageNumber: pageMeta.pageNumber,
+                      });
+                      setActiveExistingTextId(null);
                     }}
                     onMoveItem={(dx, dy) => {
+                      const deltaPdfX = dx / scale;
+                      const deltaPdfY = -dy / scale;
                       onUpdateTextItem(item.id, {
                         x: item.x + dx,
                         y: item.y + dy,
-                        pdfX: item.pdfX + dx / scale,
-                        pdfY: item.pdfY - dy / scale,
+                        pdfX: item.pdfX + deltaPdfX,
+                        pdfY: item.pdfY + deltaPdfY,
                         isEdited: true,
                       });
                     }}
@@ -745,36 +804,36 @@ export function PageCanvasView({
                     left: itemLeft,
                     top: itemTop,
                     zIndex: isEditing ? 35 : 12,
-                    minWidth: Math.max(20, itemWidth),
-                    height: itemHeight,
-                    lineHeight: `${itemHeight}px`,
+                    minWidth: Math.max(30, dynamicWidth),
+                    height: dynamicHeight,
+                    lineHeight: `${dynamicHeight}px`,
                   }}
                   onClick={(e) => {
-                    if (activeMode === 'editText') {
+                    if (activeMode === 'editText' || activeMode === 'select') {
                       e.stopPropagation();
                       setActiveExistingTextId(item.id);
                       onSelectObject(null);
                     }
                   }}
                   className={`pointer-events-auto transition-colors ${
-                    activeMode === 'editText'
+                    activeMode === 'editText' || activeMode === 'select'
                       ? isEditing
-                        ? 'bg-white outline-1 outline-blue-400'
-                        : 'hover:bg-blue-500/10 hover:outline hover:outline-1 hover:outline-blue-400/40 cursor-text'
+                        ? 'bg-white ring-1 ring-blue-500 rounded-xs'
+                        : 'hover:bg-blue-500/10 hover:ring-1 hover:ring-blue-400/50 cursor-text'
                       : item.isEdited
                       ? 'bg-transparent'
                       : 'pointer-events-none'
                   }`}
                 >
-                  {/* Whiteout background to hide original raster text if edited or currently editing */}
+                  {/* Clean white background to ensure text is legible when moved or styled */}
                   {(item.isEdited || isEditing) && (
                     <div
                       style={{
                         position: 'absolute',
-                        left: -1,
-                        top: -1,
-                        width: 'calc(100% + 2px)',
-                        height: 'calc(100% + 2px)',
+                        left: -2,
+                        top: -2,
+                        width: 'calc(100% + 4px)',
+                        height: 'calc(100% + 4px)',
                         backgroundColor: '#FFFFFF',
                         zIndex: -1,
                       }}
@@ -787,20 +846,21 @@ export function PageCanvasView({
                       autoFocus
                       value={item.str}
                       style={{
-                        fontFamily: item.fontFamily,
+                        fontFamily: cssFontFamily,
                         fontSize: `${itemFontSize}px`,
-                        lineHeight: `${itemHeight}px`,
-                        fontWeight: item.isBold ? 'bold' : 'normal',
+                        lineHeight: `${dynamicHeight}px`,
+                        fontWeight: item.isBold ? 700 : 400,
                         fontStyle: item.isItalic ? 'italic' : 'normal',
+                        textDecoration: item.isUnderline ? 'underline' : 'none',
                         color: item.color || '#0F172A',
-                        width: `${Math.max(itemWidth + 20, 50)}px`,
-                        height: `${itemHeight}px`,
-                        padding: '0 1px',
+                        width: `${Math.max(itemWidth + 24, dynamicWidth)}px`,
+                        height: `${dynamicHeight}px`,
+                        padding: '0 2px',
                         margin: 0,
                         border: 'none',
                         outline: 'none',
                         background: 'transparent',
-                        verticalAlign: 'baseline',
+                        verticalAlign: 'middle',
                         boxSizing: 'border-box',
                       }}
                       onChange={(e) => {
@@ -814,16 +874,17 @@ export function PageCanvasView({
                           setActiveExistingTextId(null);
                         }
                       }}
-                      className="outline-none border-none p-0 m-0 bg-transparent text-slate-900"
+                      className="outline-none border-none p-0 m-0 bg-transparent"
                     />
                   ) : item.isEdited ? (
                     <span
                       style={{
-                        fontFamily: item.fontFamily,
+                        fontFamily: cssFontFamily,
                         fontSize: `${itemFontSize}px`,
-                        lineHeight: `${itemHeight}px`,
-                        fontWeight: item.isBold ? 'bold' : 'normal',
+                        lineHeight: `${dynamicHeight}px`,
+                        fontWeight: item.isBold ? 700 : 400,
                         fontStyle: item.isItalic ? 'italic' : 'normal',
+                        textDecoration: item.isUnderline ? 'underline' : 'none',
                         color: item.color || '#0F172A',
                         display: 'inline-block',
                         whiteSpace: 'nowrap',

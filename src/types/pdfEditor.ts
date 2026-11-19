@@ -24,6 +24,11 @@ export interface PdfTextItem {
   color: string; // hex
   isEdited: boolean;
   isDeleted: boolean;
+  originalX?: number;
+  originalY?: number;
+  originalPdfX?: number;
+  originalPdfY?: number;
+  linkUrl?: string;
 }
 
 export interface AddedTextElement {

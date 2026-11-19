@@ -12,6 +12,31 @@ import {
   PageInfo,
 } from '@/types/pdfEditor';
 
+// Helper: Map standard font family names to browser-compatible CSS font stacks
+export function getCssFontFamily(fontFamily?: string): string {
+  if (!fontFamily) return 'Arial, Helvetica, sans-serif';
+  const fam = fontFamily.toLowerCase();
+  if (fam.includes('times') || fam.includes('roman') || fam.includes('serif')) {
+    return '"Times New Roman", Times, Georgia, serif';
+  }
+  if (fam.includes('courier') || fam.includes('mono') || fam.includes('consolas')) {
+    return '"Courier New", Courier, monospace';
+  }
+  if (fam.includes('georgia')) {
+    return 'Georgia, "Times New Roman", serif';
+  }
+  if (fam.includes('verdana')) {
+    return 'Verdana, Geneva, sans-serif';
+  }
+  if (fam.includes('trebuchet')) {
+    return '"Trebuchet MS", sans-serif';
+  }
+  if (fam.includes('helvetica')) {
+    return 'Helvetica, Arial, sans-serif';
+  }
+  return 'Arial, Helvetica, sans-serif';
+}
+
 // Helper: Map font name to StandardFonts enum in pdf-lib
 export function mapFontToPdfStandard(fontFamily: string, isBold: boolean, isItalic: boolean) {
   const fam = fontFamily.toLowerCase();
@@ -234,6 +259,10 @@ export async function extractPdfDocumentModel(pdfArrayBuffer: ArrayBuffer | Uint
         color: '#0F172A',
         isEdited: false,
         isDeleted: false,
+        originalX: domX,
+        originalY: domY,
+        originalPdfX: line.tx,
+        originalPdfY: line.ty,
       });
     }
 
@@ -307,15 +336,16 @@ export async function exportModifiedPdfDocument({
     const textItems = textItemsByPage[pageNum] || [];
     for (const item of textItems) {
       if (item.isEdited || item.isDeleted) {
+        // Always whiteout the ORIGINAL position of the text so the original printed raster is covered
         page.drawRectangle({
-          x: item.pdfX - 1,
-          y: item.pdfY - 2,
+          x: (item.originalPdfX ?? item.pdfX) - 1,
+          y: (item.originalPdfY ?? item.pdfY) - 2,
           width: item.pdfWidth + 3,
           height: item.pdfHeight + 4,
           color: rgb(1, 1, 1),
         });
 
-        if (item.isEdited && item.str.trim() !== '') {
+        if (item.isEdited && !item.isDeleted && item.str.trim() !== '') {
           const font = await getFont(item.fontFamily, item.isBold, item.isItalic);
           page.drawText(item.str, {
             x: item.pdfX,
