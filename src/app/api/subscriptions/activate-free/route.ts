@@ -1,27 +1,118 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth, pool } from '@/lib/auth';
+
+const getInternalSecret = () =>
+  process.env.INTERNAL_SERVICE_KEY || process.env.BETTER_AUTH_SECRET || '';
 
 export async function POST(req: NextRequest) {
   try {
-    const userHeader = req.headers.get('x-user-id');
-    const emailHeader = req.headers.get('x-user-email');
+    let userId = '';
+    let userEmail = '';
+    let isAuthenticated = false;
 
-    // Forward to FastAPI backend if available
+    // 1. Authenticate via Better Auth session
     try {
-      const backendBase = (process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+      const session = await auth.api.getSession({ headers: req.headers });
+      if (session?.user) {
+        isAuthenticated = true;
+        userId = session.user.id;
+        userEmail = session.user.email || '';
+      }
+    } catch (e) {
+      console.debug('[activate-free] auth.api.getSession error:', e);
+    }
+
+    // 1b. Direct DB session fallback
+    if (!isAuthenticated && pool) {
+      try {
+        const cookieHeader = req.headers.get('cookie') || '';
+        const tokenMatch = cookieHeader.match(
+          /(?:better-auth\.session_token|__Secure-better-auth\.session_token)=([^;]+)/
+        );
+        if (tokenMatch) {
+          let rawToken = decodeURIComponent(tokenMatch[1].trim());
+          if (rawToken.includes('.')) {
+            rawToken = rawToken.split('.')[0];
+          }
+          const sRes = await pool.query(
+            `SELECT s."userId", s."expiresAt", u.email 
+             FROM public.session s 
+             JOIN public."user" u ON s."userId" = u.id 
+             WHERE s.token = $1 OR s.id = $1 LIMIT 1`,
+            [rawToken]
+          );
+          if (sRes.rows.length > 0) {
+            const row = sRes.rows[0];
+            if (new Date(row.expiresAt) > new Date()) {
+              isAuthenticated = true;
+              userId = row.userId;
+              userEmail = row.email || '';
+            }
+          }
+        }
+      } catch (dbErr) {
+        console.debug('[activate-free] DB session check error:', dbErr);
+      }
+    }
+
+    // Reject unauthenticated requests - Never trust client-supplied headers without a valid session
+    if (!isAuthenticated || !userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Valid authenticated session required.' },
+        { status: 401 }
+      );
+    }
+
+    // 2. Direct database activation in Neon PostgreSQL
+    if (pool) {
+      try {
+        await pool.query(
+          `INSERT INTO subscriptions (
+            user_id, plan_id, plan_name, storage_limit, file_size_limit,
+            subscription_status, billing_cycle, current_period_start, current_period_end, cancel_at_period_end
+          ) VALUES (
+            $1, 'free', 'Free', 15728640, 15728640, 'active', 'forever', NOW(), NOW() + interval '100 years', FALSE
+          )
+          ON CONFLICT (user_id) DO UPDATE SET
+            plan_id = 'free',
+            plan_name = 'Free',
+            storage_limit = 15728640,
+            file_size_limit = 15728640,
+            subscription_status = 'active',
+            billing_cycle = 'forever',
+            cancel_at_period_end = FALSE,
+            updated_at = NOW()`,
+          [userId]
+        );
+      } catch (dbSubErr) {
+        console.error('[activate-free] DB subscription upsert error:', dbSubErr);
+      }
+    }
+
+    // 3. Forward to FastAPI backend with verified internal service secret
+    try {
+      const backendBase = (
+        process.env.BACKEND_API_URL ||
+        process.env.NEXT_PUBLIC_API_URL ||
+        'http://127.0.0.1:8000'
+      ).replace(/\/+$/, '');
+
       const backendRes = await fetch(`${backendBase}/api/subscriptions/activate-free`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Id': userHeader || 'usr_free',
-          'X-User-Email': emailHeader || 'user@gyanvatsala.in',
+          'X-User-Id': userId,
+          'X-User-Email': userEmail,
+          'X-Internal-Secret': getInternalSecret(),
         },
       });
+
       if (backendRes.ok) {
         const data = await backendRes.json();
         return NextResponse.json(data);
       }
     } catch {
-      // Backend unavailable; proceed with standard response
+      // Backend unavailable; DB record was written above
     }
 
     return NextResponse.json({
@@ -34,6 +125,6 @@ export async function POST(req: NextRequest) {
       message: 'Free Starter plan activated successfully.',
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 400 });
+    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
   }
 }

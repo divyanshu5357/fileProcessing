@@ -2,6 +2,7 @@ from fastapi import Header, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional, Set
 import logging
+import hmac
 from backend.app.core.config import settings
 
 logger = logging.getLogger("gyanvatsala.security")
@@ -15,13 +16,18 @@ def get_authorized_support_emails() -> Set[str]:
     return {e.strip().lower() for e in raw.split(",") if e.strip()}
 
 def verify_internal_service_secret(secret_header: Optional[str]) -> bool:
-    """Verifies that the request originates from our trusted Next.js server proxy."""
+    """
+    Verifies in constant time that the request originates from our trusted Next.js server proxy.
+    Prevents timing side-channel attacks.
+    """
     if not secret_header:
         return False
     expected_srv = getattr(settings, "INTERNAL_SERVICE_KEY", None)
     expected_auth = getattr(settings, "BETTER_AUTH_SECRET", None)
-    return (bool(expected_srv and secret_header == expected_srv) or 
-            bool(expected_auth and secret_header == expected_auth))
+
+    valid_srv = bool(expected_srv and hmac.compare_digest(secret_header, expected_srv))
+    valid_auth = bool(expected_auth and hmac.compare_digest(secret_header, expected_auth))
+    return valid_srv or valid_auth
 
 class AuthenticatedUser(BaseModel):
     user_id: str
@@ -42,39 +48,42 @@ async def get_current_user(
 ) -> AuthenticatedUser:
     """
     Validates authenticated user context passed from Next.js server session.
-    NEVER blindly trusts client-supplied headers.
-    Roles are honored only when backed by a verified internal service secret
-    and validated against authoritative server-side configuration.
+    NEVER trusts unauthenticated external callers or client-supplied headers.
+    Requires a verified internal service secret for inter-service communication.
+    Direct unauthorized external callers are strictly rejected with 401 Unauthorized.
     """
-    email = (x_user_email or "user@gyanvatsala.in").strip().lower()
-    admin_emails = get_authorized_admin_emails()
-    support_emails = get_authorized_support_emails()
     is_trusted_service_call = verify_internal_service_secret(x_internal_secret)
 
-    role = "user"
+    if not is_trusted_service_call:
+        logger.warning(
+            f"[SECURITY] Direct unauthorized backend call rejected without valid internal secret. "
+            f"Claimed user_id: {x_user_id}, Claimed email: {x_user_email}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: Direct backend access forbidden. Requests must originate from the authenticated Next.js gateway."
+        )
 
-    # Only honor elevated role if internal service secret is valid AND user is authorized
-    if is_trusted_service_call:
-        if x_user_role == "admin" and email in admin_emails:
-            role = "admin"
-        elif x_user_role == "support" or email in support_emails:
-            role = "support"
-        elif email in admin_emails:
-            role = "admin"
-    else:
-        # Untrusted external caller trying to send X-User-Role is logged and rejected from elevated roles
-        if x_user_role in ("admin", "support"):
-            logger.warning(
-                f"[SECURITY] Untrusted external caller attempted to claim role '{x_user_role}' "
-                f"without valid internal service secret (email: {email})"
-            )
-        role = "user"
+    if not x_user_id or not x_user_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: User identity header missing from trusted proxy."
+        )
+
+    email = (x_user_email or "user@gyanvatsala.in").strip().lower()
+    support_emails = get_authorized_support_emails()
+
+    role = "user"
+    if x_user_role == "admin":
+        role = "admin"
+    elif x_user_role == "support" or email in support_emails:
+        role = "support"
 
     is_admin = (role == "admin")
     is_support = (role == "support")
 
     return AuthenticatedUser(
-        user_id=x_user_id or "usr_authed_session",
+        user_id=x_user_id.strip(),
         name=email.split("@")[0].capitalize(),
         email=email,
         plan=x_user_plan or "Free",

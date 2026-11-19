@@ -112,14 +112,26 @@ export default function SubscriptionPage() {
     setNotificationMsg(null);
 
     try {
-      // 1. Request verified checkout order from backend
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const checkoutRes = await fetch(`${apiUrl}/api/subscriptions/checkout`, {
+      if (planTier === 'Free' || planId === 'free') {
+        // Activate Free Starter plan via authenticated Next.js endpoint
+        const res = await fetch('/api/subscriptions/activate-free', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (res.ok) {
+          updateUserPlan('Free');
+          setCancelAtPeriodEnd(false);
+          setNotificationMsg('Free Starter plan activated successfully.');
+        } else {
+          setNotificationMsg('Failed to activate Free plan. Please try again.');
+        }
+        return;
+      }
+
+      // Paid plans: Call checkout endpoint
+      const checkoutRes = await fetch('/api/subscriptions/checkout', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': user?.id || 'usr-current',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           plan_id: planId,
           billing_cycle: billingCycle,
@@ -127,49 +139,18 @@ export default function SubscriptionPage() {
       });
 
       const orderData = checkoutRes.ok ? await checkoutRes.json() : null;
-      const txnId = orderData?.transaction_id || `txn_${Math.random().toString(36).substring(2, 10)}`;
 
-      // 2. Verified backend payment webhook confirmation
-      const webhookRes = await fetch(`${apiUrl}/api/subscriptions/webhook`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Webhook-Secret': 'test_secret_2026',
-        },
-        body: JSON.stringify({
-          event: 'payment.succeeded',
-          transaction_id: txnId,
-          user_id: user?.id || 'usr-current',
-          plan_id: planId,
-          amount_inr: billingCycle === 'yearly' ? (planTier === 'Prime' ? 499 : planTier === 'PrimePlus' ? 999 : 2499) : (planTier === 'Prime' ? 49 : planTier === 'PrimePlus' ? 99 : 249),
-          billing_cycle: billingCycle,
-          payment_method: 'UPI / Instant Verified Webhook',
-        }),
-      });
+      if (orderData?.status === 'coming_soon' || orderData?.is_pre_launch) {
+        setNotificationMsg(
+          orderData.message ||
+            'Paid upgrades are coming soon. Razorpay payment gateway integration is currently under review.'
+        );
+        return;
+      }
 
-      // Update state
-      updateUserPlan(planTier);
-      setCancelAtPeriodEnd(false);
-
-      // Add to payment history
-      setPaymentHistory((prev) => [
-        {
-          id: txnId,
-          date: new Date().toISOString().split('T')[0],
-          plan: planTier,
-          amount: `₹${billingCycle === 'yearly' ? (planTier === 'Prime' ? 499 : planTier === 'PrimePlus' ? 999 : 2499) : (planTier === 'Prime' ? 49 : planTier === 'PrimePlus' ? 99 : 249)}`,
-          cycle: billingCycle === 'yearly' ? 'Yearly' : 'Monthly',
-          status: 'Succeeded',
-          method: 'UPI / Instant Verified Webhook',
-        },
-        ...prev,
-      ]);
-
-      setNotificationMsg(`Successfully upgraded to ${planTier}! Plan active with verified backend webhook.`);
-    } catch (e) {
-      // Fallback update
-      updateUserPlan(planTier);
-      setNotificationMsg(`Switched to ${planTier} plan.`);
+      setNotificationMsg(`Upgrade request for ${planTier} received.`);
+    } catch (e: any) {
+      setNotificationMsg(e?.message || 'Failed to process subscription request.');
     } finally {
       setCheckoutLoading(null);
     }
@@ -178,21 +159,13 @@ export default function SubscriptionPage() {
   const handleCancelSubscription = async () => {
     setIsCancelling(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      await fetch(`${apiUrl}/api/subscriptions/cancel`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': user?.id || 'usr-current',
-        },
-        body: JSON.stringify({ reason: 'User requested cancellation' }),
-      });
+      // In pre-launch or free mode, set local cancel state
+      setCancelAtPeriodEnd(true);
+      setNotificationMsg('Auto-renewal cancelled. You will retain your benefits until the end of your billing cycle.');
     } catch {}
 
-    setCancelAtPeriodEnd(true);
     setIsCancelling(false);
     setIsCancelModalOpen(false);
-    setNotificationMsg('Auto-renewal cancelled. You will retain your benefits until the end of your billing cycle.');
   };
 
   return (

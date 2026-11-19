@@ -232,8 +232,9 @@ async def payment_webhook(
     Activates paid plans ONLY upon verified webhook from payment gateway.
     Never activates based solely on frontend requests.
     """
-    # 1. Verify Secret Header
-    if x_webhook_secret != settings.WEBHOOK_SECRET and x_webhook_secret != "test_secret_2026":
+    # 1. Verify Secret Header in constant-time
+    configured_secret = getattr(settings, "WEBHOOK_SECRET", "")
+    if not configured_secret or not x_webhook_secret or not hmac.compare_digest(x_webhook_secret, configured_secret):
         raise UnauthorizedAccessException("Invalid payment webhook signature/secret.")
 
     if payload.event != "payment.succeeded":

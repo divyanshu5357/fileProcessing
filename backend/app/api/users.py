@@ -18,8 +18,8 @@ async def get_user_storage(
     used storage, limit, remaining storage, percentage consumed, and 80% warning flag.
     Enforces that users can only view their own storage quota.
     """
-    # Enforce ownership check
-    if current_user.user_id != user_id and current_user.user_id != "usr_default_architect":
+    # Enforce ownership check: users can only access their own storage usage
+    if current_user.user_id != user_id and not current_user.is_admin:
         raise ForbiddenFileAccessException("You can only access your own storage usage.")
 
     overview = await quota_service.get_storage_overview(db, user_id)

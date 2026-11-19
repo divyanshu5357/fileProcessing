@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { Pool } from 'pg';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -9,17 +10,49 @@ const pool = databaseUrl
     })
   : null;
 
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'test_secret_2026';
+function timingSafeSecretCheck(provided: string, expected: string): boolean {
+  if (!provided || !expected) return false;
+  try {
+    const pBuf = Buffer.from(provided);
+    const eBuf = Buffer.from(expected);
+    if (pBuf.length !== eBuf.length) return false;
+    return crypto.timingSafeEqual(pBuf, eBuf);
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(req: NextRequest) {
-  const secretHeader = req.headers.get('x-webhook-secret');
-  if (secretHeader !== WEBHOOK_SECRET && secretHeader !== 'test_secret_2026') {
+  const secretHeader = req.headers.get('x-webhook-secret') || '';
+  const configuredSecret = process.env.WEBHOOK_SECRET;
+
+  if (!configuredSecret) {
+    console.error('[CRITICAL SECURITY] WEBHOOK_SECRET is not configured on the server.');
+    return NextResponse.json({ error: 'Webhook service misconfigured' }, { status: 500 });
+  }
+
+  // Strict constant-time verification against server WEBHOOK_SECRET only
+  if (!timingSafeSecretCheck(secretHeader, configuredSecret)) {
     return NextResponse.json({ error: 'Unauthorized webhook request' }, { status: 401 });
   }
 
   try {
     const payload = await req.json();
     const { event, transaction_id, user_id, plan_id, amount_inr, billing_cycle = 'monthly' } = payload;
+
+    // Strict input validation
+    if (!transaction_id || typeof transaction_id !== 'string') {
+      return NextResponse.json({ error: 'Invalid transaction_id' }, { status: 400 });
+    }
+    if (!user_id || typeof user_id !== 'string') {
+      return NextResponse.json({ error: 'Invalid user_id' }, { status: 400 });
+    }
+    if (!plan_id || typeof plan_id !== 'string') {
+      return NextResponse.json({ error: 'Invalid plan_id' }, { status: 400 });
+    }
+    if (typeof amount_inr !== 'number' || amount_inr < 0) {
+      return NextResponse.json({ error: 'Invalid amount_inr' }, { status: 400 });
+    }
 
     if (event !== 'payment.succeeded') {
       return NextResponse.json({ status: 'ignored', event });
@@ -30,9 +63,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Fetch Plan details from Neon
-    const planRes = await pool.query('SELECT * FROM plans WHERE id = $1', [plan_id]);
+    const planRes = await pool.query('SELECT * FROM plans WHERE id = $1 AND is_active = true', [plan_id]);
     if (planRes.rows.length === 0) {
-      return NextResponse.json({ error: `Plan ${plan_id} not found` }, { status: 404 });
+      return NextResponse.json({ error: `Plan ${plan_id} not found or inactive` }, { status: 404 });
     }
     const plan = planRes.rows[0];
 
@@ -80,6 +113,6 @@ export async function POST(req: NextRequest) {
       retention_days: plan.retention_days,
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message || 'Internal webhook error' }, { status: 500 });
   }
 }
