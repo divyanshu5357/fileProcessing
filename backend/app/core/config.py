@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # Neon Serverless PostgreSQL
     DATABASE_URL: str = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:5432/pixelkit",
+        default="postgresql+asyncpg://postgres:postgres@localhost:5432/gyanvatsala",
         description="Neon pooled connection string for high-concurrency API"
     )
     DATABASE_URL_UNPOOLED: str = Field(
@@ -25,12 +25,24 @@ class Settings(BaseSettings):
 
     # Auth & Security
     BETTER_AUTH_SECRET: str = Field(
-        default="pixelkit_super_secret_auth_key_must_be_at_least_32_characters_long",
+        default="gyanvatsala_super_secret_auth_key_must_be_at_least_32_characters_long",
         description="Secret key shared with Better Auth"
     )
+    INTERNAL_SERVICE_KEY: str = Field(
+        default="gyanvatsala_super_secret_auth_key_must_be_at_least_32_characters_long",
+        description="Internal service key for Next.js to FastAPI secure inter-service communication"
+    )
     WEBHOOK_SECRET: str = Field(
-        default="pixelkit_webhook_super_secret_key_2026",
+        default="gyanvatsala_webhook_super_secret_key_2026",
         description="Secret key for verifying payment provider webhooks"
+    )
+    ADMIN_EMAILS: str = Field(
+        default="",
+        description="Comma-separated authorized administrator email addresses (configured via environment or DB)"
+    )
+    SUPPORT_EMAILS: str = Field(
+        default="support@gyanvatsala.in,help@gyanvatsala.in",
+        description="Comma-separated authorized support staff email addresses"
     )
 
     # AWS / Neon S3 Storage Architecture

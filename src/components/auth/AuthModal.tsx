@@ -28,7 +28,7 @@ export function AuthModal() {
 
   const [step, setStep] = useState<'options' | 'otp'>('options');
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export function AuthModal() {
   }, [authModalInitialEmail]);
 
   useEffect(() => {
-    let timer: any;
+    let timer: NodeJS.Timeout;
     if (cooldown > 0) {
       timer = setInterval(() => setCooldown((prev) => prev - 1), 1000);
     }
@@ -64,23 +64,28 @@ export function AuthModal() {
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) {
+    const cleanEmail = email.toLowerCase().trim();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
       setError('Please enter a valid email address.');
       return;
     }
     setError(null);
+    setSuccessMsg(null);
     setIsLoading(true);
     try {
-      const res = await sendEmailOtp(email);
+      const res = await sendEmailOtp(cleanEmail);
       if (res.success) {
         setStep('otp');
         setCooldown(60);
-        setSuccessMsg(`We sent a 6-digit verification code to ${email}`);
+        setSuccessMsg(`We sent an 8-digit verification code to ${cleanEmail}`);
       } else {
-        setError(res.message || 'Failed to send OTP code. Please retry.');
+        if (res.retryAfter) {
+          setCooldown(res.retryAfter);
+        }
+        setError(res.message || 'Failed to send verification code. Please check your email.');
       }
     } catch (err: any) {
-      setError(err?.message || 'Service temporarily unavailable. Try again shortly.');
+      setError(err?.message || 'Authentication service error. Try again shortly.');
     } finally {
       setIsLoading(false);
     }
@@ -95,7 +100,7 @@ export function AuthModal() {
     setOtp(nextOtp);
 
     // Auto-focus next input
-    if (val && index < 5) {
+    if (val && index < 7) {
       const nextInput = document.getElementById(`otp-input-${index + 1}`);
       nextInput?.focus();
     }
@@ -108,19 +113,33 @@ export function AuthModal() {
     }
   };
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').trim().replace(/\D/g, '').slice(0, 8);
+    if (pasted.length > 0) {
+      const nextOtp = ['', '', '', '', '', '', '', ''];
+      for (let i = 0; i < 8; i++) {
+        nextOtp[i] = pasted[i] || '';
+      }
+      setOtp(nextOtp);
+      const targetIdx = Math.min(pasted.length, 7);
+      document.getElementById(`otp-input-${targetIdx}`)?.focus();
+    }
+  };
+
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const fullCode = otp.join('');
-    if (fullCode.length !== 6) {
-      setError('Please enter the complete 6-digit OTP code.');
+    const fullCode = otp.join('').trim();
+    if (fullCode.length !== 8) {
+      setError('Please enter the complete 8-digit verification code.');
       return;
     }
     setError(null);
     setIsLoading(true);
     try {
-      const res = await verifyEmailOtp(email, fullCode);
+      const res = await verifyEmailOtp(email.toLowerCase().trim(), fullCode);
       if (!res.success) {
-        setError(res.message || 'Verification failed. Please check the code.');
+        setError(res.message || 'Invalid or expired verification code.');
       }
     } catch (err: any) {
       setError(err?.message || 'Verification error. Please retry.');
@@ -130,17 +149,23 @@ export function AuthModal() {
   };
 
   const handleResendOtp = async () => {
-    if (cooldown > 0) return;
+    if (cooldown > 0 || isLoading) return;
     setError(null);
+    setSuccessMsg(null);
     setIsLoading(true);
     try {
-      const res = await sendEmailOtp(email);
+      const res = await sendEmailOtp(email.toLowerCase().trim());
       if (res.success) {
         setCooldown(60);
-        setSuccessMsg('A new OTP has been dispatched to your email.');
+        setSuccessMsg('A new 8-digit verification code has been dispatched to your email.');
+      } else {
+        if (res.retryAfter) {
+          setCooldown(res.retryAfter);
+        }
+        setError(res.message || 'Failed to resend code.');
       }
     } catch (e: any) {
-      setError('Failed to resend code.');
+      setError('Failed to resend verification code.');
     } finally {
       setIsLoading(false);
     }
@@ -156,7 +181,7 @@ export function AuthModal() {
         <button
           type="button"
           onClick={closeAuthModal}
-          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -170,7 +195,7 @@ export function AuthModal() {
           <p className="text-xs sm:text-sm text-[#475569] dark:text-[#94A3B8] mt-1">
             {step === 'options'
               ? 'Your Digital Document Workspace — Access cloud storage & persistent workspaces.'
-              : `Enter the 6-digit code sent to ${email}`}
+              : `Enter the 8-digit code sent to ${email} (expires in 5 min)`}
           </p>
         </div>
 
@@ -255,42 +280,45 @@ export function AuthModal() {
                 type="submit"
                 variant="primary"
                 disabled={isLoading}
-                className="w-full py-2.5 text-sm font-bold flex items-center justify-center gap-2"
+                className="w-full py-2.5 text-xs font-bold flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Sending Code...</span>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Dispatching Code...</span>
                   </>
                 ) : (
                   <>
-                    <span>Send Verification Code</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <span>Continue with Email Code</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </>
                 )}
               </Button>
             </form>
           </div>
         ) : (
-          /* Step 2: OTP Verification */
-          <form onSubmit={handleVerifyOtp} className="space-y-4">
+          /* Step 2: 8-Digit OTP Verification */
+          <form onSubmit={handleVerifyOtp} className="space-y-5">
             <div className="space-y-2">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block text-center">
-                6-Digit Security Code
+                8-Digit Security Code
               </label>
-              <div className="flex items-center justify-center gap-2 sm:gap-2.5">
+              <div className="flex items-center justify-center gap-1 sm:gap-1.5 pt-1">
                 {otp.map((digit, idx) => (
-                  <input
-                    key={idx}
-                    id={`otp-input-${idx}`}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleOtpChange(idx, e.target.value)}
-                    onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                    className="w-10 h-12 sm:w-12 sm:h-14 text-center text-xl sm:text-2xl font-mono font-bold rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-blue-600 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                  />
+                  <React.Fragment key={idx}>
+                    {idx === 4 && <div className="w-1.5 h-0.5 bg-slate-300 dark:bg-slate-700 mx-0.5" />}
+                    <input
+                      id={`otp-input-${idx}`}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => handleOtpChange(idx, e.target.value)}
+                      onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                      onPaste={handlePaste}
+                      className="w-8 h-11 sm:w-10 sm:h-12 text-center text-lg sm:text-xl font-mono font-bold rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-blue-600 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    />
+                  </React.Fragment>
                 ))}
               </div>
             </div>
@@ -298,7 +326,7 @@ export function AuthModal() {
             <Button
               type="submit"
               variant="primary"
-              disabled={isLoading || otp.join('').length !== 6}
+              disabled={isLoading || otp.join('').trim().length !== 8}
               className="w-full py-3 text-sm font-bold flex items-center justify-center gap-2"
             >
               {isLoading ? (
@@ -315,11 +343,16 @@ export function AuthModal() {
             </Button>
 
             {/* Resend & Back controls */}
-            <div className="flex items-center justify-between text-xs pt-2">
+            <div className="flex items-center justify-between text-xs pt-1">
               <button
                 type="button"
-                onClick={() => setStep('options')}
-                className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition underline underline-offset-4"
+                onClick={() => {
+                  setStep('options');
+                  setOtp(['', '', '', '', '', '', '', '']);
+                  setError(null);
+                  setSuccessMsg(null);
+                }}
+                className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition underline underline-offset-4 cursor-pointer"
               >
                 Change email
               </button>
@@ -328,39 +361,36 @@ export function AuthModal() {
                 type="button"
                 disabled={cooldown > 0 || isLoading}
                 onClick={handleResendOtp}
-                className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:underline disabled:text-slate-400 disabled:no-underline font-semibold"
+                className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:underline disabled:text-slate-400 disabled:no-underline font-semibold cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                <span>{cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend Code'}</span>
+                <span>{cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend Code'}</span>
               </button>
             </div>
           </form>
         )}
 
         {/* Terms and Conditions Footnote */}
-        <div className="mt-5 pt-4 border-t border-[#CBD5E1] dark:border-[#334155] flex flex-col items-center justify-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 text-center">
-          <p>
-            By continuing, you agree to Gyanvatsala&apos;s{' '}
+        <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 text-center">
+          <p className="text-[11px] text-slate-400">
+            By authenticating, you agree to our{' '}
             <Link
               href="/terms"
               onClick={closeAuthModal}
-              className="text-[#536BCE] dark:text-[#93A5F5] font-semibold underline underline-offset-2 hover:text-[#4157B5]"
+              className="text-slate-600 dark:text-slate-300 hover:underline"
             >
-              Terms and Conditions
+              Terms of Service
             </Link>{' '}
             and{' '}
             <Link
               href="/privacy"
               onClick={closeAuthModal}
-              className="text-[#536BCE] dark:text-[#93A5F5] font-semibold underline underline-offset-2 hover:text-[#4157B5]"
+              className="text-slate-600 dark:text-slate-300 hover:underline"
             >
               Privacy Policy
-            </Link>.
+            </Link>
+            .
           </p>
-          <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-            <span>Encrypted cloud vaults & client-side processing</span>
-          </div>
         </div>
       </div>
     </div>

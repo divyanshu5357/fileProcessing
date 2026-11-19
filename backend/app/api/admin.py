@@ -5,7 +5,11 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
-from backend.app.core.security import get_current_admin_user, AuthenticatedUser
+from backend.app.core.security import (
+    get_current_admin_user,
+    get_current_support_or_admin_user,
+    AuthenticatedUser,
+)
 from backend.app.database.connection import get_db
 from backend.app.database.models import (
     User,
@@ -16,6 +20,7 @@ from backend.app.database.models import (
     Subscription,
     Payment,
     DeletionLog,
+    AdminAuditLog,
 )
 from backend.app.core.config import settings
 
@@ -25,9 +30,96 @@ class UpdateUserStatusRequest(BaseModel):
     status: str # 'active', 'suspended', 'flagged'
     reason: Optional[str] = "Administrative review"
 
+class UpdateUserRoleRequest(BaseModel):
+    role: str # 'admin', 'support', 'user'
+
+@router.get("/me")
+async def get_admin_me(
+    current_user: AuthenticatedUser = Depends(get_current_support_or_admin_user)
+):
+    """
+    Returns verified caller identity and permissions.
+    """
+    return {
+        "user_id": current_user.user_id,
+        "email": current_user.email,
+        "name": current_user.name,
+        "role": current_user.role,
+        "is_admin": current_user.is_admin,
+        "is_support": current_user.is_support,
+        "permissions": {
+            "can_view_revenue": current_user.is_admin,
+            "can_manage_roles": current_user.is_admin,
+            "can_manage_users": current_user.is_admin,
+            "can_view_analytics": True,
+            "can_view_system_health": True,
+        }
+    }
+
+@router.post("/users/{user_id}/role")
+async def update_user_role(
+    user_id: str,
+    payload: UpdateUserRoleRequest,
+    admin_user: AuthenticatedUser = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Role change with strict privilege checks and persistent audit logging.
+    Administrators cannot demote themselves.
+    """
+    if payload.role not in ["admin", "support", "user"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid role. Must be 'admin', 'support', or 'user'."
+        )
+    if user_id == admin_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Administrators cannot modify their own role."
+        )
+
+    if db is not None:
+        try:
+            stmt = select(User).where(User.id == user_id)
+            res = await db.execute(stmt)
+            target_user = res.scalar_one_or_none()
+            if not target_user:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+            
+            old_role = target_user.role or "user"
+            target_user.role = payload.role
+            
+            audit = AdminAuditLog(
+                actor_id=admin_user.user_id,
+                actor_email=admin_user.email,
+                action="role_changed",
+                target_id=user_id,
+                details={"old_role": old_role, "new_role": payload.role}
+            )
+            db.add(audit)
+            await db.commit()
+            return {
+                "status": "success",
+                "message": f"User role changed from {old_role} to {payload.role}.",
+                "user_id": user_id,
+                "new_role": payload.role
+            }
+        except HTTPException:
+            raise
+        except Exception:
+            await db.rollback()
+            raise HTTPException(status_code=500, detail="Failed to update user role.")
+
+    return {
+        "status": "success",
+        "message": f"User role updated to {payload.role}.",
+        "user_id": user_id,
+        "new_role": payload.role
+    }
+
 @router.get("/overview")
 async def get_admin_overview(
-    admin_user: AuthenticatedUser = Depends(get_current_admin_user),
+    admin_user: AuthenticatedUser = Depends(get_current_support_or_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -172,7 +264,7 @@ async def get_admin_revenue(
 
 @router.get("/subscriptions")
 async def get_admin_subscriptions(
-    admin_user: AuthenticatedUser = Depends(get_current_admin_user),
+    admin_user: AuthenticatedUser = Depends(get_current_support_or_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -261,7 +353,7 @@ async def get_admin_subscriptions(
 
 @router.get("/storage")
 async def get_admin_storage(
-    admin_user: AuthenticatedUser = Depends(get_current_admin_user),
+    admin_user: AuthenticatedUser = Depends(get_current_support_or_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -337,7 +429,7 @@ async def get_admin_storage(
 
 @router.get("/processing")
 async def get_admin_processing(
-    admin_user: AuthenticatedUser = Depends(get_current_admin_user),
+    admin_user: AuthenticatedUser = Depends(get_current_support_or_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -402,7 +494,7 @@ async def get_admin_users(
     plan: Optional[str] = Query("all", description="Filter by plan"),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    admin_user: AuthenticatedUser = Depends(get_current_admin_user),
+    admin_user: AuthenticatedUser = Depends(get_current_support_or_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -503,7 +595,7 @@ async def update_user_status(
 
 @router.get("/health")
 async def get_admin_system_health(
-    admin_user: AuthenticatedUser = Depends(get_current_admin_user),
+    admin_user: AuthenticatedUser = Depends(get_current_support_or_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
     """

@@ -13,11 +13,11 @@ import {
   Menu,
   X,
   Sparkles,
+  ShieldCheck,
 } from 'lucide-react';
 import { GyanvatsalaLogo } from './common/GyanvatsalaLogo';
 import { ThemeToggle } from './ThemeToggle';
 import { UserMenu } from './auth/UserMenu';
-import { AuthModal } from './auth/AuthModal';
 import { useAuth } from '@/context/AuthContext';
 
 interface HeaderProps {
@@ -36,7 +36,7 @@ export function Header({
 }: HeaderProps = {}) {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, openAuthModal } = useAuth();
+  const { user, isAuthenticated, openAuthModal } = useAuth();
 
   const [isScrolled, setIsScrolled] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
@@ -224,6 +224,17 @@ export function Header({
           >
             Pricing
           </Link>
+
+          {/* Admin Console Link for Sole Administrator */}
+          {user?.role === 'admin' && (
+            <Link
+              href="/admin"
+              className="px-3 py-2 rounded-lg text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors flex items-center gap-1.5"
+            >
+              <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>Admin Console</span>
+            </Link>
+          )}
         </nav>
 
         {/* ======================================================== */}
@@ -310,6 +321,15 @@ export function Header({
             >
               Pricing
             </Link>
+            {user?.role === 'admin' && (
+              <Link
+                href="/admin"
+                className="p-2 rounded-lg text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-2"
+              >
+                <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span>Admin Console</span>
+              </Link>
+            )}
           </div>
 
           <div className="border-t border-[#E9EBF0] dark:border-[#222632] pt-3 flex flex-col gap-2">
@@ -334,8 +354,6 @@ export function Header({
           </div>
         </div>
       )}
-
-      <AuthModal />
     </header>
   );
 }

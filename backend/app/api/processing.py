@@ -10,7 +10,7 @@ from backend.app.schemas.job_schemas import JobCreateRequest, JobResponse
 from backend.app.workers.tasks import process_pdf_task, process_image_task, process_ocr_task
 import logging
 
-logger = logging.getLogger("pixelkit.processing")
+logger = logging.getLogger("gyanvatsala.processing")
 router = APIRouter(prefix="/processing", tags=["processing"])
 
 @router.post("/queue", response_model=JobResponse)

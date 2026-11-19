@@ -1,14 +1,118 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth, pool } from '@/lib/auth';
+import { verifyIsSoleAdmin } from '@/lib/adminSecurity';
 
-const ADMIN_EMAILS = new Set([
-  'fileprocess@gyanvatsala.in',
-  'abhishek5357kumar@gmail.com',
-  'admin@gyanvatsala.in',
-  'divyanshu@gyanvatsala.in',
+const SUPPORT_EMAILS = new Set([
+  'support@gyanvatsala.in',
+  'help@gyanvatsala.in',
 ]);
 
 const getBackendBase = () =>
   (process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+
+const getInternalSecret = () =>
+  process.env.INTERNAL_SERVICE_KEY || process.env.BETTER_AUTH_SECRET || '';
+
+async function resolveUserRole(req: NextRequest): Promise<{
+  userId: string;
+  email: string;
+  role: 'admin' | 'support' | 'user';
+  isAuthenticated: boolean;
+}> {
+  // 1. Verify official Better Auth session server-side (Database Authoritative)
+  try {
+    const session = await auth.api.getSession({ headers: req.headers });
+    if (session?.user) {
+      const email = (session.user.email || '').toLowerCase().trim();
+      let role: 'admin' | 'support' | 'user' = 'user';
+
+      // Verify sole admin against encrypted database configuration
+      const isSoleAdmin = await verifyIsSoleAdmin({ id: session.user.id, email });
+      if (isSoleAdmin) {
+        role = 'admin';
+      } else if (SUPPORT_EMAILS.has(email)) {
+        role = 'support';
+      }
+
+      return {
+        userId: session.user.id,
+        email,
+        role,
+        isAuthenticated: true,
+      };
+    }
+  } catch (err) {
+    console.debug('[Admin Route] Session verification error:', err);
+  }
+
+  // 1b. Direct database session query fallback for browser cookies
+  if (pool) {
+    try {
+      const cookieHeader = req.headers.get('cookie') || '';
+      const tokenMatch = cookieHeader.match(/(?:better-auth\.session_token|__Secure-better-auth\.session_token)=([^;]+)/);
+      if (tokenMatch) {
+        let rawToken = decodeURIComponent(tokenMatch[1].trim());
+        if (rawToken.includes('.')) {
+          rawToken = rawToken.split('.')[0];
+        }
+        const sRes = await pool.query(
+          `SELECT s."userId", s."expiresAt", u.email, u.role 
+           FROM public.session s 
+           JOIN public."user" u ON s."userId" = u.id 
+           WHERE s.token = $1 OR s.id = $1 LIMIT 1`,
+          [rawToken]
+        );
+        if (sRes.rows.length > 0) {
+          const row = sRes.rows[0];
+          const expiresAt = new Date(row.expiresAt);
+          if (expiresAt > new Date()) {
+            const email = (row.email || '').toLowerCase().trim();
+            let role: 'admin' | 'support' | 'user' = 'user';
+            
+            const isSoleAdmin = await verifyIsSoleAdmin({ id: row.userId, email });
+            if (isSoleAdmin) {
+              role = 'admin';
+            } else if (SUPPORT_EMAILS.has(email)) {
+              role = 'support';
+            }
+            return {
+              userId: row.userId,
+              email,
+              role,
+              isAuthenticated: true,
+            };
+          }
+        }
+      }
+    } catch (dbErr) {
+      console.debug('[Admin Route] DB session lookup error:', dbErr);
+    }
+  }
+
+  // 2. Fallback check ONLY for authenticated internal service-to-service calls
+  const internalSecret = getInternalSecret();
+  const providedSecret = req.headers.get('x-internal-secret');
+  if (internalSecret && providedSecret && providedSecret === internalSecret) {
+    const headerEmail = (req.headers.get('x-user-email') || '').toLowerCase().trim();
+    const headerId = req.headers.get('x-user-id') || 'usr_internal';
+    const headerRole = req.headers.get('x-user-role');
+
+    const isSoleAdmin = await verifyIsSoleAdmin({ id: headerId, email: headerEmail });
+    if (headerRole === 'admin' && isSoleAdmin) {
+      return { userId: headerId, email: headerEmail, role: 'admin', isAuthenticated: true };
+    }
+    if (headerRole === 'support' && SUPPORT_EMAILS.has(headerEmail)) {
+      return { userId: headerId, email: headerEmail, role: 'support', isAuthenticated: true };
+    }
+  }
+
+  return {
+    userId: '',
+    email: '',
+    role: 'user',
+    isAuthenticated: false,
+  };
+}
 
 export async function GET(
   req: NextRequest,
@@ -16,12 +120,28 @@ export async function GET(
 ) {
   const { slug } = await params;
   const path = slug.join('/');
-  const email = (req.headers.get('x-user-email') || '').toLowerCase();
+  const user = await resolveUserRole(req);
 
-  // Role-based access control check
-  if (!email || !ADMIN_EMAILS.has(email)) {
+  // 1. Reject unauthenticated requests
+  if (!user.isAuthenticated || !user.email) {
     return NextResponse.json(
-      { error: 'Forbidden: Administrative privileges required.' },
+      { error: 'Unauthorized: Authentication required.' },
+      { status: 401 }
+    );
+  }
+
+  // 2. Reject ordinary users
+  if (user.role === 'user') {
+    return NextResponse.json(
+      { error: 'Forbidden: Administrative or support privileges required.' },
+      { status: 403 }
+    );
+  }
+
+  // 3. Support role restrictions: Support cannot access revenue or financial analytics
+  if (user.role === 'support' && (path.includes('revenue') || path.includes('financial'))) {
+    return NextResponse.json(
+      { error: 'Forbidden: Support personnel cannot access financial revenue data.' },
       { status: 403 }
     );
   }
@@ -31,9 +151,10 @@ export async function GET(
     const backendUrl = `${getBackendBase()}/api/admin/${path}${req.nextUrl.search}`;
     const res = await fetch(backendUrl, {
       headers: {
-        'X-User-Email': email,
-        'X-User-Role': 'admin',
-        'X-User-Id': req.headers.get('x-user-id') || 'usr_admin',
+        'X-User-Email': user.email,
+        'X-User-Role': user.role,
+        'X-User-Id': user.userId,
+        'X-Internal-Secret': getInternalSecret(),
       },
     });
 
@@ -60,11 +181,28 @@ export async function POST(
 ) {
   const { slug } = await params;
   const path = slug.join('/');
-  const email = (req.headers.get('x-user-email') || '').toLowerCase();
+  const user = await resolveUserRole(req);
 
-  if (!email || !ADMIN_EMAILS.has(email)) {
+  // 1. Reject unauthenticated requests
+  if (!user.isAuthenticated || !user.email) {
+    return NextResponse.json(
+      { error: 'Unauthorized: Authentication required.' },
+      { status: 401 }
+    );
+  }
+
+  // 2. Reject ordinary users
+  if (user.role === 'user') {
     return NextResponse.json(
       { error: 'Forbidden: Administrative privileges required.' },
+      { status: 403 }
+    );
+  }
+
+  // 3. Role management and sensitive status changes require full admin
+  if (user.role !== 'admin') {
+    return NextResponse.json(
+      { error: 'Forbidden: Full administrative privileges required for mutations.' },
       { status: 403 }
     );
   }
@@ -76,9 +214,10 @@ export async function POST(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-User-Email': email,
-        'X-User-Role': 'admin',
-        'X-User-Id': req.headers.get('x-user-id') || 'usr_admin',
+        'X-User-Email': user.email,
+        'X-User-Role': user.role,
+        'X-User-Id': user.userId,
+        'X-Internal-Secret': getInternalSecret(),
       },
       body: JSON.stringify(body),
     });

@@ -40,14 +40,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
 
-// Authorized administrator emails
-const ADMIN_EMAILS = [
-  'fileprocess@gyanvatsala.in',
-  'abhishek5357kumar@gmail.com',
-  'admin@gyanvatsala.in',
-  'divyanshu@gyanvatsala.in',
-];
-
+// Authoritative admin roles are enforced via database user.role from verified server sessions
 type AdminTab =
   | 'overview'
   | 'revenue'
@@ -58,7 +51,7 @@ type AdminTab =
   | 'health';
 
 export default function AdminDashboardPage() {
-  const { user, isAuthenticated, openAuthModal } = useAuth();
+  const { user, isAuthenticated, isLoading: isAuthLoading, openAuthModal, signOut } = useAuth();
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -79,12 +72,22 @@ export default function AdminDashboardPage() {
   const [userSearch, setUserSearch] = useState('');
   const [userPlanFilter, setUserPlanFilter] = useState('all');
 
-  const userEmail = (user?.email || '').toLowerCase();
-  const isAdmin = ADMIN_EMAILS.includes(userEmail);
+  const userEmail = (user?.email || '').toLowerCase().trim();
+  // Authoritative administrator verification
+  const isAdmin = user?.role === 'admin';
+  const isSupport = user?.role === 'support';
+  const isAuthorized = isAdmin || isSupport;
+
+  // Auto-switch away from revenue if support
+  useEffect(() => {
+    if (isSupport && !isAdmin && activeTab === 'revenue') {
+      setActiveTab('overview');
+    }
+  }, [isSupport, isAdmin, activeTab]);
 
   // Fetch admin metrics from backend
   useEffect(() => {
-    if (!isAuthenticated || !isAdmin) {
+    if (!isAuthenticated || !isAuthorized) {
       setIsLoading(false);
       return;
     }
@@ -103,8 +106,8 @@ export default function AdminDashboardPage() {
         const [ovRes, revRes, subRes, stRes, procRes, usrRes, hlthRes] =
           await Promise.all([
             fetch('/api/admin/overview', { headers }).then((r) => r.json()).catch(() => null),
-            fetch('/api/admin/revenue', { headers }).then((r) => r.json()).catch(() => null),
-            fetch('/api/admin/subscriptions', { headers }).then((r) => r.json()).catch(() => null),
+            isAdmin ? fetch('/api/admin/revenue', { headers }).then((r) => r.json()).catch(() => null) : Promise.resolve(null),
+            isAdmin ? fetch('/api/admin/subscriptions', { headers }).then((r) => r.json()).catch(() => null) : Promise.resolve(null),
             fetch('/api/admin/storage', { headers }).then((r) => r.json()).catch(() => null),
             fetch('/api/admin/processing', { headers }).then((r) => r.json()).catch(() => null),
             fetch(`/api/admin/users?q=${encodeURIComponent(userSearch)}&plan=${userPlanFilter}`, { headers }).then((r) => r.json()).catch(() => null),
@@ -131,7 +134,7 @@ export default function AdminDashboardPage() {
     return () => {
       isMounted = false;
     };
-  }, [isAuthenticated, isAdmin, userEmail, user?.id, userSearch, userPlanFilter, refreshKey]);
+  }, [isAuthenticated, isAuthorized, isAdmin, userEmail, user?.id, userSearch, userPlanFilter, refreshKey]);
 
   // Format bytes utility
   const formatBytes = (bytes: number) => {
@@ -141,6 +144,18 @@ export default function AdminDashboardPage() {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
+
+  // 0. Loading authentication state
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0D1017] text-white">
+        <div className="flex flex-col items-center gap-3">
+          <RefreshCw className="w-8 h-8 animate-spin text-[#536BCE]" />
+          <p className="text-xs text-slate-400 font-mono">Verifying administrator session...</p>
+        </div>
+      </div>
+    );
+  }
 
   // 1. Not signed in state
   if (!isAuthenticated) {
@@ -155,13 +170,13 @@ export default function AdminDashboardPage() {
             The administrative workspace is restricted to authorized operations personnel. Please sign in with an administrator account to continue.
           </p>
           <div className="pt-2 flex flex-col gap-2">
-            <Button
-              variant="primary"
-              onClick={() => openAuthModal()}
-              className="w-full py-2.5 rounded-xl font-bold text-xs bg-[#536BCE] hover:bg-[#4157B5] text-white"
+            <Link
+              href="/admin/login"
+              className="w-full py-2.5 rounded-xl font-bold text-xs bg-[#536BCE] hover:bg-[#4157B5] text-white flex items-center justify-center gap-2 shadow-xs"
             >
-              Sign In to Admin Panel
-            </Button>
+              <Lock className="w-3.5 h-3.5" />
+              <span>Sign In to Admin Panel</span>
+            </Link>
             <Link
               href="/"
               className="inline-flex items-center justify-center gap-1.5 text-xs text-[#727783] hover:text-[#20232B] dark:hover:text-white pt-2 font-medium"
@@ -176,7 +191,7 @@ export default function AdminDashboardPage() {
   }
 
   // 2. Authenticated but unauthorized (Role-Based Access Control)
-  if (!isAdmin) {
+  if (!isAuthorized) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-white dark:bg-[#0D1017] text-[#20232B] dark:text-[#F8FAFC]">
         <div className="max-w-md w-full p-8 rounded-3xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/60 text-center space-y-4 shadow-xl">
@@ -202,6 +217,13 @@ export default function AdminDashboardPage() {
               <LayoutDashboard className="w-3.5 h-3.5" />
               <span>Return to User Workspace</span>
             </Link>
+            <button
+              type="button"
+              onClick={() => signOut()}
+              className="text-xs text-[#727783] hover:text-[#20232B] dark:hover:text-white pt-1"
+            >
+              Sign out & try another account
+            </button>
           </div>
         </div>
       </div>
@@ -236,18 +258,20 @@ export default function AdminDashboardPage() {
               <span>Overview</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('revenue')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition cursor-pointer text-left ${
-                activeTab === 'revenue'
-                  ? 'bg-blue-50 dark:bg-blue-950/60 text-[#536BCE] font-bold border border-blue-200 dark:border-blue-900/60'
-                  : 'text-[#727783] dark:text-[#9DA3AE] hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <CreditCard className="w-4 h-4 shrink-0" />
-              <span>Revenue & Payments</span>
-            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('revenue')}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition cursor-pointer text-left ${
+                  activeTab === 'revenue'
+                    ? 'bg-blue-50 dark:bg-blue-950/60 text-[#536BCE] font-bold border border-blue-200 dark:border-blue-900/60'
+                    : 'text-[#727783] dark:text-[#9DA3AE] hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <CreditCard className="w-4 h-4 shrink-0" />
+                <span>Revenue & Payments</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -411,6 +435,27 @@ export default function AdminDashboardPage() {
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
+
+            {/* Role Badge */}
+            <span
+              className={`hidden sm:inline-flex text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg border ${
+                isAdmin
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                  : 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'
+              }`}
+            >
+              {isAdmin ? 'Administrator' : 'Support Staff'}
+            </span>
+
+            {/* Sign Out Button */}
+            <button
+              type="button"
+              onClick={() => signOut()}
+              className="p-2 rounded-xl border border-[#E9EBF0] dark:border-[#222632] hover:bg-rose-50 dark:hover:bg-rose-950/40 text-[#727783] hover:text-rose-600 transition"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </header>
 
@@ -463,19 +508,35 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
 
-                <div className="p-5 rounded-2xl bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] shadow-2xs space-y-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#727783]">
-                    Verified Revenue
-                  </span>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-3xl font-black text-[#20232B] dark:text-[#F8FAFC]">
-                      ₹{revenueData?.total_verified_revenue_inr ?? 0}
+                {isAdmin ? (
+                  <div className="p-5 rounded-2xl bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] shadow-2xs space-y-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#727783]">
+                      Verified Revenue
                     </span>
-                    <span className="text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md">
-                      Pre-Payment
-                    </span>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-3xl font-black text-[#20232B] dark:text-[#F8FAFC]">
+                        ₹{revenueData?.total_verified_revenue_inr ?? 0}
+                      </span>
+                      <span className="text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md">
+                        Pre-Payment
+                      </span>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="p-5 rounded-2xl bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] shadow-2xs space-y-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#727783]">
+                      Role Scope
+                    </span>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-2xl font-black text-[#536BCE]">
+                        Support
+                      </span>
+                      <span className="text-xs font-bold text-blue-700 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md">
+                        User Support Access
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Subscriptions & Distribution Card */}

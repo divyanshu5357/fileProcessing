@@ -9,7 +9,7 @@ from backend.app.database.models import File, DeletionLog, User
 from backend.app.services.s3_service import s3_service
 from backend.app.services.quota_service import quota_service
 
-logger = logging.getLogger("pixelkit.cleanup")
+logger = logging.getLogger("gyanvatsala.cleanup")
 
 async def run_retention_cleanup(db: AsyncSession = None) -> dict:
     """

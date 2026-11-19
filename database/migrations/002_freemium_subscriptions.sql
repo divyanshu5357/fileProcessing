@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Migration: 002_freemium_subscriptions.sql
--- PixelKit Freemium Subscription, Pricing, Retention & Deletion Architecture
+-- Gyanvatsala Freemium Subscription, Pricing, Retention & Deletion Architecture
 -- =============================================================================
 
 -- 1. Create Plans Table

@@ -17,7 +17,8 @@ export interface UserActivityItem {
   downloadUrl?: string;
 }
 
-const ACTIVITY_STORAGE_KEY = 'pixelkit_user_activities_v2';
+const ACTIVITY_STORAGE_KEY = 'gyanvatsala_user_activities_v2';
+const LEGACY_STORAGE_KEY = 'pixelkit_user_activities_v2';
 
 // Initial realistic default activities reflecting the user's recent operations
 const getDefaultActivities = (): UserActivityItem[] => {
@@ -79,7 +80,7 @@ export const activityService = {
   getActivities: (): UserActivityItem[] => {
     if (typeof window === 'undefined') return [];
     try {
-      const data = localStorage.getItem(ACTIVITY_STORAGE_KEY);
+      const data = localStorage.getItem(ACTIVITY_STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
       if (!data) {
         const defaults = getDefaultActivities();
         localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(defaults));

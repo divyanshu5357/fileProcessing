@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from backend.app.core.config import settings
 from backend.app.core.logging import logger
-from backend.app.core.exceptions import PixelKitException
+from backend.app.core.exceptions import GyanvatsalaException, PixelKitException
 
 # API Routers
 from backend.app.api.uploads import router as uploads_router
@@ -35,13 +35,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Configuration
+# CORS Configuration - Strict trusted origins without wildcard
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://www.gyanvatsala.in",
     "https://gyanvatsala.in",
-    "*"
 ]
 
 app.add_middleware(
@@ -73,8 +72,9 @@ async def request_id_logging_middleware(request: Request, call_next):
     return response
 
 # Centralized Exception Handler
+@app.exception_handler(GyanvatsalaException)
 @app.exception_handler(PixelKitException)
-async def pixelkit_exception_handler(request: Request, exc: PixelKitException):
+async def gyanvatsala_exception_handler(request: Request, exc: GyanvatsalaException):
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": True, "detail": exc.detail}

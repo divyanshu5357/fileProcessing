@@ -15,6 +15,10 @@ class User(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     emailVerified = Column(Boolean, default=False)
     image = Column(String, nullable=True)
+    role = Column(String(32), nullable=False, default="user", index=True)
+    banned = Column(Boolean, default=False)
+    banReason = Column(Text, nullable=True)
+    banExpires = Column(DateTime(timezone=True), nullable=True)
     createdAt = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updatedAt = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -150,4 +154,15 @@ class DeletionLog(Base):
     reason = Column(String(64), nullable=False) # 'expired', 'user_deleted'
     status = Column(String(64), nullable=False) # 'success', 'failed'
     error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+class AdminAuditLog(Base):
+    __tablename__ = "admin_audit_logs"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    actor_id = Column(String(255), nullable=False)
+    actor_email = Column(String(255), nullable=False)
+    action = Column(String(128), nullable=False)
+    target_id = Column(String(255), nullable=True)
+    details = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

@@ -1,11 +1,11 @@
 import { betterAuth } from 'better-auth';
-import { emailOTP } from 'better-auth/plugins';
+import { emailOTP, admin } from 'better-auth/plugins';
 import { Pool } from 'pg';
 import { sendOtpEmail } from './email';
 
 const databaseUrl = process.env.DATABASE_URL;
 
-const pool = databaseUrl
+export const pool = databaseUrl
   ? new Pool({
       connectionString: databaseUrl,
       max: 10,
@@ -16,8 +16,25 @@ const pool = databaseUrl
 export const auth = betterAuth({
   appName: 'Gyanvatsala Workspace',
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
-  secret: process.env.BETTER_AUTH_SECRET || 'pixelkit_super_secret_auth_key_must_be_at_least_32_characters_long',
+  secret: process.env.BETTER_AUTH_SECRET || 'gyanvatsala_super_secret_auth_key_must_be_at_least_32_characters_long',
   database: pool || undefined,
+  session: {
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24, // 1 day
+    cookieCache: {
+      enabled: true,
+      maxAge: 5 * 60, // 5 minutes
+    },
+  },
+  advanced: {
+    useSecureCookies: process.env.NODE_ENV === 'production',
+  },
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ['google'],
+    },
+  },
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID || '',
@@ -26,11 +43,22 @@ export const auth = betterAuth({
     },
   },
   plugins: [
+    admin({
+      defaultRole: 'user',
+      adminRole: 'admin',
+    }),
     emailOTP({
-      otpLength: 6,
-      expiresIn: 600, // 10 minutes
+      otpLength: 8,
+      expiresIn: 300, // 5 minutes
+      allowedAttempts: 5,
+      storeOTP: 'hashed',
+      resendStrategy: 'rotate',
+      rateLimit: {
+        window: 60,
+        max: 3,
+      },
       async sendVerificationOTP({ email, otp, type }) {
-        await sendOtpEmail(email, otp);
+        await sendOtpEmail(email, otp, type);
       },
     }),
   ],

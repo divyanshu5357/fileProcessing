@@ -5,7 +5,7 @@ import logging
 from backend.app.workers.celery_app import celery_app
 from backend.app.services.s3_service import s3_service
 
-logger = logging.getLogger("pixelkit.celery")
+logger = logging.getLogger("gyanvatsala.celery")
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=10)
 def process_pdf_task(self, job_id: str, user_id: str, input_s3_key: str, operation: str):
@@ -14,7 +14,7 @@ def process_pdf_task(self, job_id: str, user_id: str, input_s3_key: str, operati
     and LibreOffice document rendering.
     """
     logger.info(f"[Celery PDF Task] Starting Job {job_id} for user {user_id}: {operation}")
-    temp_dir = tempfile.mkdtemp(prefix=f"pixelkit_job_{job_id}_")
+    temp_dir = tempfile.mkdtemp(prefix=f"gyanvatsala_job_{job_id}_")
 
     try:
         # 1. Download file from AWS S3

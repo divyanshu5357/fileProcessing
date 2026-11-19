@@ -6,7 +6,7 @@ from backend.app.core.config import settings
 import logging
 from typing import Tuple, Optional
 
-logger = logging.getLogger("pixelkit.quota")
+logger = logging.getLogger("gyanvatsala.quota")
 
 # Default fallback values (matching database plans)
 PLAN_DEFAULTS = {

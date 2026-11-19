@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Migration: 001_initial_schema.sql
--- PixelKit Complete SaaS Architecture Schema for Neon PostgreSQL
+-- Gyanvatsala Complete SaaS Architecture Schema for Neon PostgreSQL
 -- =============================================================================
 
 -- Enable pgcrypto / uuid-ossp for UUID generation if needed

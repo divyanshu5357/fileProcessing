@@ -53,7 +53,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setThemeState(t);
     try {
       localStorage.setItem('gyanvatsala-theme', t);
-      localStorage.setItem('pixelkit-theme', t);
     } catch {}
     applyTheme(t);
   };

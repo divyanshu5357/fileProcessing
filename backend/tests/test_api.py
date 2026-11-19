@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from backend.app.main import app
+from backend.app.core.config import settings
 
 client = TestClient(app)
 
@@ -146,3 +147,73 @@ def test_user_storage_ownership_enforcement():
     """Verify strict user isolation: users cannot access other users' storage quota."""
     response = client.get("/api/users/usr_other_person/storage", headers={"X-User-Id": "usr_intruder"})
     assert response.status_code == 403
+
+def test_admin_endpoints_rejected_for_normal_user():
+    """Verify unprivileged users are rejected from admin APIs with 403 Forbidden."""
+    headers = {"X-User-Email": "regular.user@example.com", "X-User-Id": "usr_regular"}
+    ov_res = client.get("/api/admin/overview", headers=headers)
+    assert ov_res.status_code == 403
+    rev_res = client.get("/api/admin/revenue", headers=headers)
+    assert rev_res.status_code == 403
+
+def test_admin_endpoints_accessible_for_authorized_admin():
+    """Verify verified sole admin (divyanshusingh17102002@gmail.com) can access overview, revenue, and identity endpoints."""
+    headers = {
+        "X-User-Email": "divyanshusingh17102002@gmail.com",
+        "X-User-Role": "admin",
+        "X-User-Id": "CT1vLRNjsQepGBJO0DXzPRZ2148MAxMy",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+    }
+    me_res = client.get("/api/admin/me", headers=headers)
+    assert me_res.status_code == 200
+    me_data = me_res.json()
+    assert me_data["is_admin"] is True
+    assert me_data["role"] == "admin"
+    assert me_data["permissions"]["can_view_revenue"] is True
+
+    rev_res = client.get("/api/admin/revenue", headers=headers)
+    assert rev_res.status_code == 200
+    assert "total_verified_revenue_inr" in rev_res.json()
+
+def test_support_role_cannot_access_revenue():
+    """Verify support role can view overview and users, but is forbidden from financial revenue data."""
+    headers = {
+        "X-User-Email": "support@gyanvatsala.in",
+        "X-User-Role": "support",
+        "X-User-Id": "usr_support_1",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+    }
+    ov_res = client.get("/api/admin/overview", headers=headers)
+    assert ov_res.status_code == 200
+
+    # Restricted financial data returns 403 Forbidden
+    rev_res = client.get("/api/admin/revenue", headers=headers)
+    assert rev_res.status_code == 403
+
+def test_admin_cannot_demote_self():
+    """Verify administrators cannot accidentally or maliciously modify their own role."""
+    headers = {
+        "X-User-Email": "divyanshusingh17102002@gmail.com",
+        "X-User-Role": "admin",
+        "X-User-Id": "CT1vLRNjsQepGBJO0DXzPRZ2148MAxMy",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+    }
+    res = client.post(
+        "/api/admin/users/CT1vLRNjsQepGBJO0DXzPRZ2148MAxMy/role",
+        json={"role": "user"},
+        headers=headers
+    )
+    assert res.status_code == 400
+    assert "cannot modify their own role" in res.json()["detail"].lower()
+
+def test_demoted_user_rejected_from_admin_endpoints():
+    """Verify previously administrative accounts that were demoted receive 403 Forbidden."""
+    headers = {
+        "X-User-Email": "abhishek5357kumar@gmail.com",
+        "X-User-Role": "admin",
+        "X-User-Id": "W9o2KoZia8QiXHhfSU1e9E6yiPRXkcGw",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+    }
+    res = client.get("/api/admin/overview", headers=headers)
+    assert res.status_code == 403
+

@@ -3,7 +3,7 @@ from sqlalchemy.orm import declarative_base
 from backend.app.core.config import settings
 import logging
 
-logger = logging.getLogger("pixelkit.db")
+logger = logging.getLogger("gyanvatsala.db")
 
 Base = declarative_base()
 

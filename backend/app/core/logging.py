@@ -7,7 +7,7 @@ def setup_logging():
         format="%(asctime)s [%(levelname)s] [%(name)s] [ReqID: %(process)d] %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
-    logger = logging.getLogger("pixelkit")
+    logger = logging.getLogger("gyanvatsala")
     logger.setLevel(logging.INFO)
     return logger
 

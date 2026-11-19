@@ -4,7 +4,7 @@ from botocore.exceptions import ClientError
 from backend.app.core.config import settings
 import logging
 
-logger = logging.getLogger("pixelkit.s3")
+logger = logging.getLogger("gyanvatsala.s3")
 
 class S3Service:
     def __init__(self):

@@ -383,6 +383,16 @@ export default function AuthenticatedWorkspace() {
             >
               Pricing
             </Link>
+
+            {user?.role === 'admin' && (
+              <Link
+                href="/admin"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition text-xs"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Admin Console</span>
+              </Link>
+            )}
           </nav>
 
           {/* Right: Theme Toggle & User Menu */}
@@ -403,6 +413,12 @@ export default function AuthenticatedWorkspace() {
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-xs font-semibold mb-3 border border-white/20">
               <Sparkles className="w-3.5 h-3.5" />
               <span>Document & Media Productivity Workspace</span>
+              {user?.role === 'admin' && (
+                <span className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-400 text-slate-950 font-black text-[10px] uppercase tracking-wider shadow-xs">
+                  <ShieldCheck className="w-3 h-3 text-slate-950" />
+                  Administrator
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-3.5">
               {user?.avatarUrl && !avatarError ? (
@@ -450,12 +466,22 @@ export default function AuthenticatedWorkspace() {
               </div>
             </div>
 
-            <Link
-              href="/pricing"
-              className="px-3.5 py-1.5 rounded-xl bg-white text-blue-700 font-extrabold text-xs shadow-md hover:bg-blue-50 transition shrink-0"
-            >
-              Upgrade
-            </Link>
+            {user?.role === 'admin' ? (
+              <Link
+                href="/admin"
+                className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shadow-md transition shrink-0 flex items-center gap-1.5"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-slate-950" />
+                <span>Admin Console</span>
+              </Link>
+            ) : (
+              <Link
+                href="/pricing"
+                className="px-3.5 py-1.5 rounded-xl bg-white text-blue-700 font-extrabold text-xs shadow-md hover:bg-blue-50 transition shrink-0"
+              >
+                Upgrade
+              </Link>
+            )}
           </div>
         </div>
 

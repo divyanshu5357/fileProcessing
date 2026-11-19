@@ -1,5 +1,5 @@
 /**
- * PixelKit Cloud File Manager & Storage Service
+ * Gyanvatsala Cloud File Manager & Storage Service
  * Handles S3 Presigned Uploads, Metadata in Neon PostgreSQL, Quota Enforcement & Data Retention
  */
 
@@ -46,9 +46,12 @@ export interface ProcessingJob {
   createdAt: string;
 }
 
-const LOCAL_FILES_KEY = 'pixelkit_saas_cloud_files';
-const LOCAL_FOLDERS_KEY = 'pixelkit_saas_cloud_folders';
-const LOCAL_JOBS_KEY = 'pixelkit_saas_cloud_jobs';
+const LOCAL_FILES_KEY = 'gyanvatsala_saas_cloud_files';
+const LEGACY_FILES_KEY = 'pixelkit_saas_cloud_files';
+const LOCAL_FOLDERS_KEY = 'gyanvatsala_saas_cloud_folders';
+const LEGACY_FOLDERS_KEY = 'pixelkit_saas_cloud_folders';
+const LOCAL_JOBS_KEY = 'gyanvatsala_saas_cloud_jobs';
+const LEGACY_JOBS_KEY = 'pixelkit_saas_cloud_jobs';
 
 // Plan retention and quota rules
 export const PLAN_LIMITS: Record<string, { storageBytes: number; maxFileBytes: number; retentionDays: number; name: string }> = {
@@ -68,7 +71,7 @@ export const fileManagerService = {
   getFiles: (): CloudFile[] => {
     if (typeof window === 'undefined') return [];
     try {
-      const data = localStorage.getItem(LOCAL_FILES_KEY);
+      const data = localStorage.getItem(LOCAL_FILES_KEY) || localStorage.getItem(LEGACY_FILES_KEY);
       if (!data) return [];
       const parsed = JSON.parse(data);
       // Strip any legacy mock dummy data
@@ -81,7 +84,7 @@ export const fileManagerService = {
   getFolders: (): CloudFolder[] => {
     if (typeof window === 'undefined') return [];
     try {
-      const data = localStorage.getItem(LOCAL_FOLDERS_KEY);
+      const data = localStorage.getItem(LOCAL_FOLDERS_KEY) || localStorage.getItem(LEGACY_FOLDERS_KEY);
       if (!data) return [];
       const parsed = JSON.parse(data);
       return Array.isArray(parsed) ? parsed.filter((f) => !f.id.startsWith('fld-')) : [];
@@ -92,7 +95,7 @@ export const fileManagerService = {
   getJobs: (): ProcessingJob[] => {
     if (typeof window === 'undefined') return [];
     try {
-      const data = localStorage.getItem(LOCAL_JOBS_KEY);
+      const data = localStorage.getItem(LOCAL_JOBS_KEY) || localStorage.getItem(LEGACY_JOBS_KEY);
       if (!data) return [];
       const parsed = JSON.parse(data);
       return Array.isArray(parsed) ? parsed.filter((j) => !j.id.startsWith('job-98')) : [];

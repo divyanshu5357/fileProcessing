@@ -135,9 +135,15 @@ export function UserMenu() {
           {user.name}
         </span>
 
-        <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold">
-          {user.plan}
-        </span>
+        {user.role === 'admin' ? (
+          <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-indigo-600 text-white font-extrabold tracking-wide shadow-2xs">
+            ADMIN
+          </span>
+        ) : (
+          <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold">
+            {user.plan}
+          </span>
+        )}
 
         <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
       </button>
@@ -211,6 +217,22 @@ export function UserMenu() {
 
           {/* Navigation Links */}
           <div className="p-1.5 space-y-0.5 text-xs">
+            {user.role === 'admin' && (
+              <Link
+                href="/admin"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center justify-between px-3 py-2.5 rounded-xl text-white bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition font-bold shadow-xs mb-1"
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                  <span>Admin Console</span>
+                </div>
+                <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-white/20 text-white font-semibold">
+                  Admin
+                </span>
+              </Link>
+            )}
+
             <Link
               href="/workspace"
               onClick={() => setIsOpen(false)}

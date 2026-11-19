@@ -19,6 +19,7 @@ import {
 } from '@/types/pdfEditor';
 import { SelectionBoundingBox, ResizeHandleType } from './SelectionBoundingBox';
 import { ContextualToolbar } from './ContextualToolbar';
+import { FloatingFormatBar } from './FloatingFormatBar';
 import { RotateCw, Trash2, ImagePlus } from 'lucide-react';
 
 interface PageCanvasViewProps {
@@ -365,7 +366,7 @@ export function PageCanvasView({
         setDragStart({ x: clickX, y: clickY });
         setDragCurrent({ x: clickX, y: clickY });
       }
-    } else if (activeMode === 'select') {
+    } else if (activeMode === 'select' || activeMode === 'editText') {
       // Clicking empty background deselects current selection
       const target = e.target as HTMLElement;
       if (target === containerRef.current || target.tagName === 'CANVAS' || target.getAttribute('data-canvas-bg') === 'true') {
@@ -682,7 +683,7 @@ export function PageCanvasView({
               );
             })}
 
-          {/* B. Existing PDF Text Overlays (IN-PLACE DIRECT EDITING) */}
+          {/* B. Existing PDF Text Overlays (IN-PLACE DIRECT EDITING WITH AUTO-ALIGNMENT) */}
           {textItems.map((item) => {
             if (item.isDeleted) return null;
 
@@ -694,94 +695,145 @@ export function PageCanvasView({
             const itemFontSize = (item.fontSize || 12) * scale;
 
             return (
-              <div
-                key={item.id}
-                style={{
-                  position: 'absolute',
-                  left: itemLeft,
-                  top: itemTop,
-                  zIndex: isEditing ? 35 : 12,
-                  minWidth: Math.max(20, itemWidth),
-                  minHeight: Math.max(14, itemHeight),
-                }}
-                onClick={(e) => {
-                  if (activeMode === 'editText') {
-                    e.stopPropagation();
-                    setActiveExistingTextId(item.id);
-                    onSelectObject(null);
-                  }
-                }}
-                className={`pointer-events-auto transition-colors rounded-xs ${
-                  activeMode === 'editText'
-                    ? isEditing
-                      ? 'ring-2 ring-blue-500 bg-white shadow-md'
-                      : item.isEdited
-                      ? 'bg-white border border-blue-300 px-0.5'
-                      : 'hover:bg-blue-500/15 cursor-text border border-transparent hover:border-blue-400'
-                    : item.isEdited
-                    ? 'bg-white px-0.5 shadow-2xs'
-                    : 'pointer-events-none'
-                }`}
-              >
-                {/* Whiteout background to hide original raster text if edited */}
-                {item.isEdited && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: -2,
-                      top: -1,
-                      width: itemWidth + 4,
-                      height: itemHeight + 2,
-                      backgroundColor: '#FFFFFF',
-                      zIndex: -1,
+              <React.Fragment key={item.id}>
+                {/* Floating Format Bar matching Image 2 */}
+                {isEditing && (
+                  <FloatingFormatBar
+                    item={item}
+                    position={{ top: itemTop, left: itemLeft }}
+                    containerBounds={{ width: pageW, height: pageH }}
+                    onUpdateItem={(updates) =>
+                      onUpdateTextItem(item.id, { ...updates, isEdited: true })
+                    }
+                    onDeleteItem={() => {
+                      onUpdateTextItem(item.id, { isDeleted: true, isEdited: true });
+                      setActiveExistingTextId(null);
                     }}
-                  />
-                )}
-
-                {isEditing ? (
-                  <input
-                    type="text"
-                    autoFocus
-                    value={item.str}
-                    style={{
-                      fontFamily: item.fontFamily,
-                      fontSize: `${itemFontSize}px`,
-                      fontWeight: item.isBold ? 'bold' : 'normal',
-                      fontStyle: item.isItalic ? 'italic' : 'normal',
-                      color: item.color || '#0F172A',
-                      width: `${Math.max(itemWidth + 30, 60)}px`,
-                      height: `${Math.max(itemHeight, 20)}px`,
+                    onDuplicateItem={() => {
+                      const dup: AddedTextElement = {
+                        id: `txt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                        pageNumber: pageMeta.pageNumber,
+                        text: item.str,
+                        pdfX: item.pdfX,
+                        pdfY: item.pdfY - (item.pdfHeight || 14) - 4,
+                        pdfWidth: Math.max(100, item.pdfWidth),
+                        pdfHeight: item.pdfHeight || 14,
+                        fontSize: item.pdfFontSize || 12,
+                        fontFamily: item.fontFamily,
+                        color: item.color || '#0F172A',
+                        isBold: item.isBold,
+                        isItalic: item.isItalic,
+                      };
+                      onAddText(dup);
                     }}
-                    onChange={(e) => {
+                    onMoveItem={(dx, dy) => {
                       onUpdateTextItem(item.id, {
-                        str: e.target.value,
+                        x: item.x + dx,
+                        y: item.y + dy,
+                        pdfX: item.pdfX + dx / scale,
+                        pdfY: item.pdfY - dy / scale,
                         isEdited: true,
                       });
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === 'Escape') {
-                        setActiveExistingTextId(null);
-                      }
-                    }}
-                    onBlur={() => setActiveExistingTextId(null)}
-                    className="outline-none border-none p-0 m-0 text-slate-900 bg-transparent"
+                    onClose={() => setActiveExistingTextId(null)}
                   />
-                ) : item.isEdited ? (
-                  <span
-                    style={{
-                      fontFamily: item.fontFamily,
-                      fontSize: `${itemFontSize}px`,
-                      fontWeight: item.isBold ? 'bold' : 'normal',
-                      fontStyle: item.isItalic ? 'italic' : 'normal',
-                      color: item.color || '#0F172A',
-                      display: 'inline-block',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {item.str}
-                  </span>
-                ) : null}
-              </div>
+                )}
+
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: itemLeft,
+                    top: itemTop,
+                    zIndex: isEditing ? 35 : 12,
+                    minWidth: Math.max(20, itemWidth),
+                    height: itemHeight,
+                    lineHeight: `${itemHeight}px`,
+                  }}
+                  onClick={(e) => {
+                    if (activeMode === 'editText') {
+                      e.stopPropagation();
+                      setActiveExistingTextId(item.id);
+                      onSelectObject(null);
+                    }
+                  }}
+                  className={`pointer-events-auto transition-colors ${
+                    activeMode === 'editText'
+                      ? isEditing
+                        ? 'bg-white outline-1 outline-blue-400'
+                        : 'hover:bg-blue-500/10 hover:outline hover:outline-1 hover:outline-blue-400/40 cursor-text'
+                      : item.isEdited
+                      ? 'bg-transparent'
+                      : 'pointer-events-none'
+                  }`}
+                >
+                  {/* Whiteout background to hide original raster text if edited or currently editing */}
+                  {(item.isEdited || isEditing) && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: -1,
+                        top: -1,
+                        width: 'calc(100% + 2px)',
+                        height: 'calc(100% + 2px)',
+                        backgroundColor: '#FFFFFF',
+                        zIndex: -1,
+                      }}
+                    />
+                  )}
+
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      autoFocus
+                      value={item.str}
+                      style={{
+                        fontFamily: item.fontFamily,
+                        fontSize: `${itemFontSize}px`,
+                        lineHeight: `${itemHeight}px`,
+                        fontWeight: item.isBold ? 'bold' : 'normal',
+                        fontStyle: item.isItalic ? 'italic' : 'normal',
+                        color: item.color || '#0F172A',
+                        width: `${Math.max(itemWidth + 20, 50)}px`,
+                        height: `${itemHeight}px`,
+                        padding: '0 1px',
+                        margin: 0,
+                        border: 'none',
+                        outline: 'none',
+                        background: 'transparent',
+                        verticalAlign: 'baseline',
+                        boxSizing: 'border-box',
+                      }}
+                      onChange={(e) => {
+                        onUpdateTextItem(item.id, {
+                          str: e.target.value,
+                          isEdited: true,
+                        });
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          setActiveExistingTextId(null);
+                        }
+                      }}
+                      className="outline-none border-none p-0 m-0 bg-transparent text-slate-900"
+                    />
+                  ) : item.isEdited ? (
+                    <span
+                      style={{
+                        fontFamily: item.fontFamily,
+                        fontSize: `${itemFontSize}px`,
+                        lineHeight: `${itemHeight}px`,
+                        fontWeight: item.isBold ? 'bold' : 'normal',
+                        fontStyle: item.isItalic ? 'italic' : 'normal',
+                        color: item.color || '#0F172A',
+                        display: 'inline-block',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {item.str}
+                    </span>
+                  ) : null}
+                </div>
+              </React.Fragment>
             );
           })}
 

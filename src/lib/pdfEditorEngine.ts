@@ -78,15 +78,29 @@ export async function extractPdfDocumentModel(pdfArrayBuffer: ArrayBuffer | Uint
     const styles = (textContent.styles || {}) as Record<string, any>;
     const pageTextItems: PdfTextItem[] = [];
 
-    // Group items on the same line if they are contiguous
+    // 1. Preprocess raw text chunks from PDF.js
+    interface RawTextChunk {
+      str: string;
+      tx: number;
+      ty: number;
+      width: number;
+      height: number;
+      fontHeight: number;
+      fontFamily: string;
+      fontName: string;
+      isBold: boolean;
+      isItalic: boolean;
+    }
+
+    const processedChunks: RawTextChunk[] = [];
     for (let i = 0; i < rawItems.length; i++) {
       const it = rawItems[i];
-      if (!it.str || it.str.trim() === '') continue;
+      if (!it.str || it.str === '') continue;
 
       const tx = it.transform[4];
       const ty = it.transform[5];
 
-      // Auto-detect font size in points from affine matrix [a, b, c, d, tx, ty]
+      // Auto-detect font size in points from affine matrix
       const scaleX = Math.hypot(it.transform[0] || 0, it.transform[1] || 0);
       const scaleY = Math.hypot(it.transform[2] || 0, it.transform[3] || 0);
       const rawFontSize = scaleY || scaleX || Math.abs(it.height) || 12;
@@ -96,7 +110,6 @@ export async function extractPdfDocumentModel(pdfArrayBuffer: ArrayBuffer | Uint
       const fontStyle = styles[it.fontName] || {};
       const styleFontFamily = fontStyle.fontFamily || '';
       const rawFontName = it.fontName || '';
-      // Strip subset prefixes e.g. "BAAAAA+TimesNewRomanPSMT" -> "TimesNewRomanPSMT"
       const cleanFontName = rawFontName.includes('+') ? rawFontName.split('+')[1] : rawFontName;
       const combined = `${cleanFontName} ${styleFontFamily}`.toLowerCase();
 
@@ -136,32 +149,88 @@ export async function extractPdfDocumentModel(pdfArrayBuffer: ArrayBuffer | Uint
         fontFamily = 'Georgia';
       }
 
-      // DOM coordinates at scale 1.0
-      // In PDF, Y=0 is bottom. In DOM, Y=0 is top.
-      const domX = tx;
-      const domY = viewport.height - ty - fontHeight;
-      const domWidth = it.width || Math.max(20, it.str.length * (fontHeight * 0.55));
-      const domHeight = fontHeight * 1.15;
+      const itemWidth = it.width || Math.max(4, it.str.length * (fontHeight * 0.55));
 
-      pageTextItems.push({
-        id: `txt_${pageNum}_${i}_${Math.random().toString(36).substring(2, 6)}`,
-        pageNumber: pageNum,
+      processedChunks.push({
         str: it.str,
-        originalStr: it.str,
-        x: domX,
-        y: domY,
-        width: domWidth,
-        height: domHeight,
-        pdfX: tx,
-        pdfY: ty,
-        pdfWidth: domWidth,
-        pdfHeight: fontHeight,
-        fontSize: fontHeight,
-        pdfFontSize: fontHeight,
+        tx,
+        ty,
+        width: itemWidth,
+        height: fontHeight,
+        fontHeight,
         fontFamily,
         fontName: it.fontName || 'Helvetica',
         isBold,
         isItalic,
+      });
+    }
+
+    // 2. Sort chunks: Top to bottom (ty descending), then left to right (tx ascending)
+    processedChunks.sort((a, b) => {
+      const yDiff = b.ty - a.ty;
+      if (Math.abs(yDiff) > Math.min(a.fontHeight, b.fontHeight) * 0.35) {
+        return yDiff;
+      }
+      return a.tx - b.tx;
+    });
+
+    // 3. Intelligent Line Merging: Group contiguous items on the same baseline into unified lines
+    const mergedLines: RawTextChunk[] = [];
+    for (const chunk of processedChunks) {
+      if (mergedLines.length === 0) {
+        mergedLines.push({ ...chunk });
+        continue;
+      }
+
+      const prev = mergedLines[mergedLines.length - 1];
+      const sameLine = Math.abs(prev.ty - chunk.ty) <= Math.min(prev.fontHeight, chunk.fontHeight) * 0.35;
+      const similarFont = prev.fontFamily === chunk.fontFamily && Math.abs(prev.fontHeight - chunk.fontHeight) <= 2.5;
+      const sameStyle = prev.isBold === chunk.isBold && prev.isItalic === chunk.isItalic;
+
+      const prevRight = prev.tx + prev.width;
+      const gap = chunk.tx - prevRight;
+      // Contiguous if gap is small or normal word space
+      const isContiguous = gap >= -3 && gap <= prev.fontHeight * 2.2;
+
+      if (sameLine && similarFont && sameStyle && isContiguous) {
+        const needsSpace = !prev.str.endsWith(' ') && !chunk.str.startsWith(' ') && gap > prev.fontHeight * 0.12;
+        prev.str = prev.str + (needsSpace ? ' ' : '') + chunk.str;
+        prev.width = Math.max(prev.width, chunk.tx + chunk.width - prev.tx);
+      } else {
+        mergedLines.push({ ...chunk });
+      }
+    }
+
+    // 4. Create unified text items with exact baseline alignment
+    for (let i = 0; i < mergedLines.length; i++) {
+      const line = mergedLines[i];
+      if (!line.str || line.str.trim() === '') continue;
+
+      const domX = line.tx;
+      // In PDF, ty is baseline. Exact DOM top:
+      const domY = viewport.height - line.ty - line.fontHeight;
+      const domWidth = line.width;
+      const domHeight = line.fontHeight * 1.15;
+
+      pageTextItems.push({
+        id: `txt_${pageNum}_${i}_${Math.random().toString(36).substring(2, 6)}`,
+        pageNumber: pageNum,
+        str: line.str,
+        originalStr: line.str,
+        x: domX,
+        y: domY,
+        width: domWidth,
+        height: domHeight,
+        pdfX: line.tx,
+        pdfY: line.ty,
+        pdfWidth: domWidth,
+        pdfHeight: line.fontHeight,
+        fontSize: line.fontHeight,
+        pdfFontSize: line.fontHeight,
+        fontFamily: line.fontFamily,
+        fontName: line.fontName,
+        isBold: line.isBold,
+        isItalic: line.isItalic,
         color: '#0F172A',
         isEdited: false,
         isDeleted: false,

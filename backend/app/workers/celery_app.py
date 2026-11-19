@@ -1,12 +1,12 @@
 import logging
 from backend.app.core.config import settings
 
-logger = logging.getLogger("pixelkit.celery")
+logger = logging.getLogger("gyanvatsala.celery")
 
 try:
     from celery import Celery
     celery_app = Celery(
-        "pixelkit_worker",
+        "gyanvatsala_worker",
         broker=settings.REDIS_URL,
         backend=settings.CELERY_RESULT_BACKEND,
         include=["backend.app.workers.tasks"]
