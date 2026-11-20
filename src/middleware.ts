@@ -13,22 +13,45 @@ function isValidIp(ip: string): boolean {
 
 /**
  * Hardened client IP extraction with anti-spoofing and IP-format validation.
- * Protects against forged headers by verifying IP syntax and prioritizing verified edges.
+ * Architecture:
+ * 1. Honors explicit TRUSTED_PROXY_HEADER if configured by the reverse-proxy environment.
+ * 2. Checks platform edge runtime IP (req.ip).
+ * 3. Verifies Cloudflare edge only when cf-ray is present.
+ * 4. Filters X-Forwarded-For to syntactically valid public IPs.
+ * 5. Rejects unidentifiable clients without falling back to 127.0.0.1.
  */
 function getClientIp(req: NextRequest): string {
-  // Check Cloudflare edge (validated syntax only)
+  const trustedHeader = process.env.TRUSTED_PROXY_HEADER?.toLowerCase();
+
+  // 1. Explicit trusted proxy header configured by DevOps
+  if (trustedHeader) {
+    const val = req.headers.get(trustedHeader);
+    if (val) {
+      const candidate = val.split(',')[0].trim();
+      if (isValidIp(candidate)) return candidate;
+    }
+  }
+
+  // 2. Next.js / Edge platform IP
+  const reqIp = (req as unknown as { ip?: string }).ip;
+  if (reqIp && isValidIp(reqIp)) {
+    return reqIp.trim();
+  }
+
+  // 3. Cloudflare edge header (verified with cf-ray presence)
+  const hasCfRay = Boolean(req.headers.get('cf-ray'));
   const cfIp = req.headers.get('cf-connecting-ip');
-  if (cfIp && isValidIp(cfIp)) return cfIp.trim();
+  if (hasCfRay && cfIp && isValidIp(cfIp)) {
+    return cfIp.trim();
+  }
 
-  // Check True-Client-IP (validated syntax only)
+  // 4. True-Client-IP (Akamai / Cloudflare Enterprise)
   const trueClientIp = req.headers.get('true-client-ip');
-  if (trueClientIp && isValidIp(trueClientIp)) return trueClientIp.trim();
+  if (trueClientIp && isValidIp(trueClientIp)) {
+    return trueClientIp.trim();
+  }
 
-  // Check X-Real-IP from trusted reverse proxies
-  const realIp = req.headers.get('x-real-ip');
-  if (realIp && isValidIp(realIp)) return realIp.trim();
-
-  // Check X-Forwarded-For: find first syntactically valid public/client IP
+  // 5. Standard X-Forwarded-For: select first valid IP
   const forwarded = req.headers.get('x-forwarded-for');
   if (forwarded) {
     const ips = forwarded
@@ -40,7 +63,14 @@ function getClientIp(req: NextRequest): string {
     }
   }
 
-  return '127.0.0.1';
+  // 6. X-Real-IP
+  const realIp = req.headers.get('x-real-ip');
+  if (realIp && isValidIp(realIp)) {
+    return realIp.trim();
+  }
+
+  // Never assign 127.0.0.1 as a universal shared identity
+  return 'untrusted-client';
 }
 
 /**
@@ -79,11 +109,13 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
     'camera=(), microphone=(), geolocation=(), payment=(self)'
   );
 
-  // Enforce HTTPS transport security (1 year, includeSubDomains, preload)
-  res.headers.set(
-    'Strict-Transport-Security',
-    'max-age=31536000; includeSubDomains; preload'
-  );
+  // Enforce HSTS only in production environments
+  if (process.env.NODE_ENV === 'production') {
+    res.headers.set(
+      'Strict-Transport-Security',
+      'max-age=31536000; includeSubDomains'
+    );
+  }
 
   return res;
 }

@@ -3,16 +3,11 @@ import { auth, pool } from '@/lib/auth';
 import { verifyIsSoleAdmin } from '@/lib/adminSecurity';
 import { createInternalAssertion } from '@/lib/internalAuth';
 
-const SUPPORT_EMAILS = new Set([
-  'support@gyanvatsala.in',
-  'help@gyanvatsala.in',
-]);
-
 const getBackendBase = () =>
   (process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
 
 const getInternalSecret = () =>
-  process.env.INTERNAL_SERVICE_KEY || process.env.BETTER_AUTH_SECRET || '';
+  process.env.INTERNAL_SERVICE_KEY || '';
 
 async function resolveUserRole(req: NextRequest): Promise<{
   userId: string;
@@ -31,8 +26,17 @@ async function resolveUserRole(req: NextRequest): Promise<{
       const isSoleAdmin = await verifyIsSoleAdmin({ id: session.user.id, email });
       if (isSoleAdmin) {
         role = 'admin';
-      } else if (SUPPORT_EMAILS.has(email)) {
-        role = 'support';
+      } else if (pool) {
+        // Authoritatively check support role in DB (no hardcoded support emails)
+        try {
+          const uRes = await pool.query(
+            `SELECT role, "emailVerified" FROM public."user" WHERE id = $1 LIMIT 1`,
+            [session.user.id]
+          );
+          if (uRes.rows.length > 0 && uRes.rows[0].role === 'support' && uRes.rows[0].emailVerified) {
+            role = 'support';
+          }
+        } catch {}
       }
 
       return {
@@ -57,7 +61,7 @@ async function resolveUserRole(req: NextRequest): Promise<{
           rawToken = rawToken.split('.')[0];
         }
         const sRes = await pool.query(
-          `SELECT s."userId", s."expiresAt", u.email, u.role 
+          `SELECT s."userId", s."expiresAt", u.email, u.role, u."emailVerified" 
            FROM public.session s 
            JOIN public."user" u ON s."userId" = u.id 
            WHERE s.token = $1 OR s.id = $1 LIMIT 1`,
@@ -73,7 +77,7 @@ async function resolveUserRole(req: NextRequest): Promise<{
             const isSoleAdmin = await verifyIsSoleAdmin({ id: row.userId, email });
             if (isSoleAdmin) {
               role = 'admin';
-            } else if (SUPPORT_EMAILS.has(email)) {
+            } else if (row.role === 'support' && row.emailVerified) {
               role = 'support';
             }
             return {
@@ -95,15 +99,23 @@ async function resolveUserRole(req: NextRequest): Promise<{
   const providedSecret = req.headers.get('x-internal-secret');
   if (internalSecret && providedSecret && providedSecret === internalSecret) {
     const headerEmail = (req.headers.get('x-user-email') || '').toLowerCase().trim();
-    const headerId = req.headers.get('x-user-id') || 'usr_internal';
+    const headerId = req.headers.get('x-user-id');
     const headerRole = req.headers.get('x-user-role');
 
-    const isSoleAdmin = await verifyIsSoleAdmin({ id: headerId, email: headerEmail });
-    if (headerRole === 'admin' && isSoleAdmin) {
-      return { userId: headerId, email: headerEmail, role: 'admin', isAuthenticated: true };
-    }
-    if (headerRole === 'support' && SUPPORT_EMAILS.has(headerEmail)) {
-      return { userId: headerId, email: headerEmail, role: 'support', isAuthenticated: true };
+    if (headerId && headerEmail) {
+      const isSoleAdmin = await verifyIsSoleAdmin({ id: headerId, email: headerEmail });
+      if (headerRole === 'admin' && isSoleAdmin) {
+        return { userId: headerId, email: headerEmail, role: 'admin', isAuthenticated: true };
+      }
+      if (headerRole === 'support' && pool) {
+        const uRes = await pool.query(
+          `SELECT role, "emailVerified" FROM public."user" WHERE id = $1 LIMIT 1`,
+          [headerId]
+        );
+        if (uRes.rows.length > 0 && uRes.rows[0].role === 'support' && uRes.rows[0].emailVerified) {
+          return { userId: headerId, email: headerEmail, role: 'support', isAuthenticated: true };
+        }
+      }
     }
   }
 

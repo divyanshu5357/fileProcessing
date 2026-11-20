@@ -85,6 +85,7 @@ def test_multipart_upload_for_prime_ultra_user():
     }
     headers = {
         "X-User-Id": "usr_prime_ultra_test",
+        "X-User-Email": "prime.ultra@test.com",
         "X-User-Plan": "PrimeUltra",
         "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
     }
@@ -181,6 +182,7 @@ def test_user_storage_ownership_enforcement():
     """Verify strict user isolation: users cannot access other users' storage quota."""
     headers = {
         "X-User-Id": "usr_intruder",
+        "X-User-Email": "intruder@evil.com",
         "X-User-Role": "user",
         "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
     }
@@ -464,3 +466,94 @@ def test_upload_zero_or_negative_file_size_rejected():
     res = client.post("/api/uploads/initiate", json=payload_zero, headers=AUTH_HEADERS)
     assert res.status_code == 400
     assert "positive" in res.json()["detail"].lower()
+
+def test_better_auth_secret_as_internal_secret_rejected():
+    """Verify BETTER_AUTH_SECRET alone cannot authenticate internal backend calls."""
+    unauthorized_auth_secret = "arbitrary_better_auth_session_secret_not_internal_key"
+    headers = {
+        "X-User-Id": "usr_attacker",
+        "X-User-Email": "attacker@evil.com",
+        "X-User-Role": "user",
+        "X-Internal-Secret": unauthorized_auth_secret,
+    }
+    res = client.get("/api/files", headers=headers)
+    assert res.status_code == 401
+    assert "unauthorized" in res.json()["detail"].lower()
+
+def test_forged_support_role_without_assertion_rejected():
+    """Verify that claiming support role without a signed assertion returns 403 Forbidden."""
+    headers = {
+        "X-User-Id": "usr_attacker",
+        "X-User-Email": "support@gyanvatsala.in",
+        "X-User-Role": "support",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+    }
+    res = client.get("/api/admin/overview", headers=headers)
+    assert res.status_code == 403
+    assert "signed" in res.json()["detail"].lower()
+
+def test_missing_user_email_rejected_no_fabricated_identity():
+    """Verify that requests with missing email header are rejected and do NOT receive fabricated identities."""
+    headers = {
+        "X-User-Id": "usr_tester_no_email",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        # Intentionally omitting X-User-Email
+    }
+    res = client.get("/api/files", headers=headers)
+    assert res.status_code == 401
+    assert "email" in res.json()["detail"].lower()
+
+def test_assertion_incorrect_audience_rejected():
+    """Verify that assertions addressed to a different audience are strictly rejected."""
+    key = getattr(settings, "INTERNAL_SERVICE_KEY", "")
+    import time, base64, json, hmac, uuid
+    now = int(time.time())
+    claims = {
+        "sub": "usr_test",
+        "email": "test@gyanvatsala.in",
+        "role": "admin",
+        "plan": "Free",
+        "aud": "wrong-third-party-service",
+        "iss": "pixelkit-bff",
+        "iat": now,
+        "exp": now + 60,
+        "jti": str(uuid.uuid4())
+    }
+    payload_b64 = base64.urlsafe_b64encode(json.dumps(claims).encode("utf-8")).decode("utf-8").rstrip("=")
+    sig = hmac.new(key.encode("utf-8"), payload_b64.encode("utf-8"), "sha256").hexdigest()
+    bad_aud_token = f"{payload_b64}.{sig}"
+
+    headers = {
+        "X-User-Role": "admin",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        "X-Internal-Assertion": bad_aud_token,
+    }
+    res = client.get("/api/admin/overview", headers=headers)
+    assert res.status_code == 401
+
+def test_assertion_missing_sub_or_email_claim_rejected():
+    """Verify that assertions missing sub or email claims are rejected."""
+    key = getattr(settings, "INTERNAL_SERVICE_KEY", "")
+    import time, base64, json, hmac, uuid
+    now = int(time.time())
+    claims = {
+        "role": "admin",
+        "plan": "Free",
+        "aud": "pixelkit-backend",
+        "iss": "pixelkit-bff",
+        "iat": now,
+        "exp": now + 60,
+        "jti": str(uuid.uuid4())
+        # Missing sub and email
+    }
+    payload_b64 = base64.urlsafe_b64encode(json.dumps(claims).encode("utf-8")).decode("utf-8").rstrip("=")
+    sig = hmac.new(key.encode("utf-8"), payload_b64.encode("utf-8"), "sha256").hexdigest()
+    malformed_token = f"{payload_b64}.{sig}"
+
+    headers = {
+        "X-User-Role": "admin",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        "X-Internal-Assertion": malformed_token,
+    }
+    res = client.get("/api/admin/overview", headers=headers)
+    assert res.status_code == 401

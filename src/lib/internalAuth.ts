@@ -12,12 +12,18 @@ export interface InternalIdentityClaims {
   jti: string; // Unique cryptographic nonce
 }
 
+/**
+ * Retrieves the dedicated INTERNAL_SERVICE_KEY for inter-service assertions.
+ * Strictly fails closed if the key is missing or shorter than 16 characters.
+ */
 const getInternalKey = (): string => {
-  return (
-    process.env.INTERNAL_SERVICE_KEY ||
-    process.env.BETTER_AUTH_SECRET ||
-    'gyanvatsala_super_secret_auth_key_must_be_at_least_32_characters_long'
-  );
+  const key = process.env.INTERNAL_SERVICE_KEY;
+  if (!key || key.trim().length < 16) {
+    throw new Error(
+      '[CRITICAL SECURITY] INTERNAL_SERVICE_KEY environment variable is missing or insecure. Inter-service calls cannot proceed.'
+    );
+  }
+  return key.trim();
 };
 
 /**
@@ -33,7 +39,11 @@ export function createInternalAssertion(user: {
 }): string {
   const secret = getInternalKey();
   const now = Math.floor(Date.now() / 1000);
-  const uid = user.id || user.userId || '';
+  const uid = (user.id || user.userId || '').trim();
+
+  if (!uid || !user.email) {
+    throw new Error('[SECURITY] Cannot generate internal assertion without valid user ID and email.');
+  }
 
   const claims: InternalIdentityClaims = {
     sub: uid,
@@ -57,29 +67,29 @@ export function createInternalAssertion(user: {
 }
 
 /**
- * Verifies an internal identity assertion on the Node.js side (for testing and validation).
+ * Verifies an internal identity assertion on the Node.js side (for testing and gateway validation).
  */
 export function verifyInternalAssertion(
   token: string
 ): InternalIdentityClaims | null {
   if (!token || !token.includes('.')) return null;
 
-  const [payloadB64, signature] = token.split('.');
-  const secret = getInternalKey();
-
-  const expectedSig = crypto
-    .createHmac('sha256', secret)
-    .update(payloadB64)
-    .digest('hex');
-
-  const sigBuf = Buffer.from(signature, 'hex');
-  const expBuf = Buffer.from(expectedSig, 'hex');
-
-  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
-    return null;
-  }
-
   try {
+    const [payloadB64, signature] = token.split('.');
+    const secret = getInternalKey();
+
+    const expectedSig = crypto
+      .createHmac('sha256', secret)
+      .update(payloadB64)
+      .digest('hex');
+
+    const sigBuf = Buffer.from(signature, 'hex');
+    const expBuf = Buffer.from(expectedSig, 'hex');
+
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return null;
+    }
+
     const claims = JSON.parse(
       Buffer.from(payloadB64, 'base64url').toString('utf8')
     ) as InternalIdentityClaims;

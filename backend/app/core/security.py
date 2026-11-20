@@ -1,6 +1,6 @@
 from fastapi import Header, Depends, HTTPException, status
 from pydantic import BaseModel
-from typing import Optional, Set, Dict, Any
+from typing import Optional, Dict, Any
 import logging
 import hmac
 import time
@@ -19,29 +19,39 @@ def clean_expired_jtis():
     for k in expired:
         del _seen_jtis[k]
 
+def mask_email(email: str) -> str:
+    """Sanitizes email address for secure logging without exposing PII."""
+    if not email or "@" not in email:
+        return "[anonymous]"
+    name, domain = email.split("@", 1)
+    masked_name = name[0] + "***" if len(name) > 1 else "*"
+    return f"{masked_name}@{domain}"
+
 def verify_internal_service_secret(secret_header: Optional[str]) -> bool:
     """
     Verifies in constant time that the request originates from our trusted Next.js server proxy.
-    Prevents timing side-channel attacks.
+    STRICT SECURITY: Only accepts dedicated INTERNAL_SERVICE_KEY.
+    BETTER_AUTH_SECRET is explicitly rejected as an internal service credential.
     """
     if not secret_header:
         return False
     expected_srv = getattr(settings, "INTERNAL_SERVICE_KEY", None)
-    expected_auth = getattr(settings, "BETTER_AUTH_SECRET", None)
+    if not expected_srv or len(expected_srv) < 16:
+        logger.error("[SECURITY] INTERNAL_SERVICE_KEY is unconfigured or insecure; failing closed.")
+        return False
 
-    valid_srv = bool(expected_srv and hmac.compare_digest(secret_header, expected_srv))
-    valid_auth = bool(expected_auth and hmac.compare_digest(secret_header, expected_auth))
-    return valid_srv or valid_auth
+    return hmac.compare_digest(secret_header, expected_srv)
 
 def verify_internal_assertion(token: Optional[str]) -> Optional[Dict[str, Any]]:
     """
     Verifies a cryptographically signed, short-lived (60s) internal identity assertion.
     Guarantees:
-    1. Signature integrity using HMAC-SHA256 with INTERNAL_SERVICE_KEY.
+    1. Signature integrity using HMAC-SHA256 with dedicated INTERNAL_SERVICE_KEY.
     2. Expiration enforcement (token valid for at most 60 seconds).
     3. Audience verification (must be 'pixelkit-backend').
     4. Issuer verification (must be 'pixelkit-bff').
     5. Nonce / Replay protection (each JTI can only be used once).
+    6. Claims validation (requires sub and email).
     """
     if not token or "." not in token:
         return None
@@ -51,8 +61,9 @@ def verify_internal_assertion(token: Optional[str]) -> Optional[Dict[str, Any]]:
         return None
 
     payload_b64, signature = parts
-    expected_key = getattr(settings, "INTERNAL_SERVICE_KEY", None) or getattr(settings, "BETTER_AUTH_SECRET", "")
-    if not expected_key:
+    expected_key = getattr(settings, "INTERNAL_SERVICE_KEY", None)
+    if not expected_key or len(expected_key) < 16:
+        logger.error("[SECURITY] INTERNAL_SERVICE_KEY not set for assertion verification; failing closed.")
         return None
 
     expected_sig = hmac.new(expected_key.encode("utf-8"), payload_b64.encode("utf-8"), "sha256").hexdigest()
@@ -68,6 +79,16 @@ def verify_internal_assertion(token: Optional[str]) -> Optional[Dict[str, Any]]:
         logger.warning(f"[SECURITY] Internal assertion decoding error: {e}")
         return None
 
+    # Required claims validation
+    sub = claims.get("sub")
+    email = claims.get("email")
+    if not sub or not isinstance(sub, str) or not sub.strip():
+        logger.warning("[SECURITY] Assertion rejected: missing or invalid 'sub' claim.")
+        return None
+    if not email or not isinstance(email, str) or "@" not in email:
+        logger.warning("[SECURITY] Assertion rejected: missing or invalid 'email' claim.")
+        return None
+
     now = time.time()
     exp = claims.get("exp", 0)
     if exp < now:
@@ -80,7 +101,9 @@ def verify_internal_assertion(token: Optional[str]) -> Optional[Dict[str, Any]]:
         return None
 
     if claims.get("aud") != "pixelkit-backend" or claims.get("iss") != "pixelkit-bff":
-        logger.warning(f"[SECURITY] Internal assertion aud/iss mismatch: aud={claims.get('aud')}, iss={claims.get('iss')}")
+        logger.warning(
+            f"[SECURITY] Internal assertion aud/iss mismatch: aud={claims.get('aud')}, iss={claims.get('iss')}"
+        )
         return None
 
     clean_expired_jtis()
@@ -103,7 +126,7 @@ def create_test_internal_assertion(
     tamper_secret: Optional[str] = None,
 ) -> str:
     """Helper to generate signed internal identity assertion tokens for testing."""
-    key = tamper_secret or getattr(settings, "INTERNAL_SERVICE_KEY", "") or getattr(settings, "BETTER_AUTH_SECRET", "")
+    key = tamper_secret or getattr(settings, "INTERNAL_SERVICE_KEY", "")
     now = int(time.time())
     import uuid
     claims = {
@@ -148,8 +171,9 @@ async def get_current_user(
        for elevated privileges (admin and support).
     2. Direct callers without internal secret or assertion are rejected with 401 Unauthorized.
     3. Knowing X-Internal-Secret alone cannot grant admin status; signed assertion with valid audience is required.
+    4. Missing email or user ID causes immediate rejection; no fabricated identities are permitted.
     """
-    # 1. Try to resolve via signed internal assertion
+    # 1. Resolve via signed internal identity assertion (Authoritative Path)
     if x_internal_assertion:
         claims = verify_internal_assertion(x_internal_assertion)
         if not claims:
@@ -159,14 +183,20 @@ async def get_current_user(
                 detail="Unauthorized: Invalid, expired, or replayed internal identity assertion."
             )
         
-        user_id = str(claims.get("sub", ""))
+        user_id = str(claims.get("sub", "")).strip()
         email = str(claims.get("email", "")).strip().lower()
         role = str(claims.get("role", "user"))
         plan = str(claims.get("plan", "Free"))
 
+        if not user_id or not email:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized: Missing user ID or email claims in internal assertion."
+            )
+
         return AuthenticatedUser(
             user_id=user_id,
-            name=email.split("@")[0].capitalize() if "@" in email else "User",
+            name=email.split("@")[0].capitalize(),
             email=email,
             plan=plan,
             role=role,
@@ -174,13 +204,13 @@ async def get_current_user(
             is_support=(role == "support"),
         )
 
-    # 2. Inter-service secret validation (fallback for internal microservices)
+    # 2. Inter-service secret validation (fallback for internal non-elevated proxy calls)
     is_trusted_service_call = verify_internal_service_secret(x_internal_secret)
 
     if not is_trusted_service_call:
         logger.warning(
-            f"[SECURITY] Direct unauthorized backend call rejected without internal credentials. "
-            f"Claimed user_id: {x_user_id}, Claimed email: {x_user_email}"
+            f"[SECURITY] Direct unauthorized backend call rejected without valid internal secret. "
+            f"Claimed user_id: {x_user_id}, Claimed email: {mask_email(x_user_email or '')}"
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -193,7 +223,13 @@ async def get_current_user(
             detail="Unauthorized: User identity header missing from trusted proxy."
         )
 
-    email = (x_user_email or "user@gyanvatsala.in").strip().lower()
+    if not x_user_email or not x_user_email.strip() or "@" not in x_user_email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: Valid user email header required from trusted proxy."
+        )
+
+    clean_email = x_user_email.strip().lower()
 
     # Elevated roles require signed cryptographic assertion; static header alone cannot elevate
     if x_user_role in ("admin", "support"):
@@ -207,8 +243,8 @@ async def get_current_user(
 
     return AuthenticatedUser(
         user_id=x_user_id.strip(),
-        name=email.split("@")[0].capitalize(),
-        email=email,
+        name=clean_email.split("@")[0].capitalize(),
+        email=clean_email,
         plan=x_user_plan or "Free",
         role="user",
         is_admin=False,
@@ -224,7 +260,7 @@ async def get_current_admin_user(
     Rejects normal users and support staff with 403 Forbidden.
     """
     if not current_user.is_admin:
-        logger.warning(f"Unauthorized admin attempt by {current_user.email} (role: {current_user.role})")
+        logger.warning(f"Unauthorized admin attempt by {mask_email(current_user.email)} (role: {current_user.role})")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Forbidden: Full administrative privileges required to access this resource."
@@ -240,7 +276,7 @@ async def get_current_support_or_admin_user(
     Rejects normal users with 403 Forbidden.
     """
     if not (current_user.is_admin or current_user.is_support):
-        logger.warning(f"Unauthorized support attempt by {current_user.email} (role: {current_user.role})")
+        logger.warning(f"Unauthorized support attempt by {mask_email(current_user.email)} (role: {current_user.role})")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Forbidden: Administrative or support privileges required."

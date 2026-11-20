@@ -3,7 +3,7 @@ import { auth, pool } from '@/lib/auth';
 import { createInternalAssertion } from '@/lib/internalAuth';
 
 const getInternalSecret = () =>
-  process.env.INTERNAL_SERVICE_KEY || process.env.BETTER_AUTH_SECRET || '';
+  process.env.INTERNAL_SERVICE_KEY || '';
 
 export async function POST(req: NextRequest) {
   try {
