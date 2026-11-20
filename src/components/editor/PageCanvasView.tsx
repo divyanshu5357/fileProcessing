@@ -16,12 +16,14 @@ import {
   SelectedObjectRef,
   PendingImagePlacement,
   EditableObjectType,
+  AlignmentGuide,
 } from '@/types/pdfEditor';
 import { SelectionBoundingBox, ResizeHandleType } from './SelectionBoundingBox';
 import { ContextualToolbar } from './ContextualToolbar';
 import { FloatingFormatBar } from './FloatingFormatBar';
 import { RotateCw, Trash2, ImagePlus } from 'lucide-react';
 import { getCssFontFamily } from '@/lib/pdfEditorEngine';
+import { calculateAlignmentAndSnap, BoundingBox } from '@/lib/alignmentGuides';
 
 interface PageCanvasViewProps {
   pageMeta: PageInfo;
@@ -139,6 +141,9 @@ export function PageCanvasView({
 
   // Cursor position preview for pending image placement
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+
+  // Active smart alignment guides (light orange dashed lines)
+  const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([]);
 
   // Computed page display dimensions in CSS pixels at current scale
   const is90or270 = pageMeta.rotation === 90 || pageMeta.rotation === 270;
@@ -475,7 +480,21 @@ export function PageCanvasView({
   let isAspectLocked = false;
 
   if (selectedObject && selectedObject.pageNumber === pageMeta.pageNumber) {
-    if (selectedObject.type === 'addedText') {
+    if (selectedObject.type === 'existingText') {
+      const item = textItems.find((t) => t.id === selectedObject.id);
+      if (item && !item.isDeleted) {
+        selectedElementData = item;
+        selectedScreenBounds = {
+          x: item.x * scale,
+          y: item.y * scale,
+          width: Math.max(item.width * scale, 30),
+          height: Math.max(item.height * scale, 16),
+        };
+        selectedRotation = 0;
+        selectedLocked = false;
+        isAspectLocked = false;
+      }
+    } else if (selectedObject.type === 'addedText') {
       const item = addedTexts.find((t) => t.id === selectedObject.id);
       if (item) {
         selectedElementData = item;
@@ -525,6 +544,105 @@ export function PageCanvasView({
       }
     }
   }
+
+  // Reference boxes for smart alignment guides (all other objects on page)
+  const getReferenceBoxes = useCallback(
+    (excludeId: string): BoundingBox[] => {
+      const boxes: BoundingBox[] = [];
+
+      // Other existing text items
+      for (const it of textItems) {
+        if (it.id === excludeId || it.isDeleted) continue;
+        boxes.push({
+          id: it.id,
+          x: it.x * scale,
+          y: it.y * scale,
+          width: it.width * scale,
+          height: it.height * scale,
+        });
+      }
+
+      // Added texts
+      for (const t of addedTexts) {
+        if (t.id === excludeId || t.pageNumber !== pageMeta.pageNumber || t.hidden) continue;
+        const b = pdfToScreen(t.pdfX, t.pdfY, t.pdfWidth, t.pdfHeight);
+        boxes.push({ id: t.id, x: b.x, y: b.y, width: b.width, height: b.height });
+      }
+
+      // Images
+      for (const img of images) {
+        if (img.id === excludeId || img.pageNumber !== pageMeta.pageNumber || img.hidden) continue;
+        const b = pdfToScreen(img.pdfX, img.pdfY, img.pdfWidth, img.pdfHeight);
+        boxes.push({ id: img.id, x: b.x, y: b.y, width: b.width, height: b.height });
+      }
+
+      // Shapes
+      for (const s of shapes) {
+        if (s.id === excludeId || s.pageNumber !== pageMeta.pageNumber || s.hidden) continue;
+        const b = pdfToScreen(s.pdfX, s.pdfY, s.pdfWidth, s.pdfHeight);
+        boxes.push({ id: s.id, x: b.x, y: b.y, width: b.width, height: b.height });
+      }
+
+      return boxes;
+    },
+    [textItems, addedTexts, images, shapes, pageMeta.pageNumber, scale, pdfToScreen]
+  );
+
+  // Handle bounding box move with smart alignment guides and magnetic snapping
+  const handleObjectMoveWithSnapping = (deltaScreenX: number, deltaScreenY: number) => {
+    if (!selectedObject || !selectedElementData || !selectedScreenBounds) return;
+
+    const targetScreenX = selectedScreenBounds.x + deltaScreenX;
+    const targetScreenY = selectedScreenBounds.y + deltaScreenY;
+
+    const draggedBox: BoundingBox = {
+      id: selectedObject.id,
+      x: targetScreenX,
+      y: targetScreenY,
+      width: selectedScreenBounds.width,
+      height: selectedScreenBounds.height,
+    };
+
+    const refBoxes = getReferenceBoxes(selectedObject.id);
+    const alignResult = calculateAlignmentAndSnap({
+      draggedBox,
+      referenceBoxes: refBoxes,
+      pageBounds: { width: pageW, height: pageH },
+      snapThreshold: 5,
+    });
+
+    setActiveGuides(alignResult.guides);
+
+    if (selectedObject.type === 'existingText') {
+      const deltaPdfX = deltaScreenX / scale;
+      const deltaPdfY = -deltaScreenY / scale;
+      onUpdateTextItem(selectedObject.id, {
+        x: alignResult.snappedX / scale,
+        y: alignResult.snappedY / scale,
+        pdfX: Math.max(0, Math.min(selectedElementData.pdfX + deltaPdfX, pageMeta.width - selectedElementData.pdfWidth)),
+        pdfY: Math.max(0, Math.min(selectedElementData.pdfY + deltaPdfY, pageMeta.height - selectedElementData.pdfHeight)),
+        isEdited: true,
+      });
+    } else {
+      const snappedPdf = screenToPdf(
+        alignResult.snappedX,
+        alignResult.snappedY,
+        selectedScreenBounds.width,
+        selectedScreenBounds.height
+      );
+
+      const clampedPdfX = Math.max(0, Math.min(snappedPdf.pdfX, pageMeta.width - (selectedElementData.pdfWidth || 50)));
+      const clampedPdfY = Math.max(0, Math.min(snappedPdf.pdfY, pageMeta.height - (selectedElementData.pdfHeight || 16)));
+      const updates = { pdfX: clampedPdfX, pdfY: clampedPdfY };
+
+      if (selectedObject.type === 'addedText') onUpdateAddedText(selectedObject.id, updates);
+      else if (selectedObject.type === 'image') onUpdateImage(selectedObject.id, updates);
+      else if (selectedObject.type === 'signature') onUpdateSignature(selectedObject.id, updates);
+      else if (selectedObject.type === 'shape') onUpdateShape(selectedObject.id, updates);
+      else if (selectedObject.type === 'whiteout') onUpdateWhiteout(selectedObject.id, updates);
+      else if (selectedObject.type === 'annotation') onUpdateAnnotation(selectedObject.id, updates);
+    }
+  };
 
   // Handle bounding box transformation
   const handleObjectMove = (deltaScreenX: number, deltaScreenY: number) => {
@@ -741,63 +859,6 @@ export function PageCanvasView({
                   />
                 )}
 
-                {/* Floating Format Bar matching Image 2 & 3 */}
-                {isEditing && (
-                  <FloatingFormatBar
-                    item={item}
-                    position={{ top: itemTop, left: itemLeft }}
-                    containerBounds={{ width: pageW, height: pageH }}
-                    onUpdateItem={(updates) =>
-                      onUpdateTextItem(item.id, { ...updates, isEdited: true })
-                    }
-                    onDeleteItem={() => {
-                      onUpdateTextItem(item.id, { isDeleted: true, isEdited: true });
-                      setActiveExistingTextId(null);
-                    }}
-                    onDuplicateItem={() => {
-                      const newId = `txt_dup_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-                      const dup: AddedTextElement = {
-                        id: newId,
-                        pageNumber: pageMeta.pageNumber,
-                        name: `${item.str.slice(0, 16)} Copy`,
-                        text: item.str,
-                        pdfX: Math.min(item.pdfX + 20, pageMeta.width - 100),
-                        pdfY: Math.max(20, item.pdfY - 20),
-                        pdfWidth: Math.max(80, item.pdfWidth || 100),
-                        pdfHeight: Math.max(16, item.pdfHeight || 16),
-                        fontSize: item.pdfFontSize || item.fontSize || 12,
-                        fontFamily: item.fontFamily || 'Helvetica',
-                        color: item.color || '#0F172A',
-                        isBold: !!item.isBold,
-                        isItalic: !!item.isItalic,
-                        isUnderline: !!item.isUnderline,
-                        rotation: 0,
-                        opacity: 1,
-                        zIndex: 25,
-                      };
-                      onAddText(dup);
-                      onSelectObject({
-                        id: newId,
-                        type: 'addedText',
-                        pageNumber: pageMeta.pageNumber,
-                      });
-                      setActiveExistingTextId(null);
-                    }}
-                    onMoveItem={(dx, dy) => {
-                      const deltaPdfX = dx / scale;
-                      const deltaPdfY = -dy / scale;
-                      onUpdateTextItem(item.id, {
-                        x: item.x + dx,
-                        y: item.y + dy,
-                        pdfX: item.pdfX + deltaPdfX,
-                        pdfY: item.pdfY + deltaPdfY,
-                        isEdited: true,
-                      });
-                    }}
-                    onClose={() => setActiveExistingTextId(null)}
-                  />
-                )}
-
                 <div
                   style={{
                     position: 'absolute',
@@ -813,7 +874,11 @@ export function PageCanvasView({
                     if (activeMode === 'editText' || activeMode === 'select') {
                       e.stopPropagation();
                       setActiveExistingTextId(item.id);
-                      onSelectObject(null);
+                      onSelectObject({
+                        id: item.id,
+                        type: 'existingText',
+                        pageNumber: pageMeta.pageNumber,
+                      });
                     }
                   }}
                   className={`pointer-events-auto transition-colors ${
@@ -910,50 +975,6 @@ export function PageCanvasView({
 
               return (
                 <React.Fragment key={t.id}>
-                  {isSelected && (
-                    <FloatingFormatBar
-                      item={{
-                        text: t.text,
-                        str: t.text,
-                        fontSize: t.fontSize,
-                        pdfFontSize: t.fontSize,
-                        fontFamily: t.fontFamily,
-                        isBold: t.isBold,
-                        isItalic: t.isItalic,
-                        isUnderline: t.isUnderline,
-                        color: t.color,
-                        height: bounds.height,
-                        width: bounds.width,
-                      }}
-                      position={{ top: bounds.y, left: bounds.x }}
-                      containerBounds={{ width: pageW, height: pageH }}
-                      onUpdateItem={(updates) => onUpdateAddedText(t.id, updates)}
-                      onDeleteItem={() => {
-                        onDeleteAddedText(t.id);
-                        onSelectObject(null);
-                      }}
-                      onDuplicateItem={() => {
-                        const newId = `addedText_${Date.now()}`;
-                        onAddText({
-                          ...t,
-                          id: newId,
-                          pdfX: Math.min(t.pdfX + 20, pageMeta.width - 100),
-                          pdfY: Math.max(20, t.pdfY - 20),
-                        });
-                        onSelectObject({ id: newId, type: 'addedText', pageNumber: pageMeta.pageNumber });
-                      }}
-                      onMoveItem={(dx, dy) => {
-                        const deltaPdfX = dx / scale;
-                        const deltaPdfY = -dy / scale;
-                        onUpdateAddedText(t.id, {
-                          pdfX: t.pdfX + deltaPdfX,
-                          pdfY: t.pdfY + deltaPdfY,
-                        });
-                      }}
-                      onClose={() => onSelectObject(null)}
-                    />
-                  )}
-
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1222,9 +1243,9 @@ export function PageCanvasView({
         </div>
 
         {/* ======================================================== */}
-        {/* LAYER 3: Selection Bounding Box & Contextual Toolbar     */}
+        {/* LAYER 3: Selection Bounding Box & Floating Format Bar    */}
         {/* ======================================================== */}
-        {selectedScreenBounds && (
+        {selectedScreenBounds && selectedObject?.type !== 'existingText' && (
           <SelectionBoundingBox
             x={selectedScreenBounds.x}
             y={selectedScreenBounds.y}
@@ -1233,13 +1254,83 @@ export function PageCanvasView({
             rotation={selectedRotation}
             locked={selectedLocked}
             lockAspectRatio={isAspectLocked}
-            onMove={handleObjectMove}
+            onMove={handleObjectMoveWithSnapping}
             onResize={handleObjectResize}
             onRotate={selectedObject?.type !== 'whiteout' ? handleObjectRotate : undefined}
+            onInteractionEnd={() => setActiveGuides([])}
           />
         )}
 
-        {selectedObject && selectedElementData && selectedScreenBounds && (
+        {/* Floating Format Bar for Text & Annotations (Matches user reference screenshots) */}
+        {selectedObject && (selectedObject.type === 'existingText' || selectedObject.type === 'addedText' || selectedObject.type === 'annotation') && selectedElementData && selectedScreenBounds && (
+          <FloatingFormatBar
+            item={
+              selectedObject.type === 'existingText'
+                ? selectedElementData
+                : selectedObject.type === 'addedText'
+                ? {
+                    str: selectedElementData.text,
+                    text: selectedElementData.text,
+                    fontSize: selectedElementData.fontSize,
+                    pdfFontSize: selectedElementData.fontSize,
+                    fontFamily: selectedElementData.fontFamily,
+                    isBold: selectedElementData.isBold,
+                    isItalic: selectedElementData.isItalic,
+                    isUnderline: selectedElementData.isUnderline,
+                    color: selectedElementData.color,
+                    linkUrl: selectedElementData.linkUrl,
+                  }
+                : {
+                    color: selectedElementData.color,
+                  }
+            }
+            position={{
+              top: selectedScreenBounds.y,
+              left: selectedScreenBounds.x,
+            }}
+            containerBounds={{ width: pageW, height: pageH }}
+            supportsLink={selectedObject.type !== 'annotation'}
+            onUpdateItem={(updates) => {
+              if (selectedObject.type === 'existingText') {
+                onUpdateTextItem(selectedObject.id, { ...updates, isEdited: true });
+              } else if (selectedObject.type === 'addedText') {
+                onUpdateAddedText(selectedObject.id, updates);
+              } else if (selectedObject.type === 'annotation') {
+                onUpdateAnnotation(selectedObject.id, updates);
+              }
+            }}
+            onDeleteItem={() => {
+              if (selectedObject.type === 'existingText') {
+                onUpdateTextItem(selectedObject.id, { isDeleted: true, isEdited: true });
+                setActiveExistingTextId(null);
+              } else if (selectedObject.type === 'addedText') {
+                onDeleteAddedText(selectedObject.id);
+              } else if (selectedObject.type === 'annotation') {
+                onDeleteAnnotation(selectedObject.id);
+              }
+              onSelectObject(null);
+            }}
+            onDuplicateItem={() => {
+              onDuplicateObject(selectedObject.type, selectedObject.id);
+            }}
+            onMoveStart={() => {
+              // drag start
+            }}
+            onMoveItem={(dx, dy) => {
+              handleObjectMoveWithSnapping(dx, dy);
+            }}
+            onMoveEnd={() => {
+              setActiveGuides([]);
+            }}
+            onClose={() => {
+              onSelectObject(null);
+              setActiveExistingTextId(null);
+            }}
+          />
+        )}
+
+        {/* Contextual Toolbar for Images, Shapes, Signatures, Whiteouts */}
+        {selectedObject && (selectedObject.type === 'image' || selectedObject.type === 'shape' || selectedObject.type === 'signature' || selectedObject.type === 'whiteout') && selectedElementData && selectedScreenBounds && (
           <ContextualToolbar
             objectType={selectedObject.type}
             objectData={selectedElementData}
@@ -1249,9 +1340,7 @@ export function PageCanvasView({
             }}
             containerBounds={{ width: pageW, height: pageH }}
             onUpdate={(updates) => {
-              if (selectedObject.type === 'addedText') {
-                onUpdateAddedText(selectedObject.id, updates);
-              } else if (selectedObject.type === 'image') {
+              if (selectedObject.type === 'image') {
                 onUpdateImage(selectedObject.id, updates);
               } else if (selectedObject.type === 'shape') {
                 onUpdateShape(selectedObject.id, updates);
@@ -1259,18 +1348,14 @@ export function PageCanvasView({
                 onUpdateSignature(selectedObject.id, updates);
               } else if (selectedObject.type === 'whiteout') {
                 onUpdateWhiteout(selectedObject.id, updates);
-              } else if (selectedObject.type === 'annotation') {
-                onUpdateAnnotation(selectedObject.id, updates);
               }
             }}
             onDuplicate={() => onDuplicateObject(selectedObject.type, selectedObject.id)}
             onDelete={() => {
-              if (selectedObject.type === 'addedText') onDeleteAddedText(selectedObject.id);
-              else if (selectedObject.type === 'image') onDeleteImage(selectedObject.id);
+              if (selectedObject.type === 'image') onDeleteImage(selectedObject.id);
               else if (selectedObject.type === 'shape') onDeleteShape(selectedObject.id);
               else if (selectedObject.type === 'signature') onDeleteSignature(selectedObject.id);
               else if (selectedObject.type === 'whiteout') onDeleteWhiteout(selectedObject.id);
-              else if (selectedObject.type === 'annotation') onDeleteAnnotation(selectedObject.id);
               onSelectObject(null);
             }}
             onBringForward={() => onReorderZIndex(selectedObject.type, selectedObject.id, 'up')}
@@ -1329,6 +1414,28 @@ export function PageCanvasView({
               Click anywhere to place
             </span>
           </div>
+        )}
+
+        {/* Smart Alignment Guides Overlay (Light Orange #F97316 dashed lines) */}
+        {activeGuides.length > 0 && (
+          <svg
+            className="absolute inset-0 pointer-events-none z-50 overflow-visible"
+            width={pageW}
+            height={pageH}
+          >
+            {activeGuides.map((g) => (
+              <line
+                key={g.id}
+                x1={g.type === 'vertical' ? g.position : g.start}
+                y1={g.type === 'vertical' ? g.start : g.position}
+                x2={g.type === 'vertical' ? g.position : g.end}
+                y2={g.type === 'vertical' ? g.end : g.position}
+                stroke="#F97316"
+                strokeWidth="1.5"
+                strokeDasharray="4 4"
+              />
+            ))}
+          </svg>
         )}
       </div>
     </div>

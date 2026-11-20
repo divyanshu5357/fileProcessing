@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 
 export interface FloatingFormatBarItem {
+  id?: string;
   str?: string;
   text?: string;
   fontSize?: number;
@@ -37,6 +38,7 @@ export interface FloatingFormatBarProps {
   item: FloatingFormatBarItem;
   position: { top: number; left: number };
   containerBounds?: { width: number; height: number };
+  supportsLink?: boolean;
   onUpdateItem: (updates: {
     isBold?: boolean;
     isItalic?: boolean;
@@ -51,6 +53,8 @@ export interface FloatingFormatBarProps {
   onDeleteItem: () => void;
   onDuplicateItem?: () => void;
   onMoveItem?: (dx: number, dy: number) => void;
+  onMoveStart?: () => void;
+  onMoveEnd?: () => void;
   onClose?: () => void;
 }
 
@@ -58,13 +62,17 @@ export function FloatingFormatBar({
   item,
   position,
   containerBounds = { width: 800, height: 1100 },
+  supportsLink = true,
   onUpdateItem,
   onDeleteItem,
   onDuplicateItem,
   onMoveItem,
+  onMoveStart,
+  onMoveEnd,
 }: FloatingFormatBarProps) {
   const [activeMenu, setActiveMenu] = useState<'none' | 'fontSize' | 'fontFamily' | 'color' | 'link' | 'move'>('none');
   const [linkInputUrl, setLinkInputUrl] = useState(item.linkUrl || '');
+  const [customSizeInput, setCustomSizeInput] = useState('');
   const [copiedFeedback, setCopiedFeedback] = useState(false);
   const [isDraggingMove, setIsDraggingMove] = useState(false);
   const dragStartRef = useRef<{ clientX: number; clientY: number } | null>(null);
@@ -89,15 +97,17 @@ export function FloatingFormatBar({
 
   const fontFamilies = [
     { label: 'Arial', value: 'Arial', fontStack: 'Arial, Helvetica, sans-serif' },
+    { label: 'Inter', value: 'Inter', fontStack: 'Inter, system-ui, -apple-system, sans-serif' },
+    { label: 'Roboto', value: 'Roboto', fontStack: 'Roboto, system-ui, sans-serif' },
     { label: 'Helvetica', value: 'Helvetica', fontStack: 'Helvetica, Arial, sans-serif' },
+    { label: 'Georgia', value: 'Georgia', fontStack: 'Georgia, serif' },
     { label: 'Times New Roman', value: 'Times-Roman', fontStack: '"Times New Roman", Times, serif' },
     { label: 'Courier New', value: 'Courier', fontStack: '"Courier New", Courier, monospace' },
-    { label: 'Georgia', value: 'Georgia', fontStack: 'Georgia, serif' },
     { label: 'Verdana', value: 'Verdana', fontStack: 'Verdana, Geneva, sans-serif' },
-    { label: 'Trebuchet MS', value: 'Trebuchet MS', fontStack: '"Trebuchet MS", sans-serif' },
   ];
 
-  const fontSizes = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36, 44];
+  // Specific font sizes required: 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48
+  const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
 
   const colors = [
     { label: 'Black', hex: '#000000' },
@@ -112,8 +122,14 @@ export function FloatingFormatBar({
     { label: 'White', hex: '#FFFFFF' },
   ];
 
+  // Current display helpers
+  const currentFontSize = Math.round(item.fontSize || item.pdfFontSize || 11);
+  const currentFontFamily = item.fontFamily || 'Helvetica';
+  const currentColor = item.color || '#0F172A';
+  const textContent = item.str ?? item.text ?? '';
+
   // Auto-clamp position so toolbar floats neatly above text without clipping outside page boundaries
-  const toolbarWidth = 370;
+  const toolbarWidth = 380;
   const toolbarHeight = 36;
   let top = position.top - toolbarHeight - 8;
   if (top < 8) {
@@ -121,13 +137,7 @@ export function FloatingFormatBar({
   }
   let left = Math.max(10, Math.min(position.left, containerBounds.width - toolbarWidth - 10));
 
-  // Current display helpers
-  const currentFontSize = Math.round(item.fontSize || item.pdfFontSize || 12);
-  const currentFontFamily = item.fontFamily || 'Helvetica';
-  const currentColor = item.color || '#0F172A';
-  const textContent = item.str ?? item.text ?? '';
-
-  // 1. Move Drag Pointer Handlers
+  // 1. Move Drag Pointer Handlers (Smooth drag with Smart Alignment Guides)
   const handleMovePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     hasDraggedRef.current = false;
@@ -136,6 +146,7 @@ export function FloatingFormatBar({
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {}
     setIsDraggingMove(true);
+    onMoveStart?.();
   };
 
   const handleMovePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -143,7 +154,7 @@ export function FloatingFormatBar({
     const dx = e.clientX - dragStartRef.current.clientX;
     const dy = e.clientY - dragStartRef.current.clientY;
 
-    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
       hasDraggedRef.current = true;
       onMoveItem(dx, dy);
       dragStartRef.current = { clientX: e.clientX, clientY: e.clientY };
@@ -156,6 +167,7 @@ export function FloatingFormatBar({
     } catch {}
     setIsDraggingMove(false);
     dragStartRef.current = null;
+    onMoveEnd?.();
   };
 
   // 2. Copy Handler
@@ -173,6 +185,16 @@ export function FloatingFormatBar({
     }
   };
 
+  // Custom size validator
+  const handleApplyCustomSize = () => {
+    const parsed = parseInt(customSizeInput, 10);
+    if (!isNaN(parsed) && parsed >= 6 && parsed <= 96) {
+      onUpdateItem({ fontSize: parsed, pdfFontSize: parsed, isEdited: true });
+      setCustomSizeInput('');
+      setActiveMenu('none');
+    }
+  };
+
   return (
     <div
       ref={barRef}
@@ -184,12 +206,12 @@ export function FloatingFormatBar({
       }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
-      className="flex items-center h-9 bg-white dark:bg-slate-900 border border-blue-400 dark:border-blue-500 rounded-lg shadow-xl divide-x divide-blue-200 dark:divide-slate-700 text-blue-600 select-none animate-in fade-in zoom-in-95 duration-100"
+      className="pointer-events-auto flex items-center h-9 bg-white dark:bg-slate-900 border border-blue-400 dark:border-blue-500 rounded-lg shadow-xl divide-x divide-blue-200 dark:divide-slate-700 text-blue-600 select-none animate-in fade-in zoom-in-95 duration-100"
     >
       {/* 1. Bold Button (B) */}
       <button
         type="button"
-        title={item.isBold ? 'Remove Bold' : 'Make Bold (B)'}
+        title={item.isBold ? 'Remove Bold (Cmd/Ctrl + B)' : 'Make Bold (Cmd/Ctrl + B)'}
         onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => {
           e.stopPropagation();
@@ -207,7 +229,7 @@ export function FloatingFormatBar({
       {/* 2. Italic Button (I) */}
       <button
         type="button"
-        title={item.isItalic ? 'Remove Italic' : 'Make Italic (I)'}
+        title={item.isItalic ? 'Remove Italic (Cmd/Ctrl + I)' : 'Make Italic (Cmd/Ctrl + I)'}
         onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => {
           e.stopPropagation();
@@ -222,11 +244,11 @@ export function FloatingFormatBar({
         I
       </button>
 
-      {/* 3. Font Size Button (T↕ ▼) */}
+      {/* 3. Text Size Dropdown (T↕ 11 ˅) - Exactly matching screenshot */}
       <div className="relative h-full">
         <button
           type="button"
-          title="Change Font Size (T↕)"
+          title="Change Font Size"
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
             e.stopPropagation();
@@ -247,7 +269,7 @@ export function FloatingFormatBar({
         </button>
 
         {activeMenu === 'fontSize' && (
-          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-2.5 min-w-[190px] text-xs">
+          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-2.5 min-w-[200px] text-xs">
             {/* Quick Step Buttons */}
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
               <span className="text-[11px] text-slate-500 font-medium">Font Size: {currentFontSize}pt</span>
@@ -271,7 +293,7 @@ export function FloatingFormatBar({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={(e) => {
                     e.stopPropagation();
-                    const newSz = Math.min(72, currentFontSize + 1);
+                    const newSz = Math.min(96, currentFontSize + 1);
                     onUpdateItem({ fontSize: newSz, pdfFontSize: newSz, isEdited: true });
                   }}
                   className="p-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-blue-100 text-slate-700 dark:text-slate-200 cursor-pointer"
@@ -281,7 +303,7 @@ export function FloatingFormatBar({
               </div>
             </div>
 
-            {/* Size Grid */}
+            {/* Size Grid (8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48) */}
             <div className="grid grid-cols-5 gap-1 max-h-40 overflow-y-auto mb-2">
               {fontSizes.map((sz) => (
                 <button
@@ -304,23 +326,37 @@ export function FloatingFormatBar({
               ))}
             </div>
 
-            {/* Switch to Typeface button */}
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveMenu('fontFamily');
-              }}
-              className="w-full text-center py-1 text-[11px] text-blue-600 hover:underline border-t border-slate-100 dark:border-slate-800 pt-1.5 cursor-pointer font-medium"
-            >
-              Change Typeface / Font Family (Aa) &rarr;
-            </button>
+            {/* Custom Size Input */}
+            <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <span className="text-[10px] text-slate-400 font-medium">Custom:</span>
+              <input
+                type="number"
+                min={6}
+                max={96}
+                placeholder={currentFontSize.toString()}
+                value={customSizeInput}
+                onChange={(e) => setCustomSizeInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleApplyCustomSize();
+                  }
+                }}
+                className="w-14 px-1.5 py-0.5 text-[11px] border border-slate-300 dark:border-slate-700 rounded bg-transparent text-slate-800 dark:text-slate-100 outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+              />
+              <button
+                type="button"
+                onClick={handleApplyCustomSize}
+                className="px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer"
+              >
+                Set
+              </button>
+            </div>
           </div>
         )}
       </div>
 
-      {/* 4. Font Family Button (Aa ▼) */}
+      {/* 4. Font Family Dropdown (Aa ▼) */}
       <div className="relative h-full">
         <button
           type="button"
@@ -341,7 +377,7 @@ export function FloatingFormatBar({
         </button>
 
         {activeMenu === 'fontFamily' && (
-          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-1.5 min-w-[200px] text-xs">
+          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-1.5 min-w-[210px] text-xs">
             <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold px-2 py-1 border-b border-slate-100 dark:border-slate-800 mb-1">
               Select Typeface
             </div>
@@ -375,11 +411,11 @@ export function FloatingFormatBar({
         )}
       </div>
 
-      {/* 5. Color Palette Button (🎨 ▼) */}
+      {/* 5. Color Palette Dropdown (🎨 ▼) */}
       <div className="relative h-full">
         <button
           type="button"
-          title="Change Text Color"
+          title="Change Color"
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
             e.stopPropagation();
@@ -404,7 +440,7 @@ export function FloatingFormatBar({
         {activeMenu === 'color' && (
           <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-2.5 min-w-[190px]">
             <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2">
-              Text Color
+              Color Palette
             </div>
             {/* Color Swatch Grid */}
             <div className="grid grid-cols-5 gap-2 mb-3">
@@ -456,14 +492,19 @@ export function FloatingFormatBar({
       <div className="relative h-full">
         <button
           type="button"
-          title="Add or Edit Hyperlink / Underline"
+          disabled={!supportsLink}
+          title={supportsLink ? 'Add or Edit Hyperlink / Underline' : 'Hyperlinks not supported for this object'}
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
             e.stopPropagation();
-            setActiveMenu(activeMenu === 'link' ? 'none' : 'link');
+            if (supportsLink) {
+              setActiveMenu(activeMenu === 'link' ? 'none' : 'link');
+            }
           }}
           className={`px-2.5 h-full flex items-center justify-center transition-colors cursor-pointer ${
-            item.linkUrl || item.isUnderline || activeMenu === 'link'
+            !supportsLink
+              ? 'opacity-40 cursor-not-allowed text-slate-400'
+              : item.linkUrl || item.isUnderline || activeMenu === 'link'
               ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/70'
               : 'hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600'
           }`}
@@ -471,7 +512,7 @@ export function FloatingFormatBar({
           <Link2 className="w-3.5 h-3.5" />
         </button>
 
-        {activeMenu === 'link' && (
+        {supportsLink && activeMenu === 'link' && (
           <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-2.5 min-w-[250px] flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">Hyperlink URL</span>
@@ -561,11 +602,11 @@ export function FloatingFormatBar({
         )}
       </div>
 
-      {/* 7. Move Handle & Position Controls (✥) */}
+      {/* 7. Move Handle & Smart Guides (✥) */}
       <div className="relative h-full">
         <button
           type="button"
-          title="Drag to Move Text Anywhere (or click for nudge buttons)"
+          title="Drag to Move with Smart Guides (or click for nudge buttons)"
           onPointerDown={handleMovePointerDown}
           onPointerMove={handleMovePointerMove}
           onPointerUp={handleMovePointerUp}
@@ -647,10 +688,10 @@ export function FloatingFormatBar({
         )}
       </div>
 
-      {/* 8. Copy Button (❐) */}
+      {/* 8. Duplicate Button (⧉) */}
       <button
         type="button"
-        title="Duplicate Text & Copy to Clipboard"
+        title="Duplicate Object (Cmd/Ctrl + D)"
         onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => {
           e.stopPropagation();
@@ -672,7 +713,7 @@ export function FloatingFormatBar({
       {/* 9. Delete Button (🗑) */}
       <button
         type="button"
-        title="Delete Text from Document"
+        title="Delete Object (Delete / Backspace)"
         onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => {
           e.stopPropagation();

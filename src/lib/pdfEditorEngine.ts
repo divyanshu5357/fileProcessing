@@ -16,6 +16,12 @@ import {
 export function getCssFontFamily(fontFamily?: string): string {
   if (!fontFamily) return 'Arial, Helvetica, sans-serif';
   const fam = fontFamily.toLowerCase();
+  if (fam.includes('inter')) {
+    return 'Inter, system-ui, -apple-system, sans-serif';
+  }
+  if (fam.includes('roboto')) {
+    return 'Roboto, system-ui, -apple-system, sans-serif';
+  }
   if (fam.includes('times') || fam.includes('roman') || fam.includes('serif')) {
     return '"Times New Roman", Times, Georgia, serif';
   }
@@ -34,7 +40,10 @@ export function getCssFontFamily(fontFamily?: string): string {
   if (fam.includes('helvetica')) {
     return 'Helvetica, Arial, sans-serif';
   }
-  return 'Arial, Helvetica, sans-serif';
+  if (fam.includes('arial')) {
+    return 'Arial, Helvetica, sans-serif';
+  }
+  return `${fontFamily}, Arial, Helvetica, sans-serif`;
 }
 
 // Helper: Map font name to StandardFonts enum in pdf-lib
@@ -190,49 +199,84 @@ export async function extractPdfDocumentModel(pdfArrayBuffer: ArrayBuffer | Uint
       });
     }
 
-    // 2. Sort chunks: Top to bottom (ty descending), then left to right (tx ascending)
-    processedChunks.sort((a, b) => {
-      const yDiff = b.ty - a.ty;
-      if (Math.abs(yDiff) > Math.min(a.fontHeight, b.fontHeight) * 0.45) {
-        return yDiff;
-      }
-      return a.tx - b.tx;
-    });
+    // 2. Deterministic baseline clustering
+    // Sort all chunks top-to-bottom by ty descending
+    processedChunks.sort((a, b) => b.ty - a.ty);
 
-    // 3. Intelligent Line Merging: Group contiguous items on the same baseline into unified lines
-    const mergedLines: RawTextChunk[] = [];
+    interface LineCluster {
+      baseline: number; // ty
+      fontHeight: number;
+      chunks: RawTextChunk[];
+    }
+
+    const clusters: LineCluster[] = [];
+
     for (const chunk of processedChunks) {
-      if (mergedLines.length === 0) {
-        mergedLines.push({ ...chunk });
-        continue;
+      // Find matching cluster whose baseline is within tolerance
+      let matchedCluster: LineCluster | null = null;
+      for (const cl of clusters) {
+        const tol = Math.max(3.0, Math.min(cl.fontHeight, chunk.fontHeight) * 0.55);
+        if (Math.abs(cl.baseline - chunk.ty) <= tol) {
+          matchedCluster = cl;
+          break;
+        }
       }
 
-      const prev = mergedLines[mergedLines.length - 1];
-      // On the same horizontal line: baseline diff should be within tolerance
-      const lineTolerance = Math.max(3.5, Math.min(prev.fontHeight, chunk.fontHeight) * 0.55);
-      const sameLine = Math.abs(prev.ty - chunk.ty) <= lineTolerance;
-      const prevRight = prev.tx + prev.width;
-      const gap = chunk.tx - prevRight;
-
-      // Allow natural word gap, justified line spaces, or kerning overlap (from -12px kerning up to 70px gap)
-      const isContiguous = gap >= -12 && gap <= Math.max(70, prev.fontHeight * 6);
-
-      if (sameLine && isContiguous) {
-        const needsSpace =
-          !prev.str.endsWith(' ') &&
-          !chunk.str.startsWith(' ') &&
-          !prev.str.endsWith('-') &&
-          gap > prev.fontHeight * 0.12;
-
-        prev.str = prev.str + (needsSpace ? ' ' : '') + chunk.str;
-        prev.width = Math.max(prev.width, chunk.tx + chunk.width - prev.tx);
-        // Retain dominant font family & weight
-        if (chunk.isBold && !prev.isBold && chunk.str.length > prev.str.length) {
-          prev.isBold = true;
-          prev.fontFamily = chunk.fontFamily;
-        }
+      if (matchedCluster) {
+        matchedCluster.chunks.push(chunk);
+        matchedCluster.fontHeight = Math.max(matchedCluster.fontHeight, chunk.fontHeight);
       } else {
-        mergedLines.push({ ...chunk });
+        clusters.push({
+          baseline: chunk.ty,
+          fontHeight: chunk.fontHeight,
+          chunks: [chunk],
+        });
+      }
+    }
+
+    // Sort clusters top-to-bottom (baseline descending)
+    clusters.sort((a, b) => b.baseline - a.baseline);
+
+    // 3. For each cluster, sort chunks strictly left-to-right (tx ascending) and merge contiguous chunks
+    const mergedLines: RawTextChunk[] = [];
+    for (const cluster of clusters) {
+      cluster.chunks.sort((a, b) => a.tx - b.tx);
+
+      let currentMerged: RawTextChunk | null = null;
+      for (const chunk of cluster.chunks) {
+        if (!currentMerged) {
+          currentMerged = { ...chunk };
+          continue;
+        }
+
+        const prevRight = currentMerged.tx + currentMerged.width;
+        const gap = chunk.tx - prevRight;
+
+        // Same line contiguous check:
+        // Gap can be from -10 (kerning overlap) up to 70px (normal tab/word space or justified line)
+        const isContiguous = gap >= -10 && gap <= Math.max(65, currentMerged.fontHeight * 5.5);
+
+        if (isContiguous) {
+          const needsSpace =
+            !currentMerged.str.endsWith(' ') &&
+            !chunk.str.startsWith(' ') &&
+            !currentMerged.str.endsWith('-') &&
+            gap > currentMerged.fontHeight * 0.12;
+
+          currentMerged.str = currentMerged.str + (needsSpace ? ' ' : '') + chunk.str;
+          currentMerged.width = Math.max(currentMerged.width, chunk.tx + chunk.width - currentMerged.tx);
+          if (chunk.isBold && !currentMerged.isBold && chunk.str.length > currentMerged.str.length) {
+            currentMerged.isBold = true;
+            currentMerged.fontFamily = chunk.fontFamily;
+          }
+        } else {
+          mergedLines.push(currentMerged);
+          currentMerged = { ...chunk };
+        }
+      }
+
+      if (currentMerged) {
+        mergedLines.push(currentMerged);
       }
     }
 

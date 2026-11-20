@@ -155,7 +155,38 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
   const handleDuplicateObject = useCallback(
     (type: EditableObjectType, id: string) => {
       const newId = `${type}_${Date.now()}`;
-      if (type === 'addedText') {
+      if (type === 'existingText') {
+        for (const pNum in textItemsByPage) {
+          const item = textItemsByPage[pNum].find((it) => it.id === id);
+          if (item) {
+            const pageNumber = parseInt(pNum, 10);
+            const cloneId = `addedText_${Date.now()}`;
+            const clone: AddedTextElement = {
+              id: cloneId,
+              pageNumber,
+              name: `${item.str.slice(0, 16)} Copy`,
+              text: item.str,
+              pdfX: item.pdfX + 20,
+              pdfY: Math.max(10, item.pdfY - 20),
+              pdfWidth: Math.max(80, item.pdfWidth || 100),
+              pdfHeight: Math.max(16, item.pdfHeight || 16),
+              fontSize: item.pdfFontSize || item.fontSize || 12,
+              fontFamily: item.fontFamily || 'Helvetica',
+              color: item.color || '#0F172A',
+              isBold: !!item.isBold,
+              isItalic: !!item.isItalic,
+              isUnderline: !!item.isUnderline,
+              rotation: 0,
+              opacity: 1,
+              zIndex: 25,
+            };
+            setAddedTexts((prev) => [...prev, clone]);
+            setSelectedObject({ id: cloneId, type: 'addedText', pageNumber });
+            saveSnapshot();
+            return;
+          }
+        }
+      } else if (type === 'addedText') {
         const item = addedTexts.find((t) => t.id === id);
         if (item) {
           const clone: AddedTextElement = {
@@ -294,7 +325,15 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
   // 3. OBJECT DELETION
   const handleDeleteObject = useCallback(
     (type: EditableObjectType, id: string) => {
-      if (type === 'addedText') {
+      if (type === 'existingText') {
+        setTextItemsByPage((prev) => {
+          const copy = { ...prev };
+          for (const pNum in copy) {
+            copy[pNum] = copy[pNum].map((it) => (it.id === id ? { ...it, isDeleted: true, isEdited: true } : it));
+          }
+          return copy;
+        });
+      } else if (type === 'addedText') {
         setAddedTexts((prev) => prev.filter((t) => t.id !== id));
       } else if (type === 'image') {
         setImages((prev) => prev.filter((i) => i.id !== id));
@@ -318,7 +357,15 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
   // 4. OBJECT UPDATE (from Layers Panel or Toolbar)
   const handleUpdateObject = useCallback(
     (type: EditableObjectType, id: string, updates: any) => {
-      if (type === 'addedText') {
+      if (type === 'existingText') {
+        setTextItemsByPage((prev) => {
+          const copy = { ...prev };
+          for (const pNum in copy) {
+            copy[pNum] = copy[pNum].map((it) => (it.id === id ? { ...it, ...updates } : it));
+          }
+          return copy;
+        });
+      } else if (type === 'addedText') {
         setAddedTexts((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
       } else if (type === 'image') {
         setImages((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates } : i)));
@@ -369,7 +416,41 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
         return;
       }
 
-      // If typing inside an input/textarea, do not intercept editing keys
+      // Cmd/Ctrl + B: Toggle Bold on selected object
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'b' || e.key === 'B') && selectedObject) {
+        e.preventDefault();
+        if (selectedObject.type === 'existingText') {
+          const item = (textItemsByPage[selectedObject.pageNumber] || []).find((it) => it.id === selectedObject.id);
+          if (item) {
+            handleUpdateTextItem(item.id, { isBold: !item.isBold, isEdited: true });
+          }
+        } else if (selectedObject.type === 'addedText') {
+          const item = addedTexts.find((t) => t.id === selectedObject.id);
+          if (item) {
+            handleUpdateObject('addedText', item.id, { isBold: !item.isBold });
+          }
+        }
+        return;
+      }
+
+      // Cmd/Ctrl + I: Toggle Italic on selected object
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'i' || e.key === 'I') && selectedObject) {
+        e.preventDefault();
+        if (selectedObject.type === 'existingText') {
+          const item = (textItemsByPage[selectedObject.pageNumber] || []).find((it) => it.id === selectedObject.id);
+          if (item) {
+            handleUpdateTextItem(item.id, { isItalic: !item.isItalic, isEdited: true });
+          }
+        } else if (selectedObject.type === 'addedText') {
+          const item = addedTexts.find((t) => t.id === selectedObject.id);
+          if (item) {
+            handleUpdateObject('addedText', item.id, { isItalic: !item.isItalic });
+          }
+        }
+        return;
+      }
+
+      // If typing inside an unrelated input/textarea, do not intercept editing keys
       if (isInput) return;
 
       // Delete / Backspace: Delete selected object

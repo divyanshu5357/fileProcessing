@@ -250,3 +250,12 @@ export interface PageInfo {
   rotation: number; // 0, 90, 180, 270
   isDeleted?: boolean;
 }
+
+export interface AlignmentGuide {
+  id: string;
+  type: 'vertical' | 'horizontal';
+  position: number; // Screen coordinate (X for vertical line, Y for horizontal line)
+  start: number;    // Start along perpendicular axis
+  end: number;      // End along perpendicular axis
+  label?: string;
+}
