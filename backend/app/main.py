@@ -1,3 +1,16 @@
+import sys
+import os
+from pathlib import Path
+
+# Ensure both repository root and backend directory are in sys.path
+# Allows running 'uvicorn app.main:app' from backend/ or 'uvicorn backend.app.main:app' from repo root
+_current_file = Path(__file__).resolve()
+_backend_dir = _current_file.parent.parent
+_repo_root = _backend_dir.parent
+for _p in [str(_repo_root), str(_backend_dir)]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 import time
 import uuid
 from fastapi import FastAPI, Request, status
@@ -42,6 +55,12 @@ origins = [
     "https://www.gyanvatsala.in",
     "https://gyanvatsala.in",
 ]
+
+if settings.CORS_ORIGINS:
+    for origin in settings.CORS_ORIGINS.split(","):
+        cleaned = origin.strip().rstrip("/")
+        if cleaned and cleaned not in origins:
+            origins.append(cleaned)
 
 app.add_middleware(
     CORSMiddleware,

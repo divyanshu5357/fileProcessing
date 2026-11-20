@@ -1,3 +1,14 @@
+import sys
+from pathlib import Path
+
+# Ensure repository root is on sys.path
+_current = Path(__file__).resolve()
+_backend_dir = _current.parents[2]
+_repo_root = _backend_dir.parent
+for _p in [str(_repo_root), str(_backend_dir)]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 import logging
 from backend.app.core.config import settings
 

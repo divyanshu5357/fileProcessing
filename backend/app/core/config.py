@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api"
     ENVIRONMENT: str = os.getenv("NODE_ENV", "development")
+    CORS_ORIGINS: str = Field(default="", description="Comma-separated additional allowed CORS origins")
 
     # Neon Serverless PostgreSQL
     DATABASE_URL: str = Field(
