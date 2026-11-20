@@ -717,10 +717,10 @@ export function PageCanvasView({
             const itemFontSize = (item.fontSize || item.pdfFontSize || 12) * scale;
             const cssFontFamily = getCssFontFamily(item.fontFamily);
 
-            // Compute dynamic box width and height so styled text never clips or overflows
-            const estCharWidth = itemFontSize * (item.isBold ? 0.68 : 0.58);
-            const dynamicWidth = Math.max(itemWidth + 30, (item.str.length + 3) * estCharWidth);
-            const dynamicHeight = Math.max(itemHeight, itemFontSize * 1.35);
+            // Compute dynamic box width so styled text never clips or overflows
+            const estCharWidth = itemFontSize * (item.isBold ? 0.65 : 0.55);
+            const dynamicWidth = Math.max(itemWidth + 10, (item.str.length + 2) * estCharWidth);
+            const boxHeight = Math.ceil(itemFontSize * 1.25);
 
             return (
               <React.Fragment key={item.id}>
@@ -732,8 +732,8 @@ export function PageCanvasView({
                       position: 'absolute',
                       left: Math.max(0, (item.originalX ?? item.x) * scale - 2),
                       top: Math.max(0, (item.originalY ?? item.y) * scale - 2),
-                      width: itemWidth + 4,
-                      height: itemHeight + 4,
+                      width: Math.max(itemWidth + 4, dynamicWidth + 6),
+                      height: Math.max(itemHeight + 4, boxHeight + 4),
                       backgroundColor: '#FFFFFF',
                       zIndex: 11,
                       pointerEvents: 'none',
@@ -741,7 +741,7 @@ export function PageCanvasView({
                   />
                 )}
 
-                {/* Floating Format Bar matching Image 2 */}
+                {/* Floating Format Bar matching Image 2 & 3 */}
                 {isEditing && (
                   <FloatingFormatBar
                     item={item}
@@ -761,10 +761,10 @@ export function PageCanvasView({
                         pageNumber: pageMeta.pageNumber,
                         name: `${item.str.slice(0, 16)} Copy`,
                         text: item.str,
-                        pdfX: Math.min(item.pdfX + 15, pageMeta.width - (item.pdfWidth || 80)),
-                        pdfY: Math.max(10, item.pdfY - (item.pdfHeight || 14) - 6),
+                        pdfX: Math.min(item.pdfX + 20, pageMeta.width - 100),
+                        pdfY: Math.max(20, item.pdfY - 20),
                         pdfWidth: Math.max(80, item.pdfWidth || 100),
-                        pdfHeight: Math.max(14, item.pdfHeight || 16),
+                        pdfHeight: Math.max(16, item.pdfHeight || 16),
                         fontSize: item.pdfFontSize || item.fontSize || 12,
                         fontFamily: item.fontFamily || 'Helvetica',
                         color: item.color || '#0F172A',
@@ -805,8 +805,9 @@ export function PageCanvasView({
                     top: itemTop,
                     zIndex: isEditing ? 35 : 12,
                     minWidth: Math.max(30, dynamicWidth),
-                    height: dynamicHeight,
-                    lineHeight: `${dynamicHeight}px`,
+                    height: boxHeight,
+                    display: 'flex',
+                    alignItems: 'baseline',
                   }}
                   onClick={(e) => {
                     if (activeMode === 'editText' || activeMode === 'select') {
@@ -848,19 +849,19 @@ export function PageCanvasView({
                       style={{
                         fontFamily: cssFontFamily,
                         fontSize: `${itemFontSize}px`,
-                        lineHeight: `${dynamicHeight}px`,
+                        lineHeight: 1,
+                        height: `${boxHeight}px`,
                         fontWeight: item.isBold ? 700 : 400,
                         fontStyle: item.isItalic ? 'italic' : 'normal',
                         textDecoration: item.isUnderline ? 'underline' : 'none',
                         color: item.color || '#0F172A',
-                        width: `${Math.max(itemWidth + 24, dynamicWidth)}px`,
-                        height: `${dynamicHeight}px`,
-                        padding: '0 2px',
+                        width: `${Math.max(itemWidth + 10, dynamicWidth)}px`,
+                        padding: '0 1px',
                         margin: 0,
                         border: 'none',
                         outline: 'none',
                         background: 'transparent',
-                        verticalAlign: 'middle',
+                        verticalAlign: 'baseline',
                         boxSizing: 'border-box',
                       }}
                       onChange={(e) => {
@@ -881,7 +882,8 @@ export function PageCanvasView({
                       style={{
                         fontFamily: cssFontFamily,
                         fontSize: `${itemFontSize}px`,
-                        lineHeight: `${dynamicHeight}px`,
+                        lineHeight: 1,
+                        height: `${boxHeight}px`,
                         fontWeight: item.isBold ? 700 : 400,
                         fontStyle: item.isItalic ? 'italic' : 'normal',
                         textDecoration: item.isUnderline ? 'underline' : 'none',
@@ -907,37 +909,81 @@ export function PageCanvasView({
               const isInlineEditing = editingAddedTextId === t.id;
 
               return (
-                <div
-                  key={t.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelectObject({
-                      id: t.id,
-                      type: 'addedText',
-                      pageNumber: pageMeta.pageNumber,
-                    });
-                  }}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation();
-                    setEditingAddedTextId(t.id);
-                  }}
-                  style={{
-                    position: 'absolute',
-                    left: bounds.x,
-                    top: bounds.y,
-                    width: bounds.width,
-                    minHeight: bounds.height,
-                    zIndex: t.zIndex || 25,
-                    transform: t.rotation ? `rotate(${t.rotation}deg)` : undefined,
-                    transformOrigin: 'center center',
-                    opacity: t.opacity ?? 1,
-                  }}
-                  className={`pointer-events-auto group p-1 transition-all rounded-xs ${
-                    isSelected
-                      ? 'border border-blue-400 bg-blue-50/20'
-                      : 'hover:border hover:border-dashed hover:border-slate-300'
-                  }`}
-                >
+                <React.Fragment key={t.id}>
+                  {isSelected && (
+                    <FloatingFormatBar
+                      item={{
+                        text: t.text,
+                        str: t.text,
+                        fontSize: t.fontSize,
+                        pdfFontSize: t.fontSize,
+                        fontFamily: t.fontFamily,
+                        isBold: t.isBold,
+                        isItalic: t.isItalic,
+                        isUnderline: t.isUnderline,
+                        color: t.color,
+                        height: bounds.height,
+                        width: bounds.width,
+                      }}
+                      position={{ top: bounds.y, left: bounds.x }}
+                      containerBounds={{ width: pageW, height: pageH }}
+                      onUpdateItem={(updates) => onUpdateAddedText(t.id, updates)}
+                      onDeleteItem={() => {
+                        onDeleteAddedText(t.id);
+                        onSelectObject(null);
+                      }}
+                      onDuplicateItem={() => {
+                        const newId = `addedText_${Date.now()}`;
+                        onAddText({
+                          ...t,
+                          id: newId,
+                          pdfX: Math.min(t.pdfX + 20, pageMeta.width - 100),
+                          pdfY: Math.max(20, t.pdfY - 20),
+                        });
+                        onSelectObject({ id: newId, type: 'addedText', pageNumber: pageMeta.pageNumber });
+                      }}
+                      onMoveItem={(dx, dy) => {
+                        const deltaPdfX = dx / scale;
+                        const deltaPdfY = -dy / scale;
+                        onUpdateAddedText(t.id, {
+                          pdfX: t.pdfX + deltaPdfX,
+                          pdfY: t.pdfY + deltaPdfY,
+                        });
+                      }}
+                      onClose={() => onSelectObject(null)}
+                    />
+                  )}
+
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectObject({
+                        id: t.id,
+                        type: 'addedText',
+                        pageNumber: pageMeta.pageNumber,
+                      });
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      setEditingAddedTextId(t.id);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      left: bounds.x,
+                      top: bounds.y,
+                      width: bounds.width,
+                      minHeight: bounds.height,
+                      zIndex: t.zIndex || 25,
+                      transform: t.rotation ? `rotate(${t.rotation}deg)` : undefined,
+                      transformOrigin: 'center center',
+                      opacity: t.opacity ?? 1,
+                    }}
+                    className={`pointer-events-auto group p-1 transition-all rounded-xs ${
+                      isSelected
+                        ? 'border border-blue-400 bg-blue-50/20'
+                        : 'hover:border hover:border-dashed hover:border-slate-300'
+                    }`}
+                  >
                   {isInlineEditing ? (
                     <textarea
                       autoFocus
@@ -983,7 +1029,8 @@ export function PageCanvasView({
                     </div>
                   )}
                 </div>
-              );
+              </React.Fragment>
+            );
             })}
 
           {/* D. User Annotations (Highlights) */}

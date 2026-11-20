@@ -28,6 +28,8 @@ export interface PdfTextItem {
   originalY?: number;
   originalPdfX?: number;
   originalPdfY?: number;
+  baselineY?: number;
+  originalBaselineY?: number;
   linkUrl?: string;
 }
 

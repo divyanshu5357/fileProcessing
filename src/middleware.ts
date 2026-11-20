@@ -1,77 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RateLimitCategory } from '@/lib/rateLimit';
-
-// Strict IPv4 and IPv6 format validators
-const IPV4_REGEX = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-const IPV6_REGEX = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^(?:[0-9a-fA-F]{1,4}:)+:[0-9a-fA-F]{1,4}$/;
-
-function isValidIp(ip: string): boolean {
-  if (!ip || typeof ip !== 'string') return false;
-  const clean = ip.trim();
-  return IPV4_REGEX.test(clean) || IPV6_REGEX.test(clean);
-}
-
-/**
- * Hardened client IP extraction with anti-spoofing and IP-format validation.
- * Architecture:
- * 1. Honors explicit TRUSTED_PROXY_HEADER if configured by the reverse-proxy environment.
- * 2. Checks platform edge runtime IP (req.ip).
- * 3. Verifies Cloudflare edge only when cf-ray is present.
- * 4. Filters X-Forwarded-For to syntactically valid public IPs.
- * 5. Rejects unidentifiable clients without falling back to 127.0.0.1.
- */
-function getClientIp(req: NextRequest): string {
-  const trustedHeader = process.env.TRUSTED_PROXY_HEADER?.toLowerCase();
-
-  // 1. Explicit trusted proxy header configured by DevOps
-  if (trustedHeader) {
-    const val = req.headers.get(trustedHeader);
-    if (val) {
-      const candidate = val.split(',')[0].trim();
-      if (isValidIp(candidate)) return candidate;
-    }
-  }
-
-  // 2. Next.js / Edge platform IP
-  const reqIp = (req as unknown as { ip?: string }).ip;
-  if (reqIp && isValidIp(reqIp)) {
-    return reqIp.trim();
-  }
-
-  // 3. Cloudflare edge header (verified with cf-ray presence)
-  const hasCfRay = Boolean(req.headers.get('cf-ray'));
-  const cfIp = req.headers.get('cf-connecting-ip');
-  if (hasCfRay && cfIp && isValidIp(cfIp)) {
-    return cfIp.trim();
-  }
-
-  // 4. True-Client-IP (Akamai / Cloudflare Enterprise)
-  const trueClientIp = req.headers.get('true-client-ip');
-  if (trueClientIp && isValidIp(trueClientIp)) {
-    return trueClientIp.trim();
-  }
-
-  // 5. Standard X-Forwarded-For: select first valid IP
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) {
-    const ips = forwarded
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => isValidIp(s));
-    if (ips.length > 0) {
-      return ips[0];
-    }
-  }
-
-  // 6. X-Real-IP
-  const realIp = req.headers.get('x-real-ip');
-  if (realIp && isValidIp(realIp)) {
-    return realIp.trim();
-  }
-
-  // Never assign 127.0.0.1 as a universal shared identity
-  return 'untrusted-client';
-}
+import { extractClientIp } from '@/lib/ipUtils';
 
 /**
  * Applies production-grade Content-Security-Policy (CSP) and OWASP security headers.
@@ -125,7 +54,7 @@ export function middleware(req: NextRequest) {
 
   // Rate limit all API routes
   if (pathname.startsWith('/api/')) {
-    const ip = getClientIp(req);
+    const ipInfo = extractClientIp(req);
 
     // Determine category based on endpoint sensitivity
     let category: RateLimitCategory = 'api';
@@ -135,7 +64,7 @@ export function middleware(req: NextRequest) {
       category = 'admin';
     }
 
-    const result = checkRateLimit(ip, category);
+    const result = checkRateLimit(ipInfo.ip, category);
 
     if (!result.allowed) {
       const errRes = NextResponse.json(

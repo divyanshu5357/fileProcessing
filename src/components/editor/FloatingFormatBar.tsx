@@ -17,14 +17,37 @@ import {
   ArrowLeft,
   ArrowRight,
 } from 'lucide-react';
-import { PdfTextItem } from '@/types/pdfEditor';
-import { getCssFontFamily } from '@/lib/pdfEditorEngine';
+
+export interface FloatingFormatBarItem {
+  str?: string;
+  text?: string;
+  fontSize?: number;
+  pdfFontSize?: number;
+  fontFamily?: string;
+  isBold?: boolean;
+  isItalic?: boolean;
+  isUnderline?: boolean;
+  color?: string;
+  linkUrl?: string;
+  height?: number;
+  width?: number;
+}
 
 export interface FloatingFormatBarProps {
-  item: PdfTextItem;
+  item: FloatingFormatBarItem;
   position: { top: number; left: number };
   containerBounds?: { width: number; height: number };
-  onUpdateItem: (updates: Partial<PdfTextItem>) => void;
+  onUpdateItem: (updates: {
+    isBold?: boolean;
+    isItalic?: boolean;
+    isUnderline?: boolean;
+    fontSize?: number;
+    pdfFontSize?: number;
+    fontFamily?: string;
+    color?: string;
+    linkUrl?: string;
+    isEdited?: boolean;
+  }) => void;
   onDeleteItem: () => void;
   onDuplicateItem?: () => void;
   onMoveItem?: (dx: number, dy: number) => void;
@@ -45,6 +68,7 @@ export function FloatingFormatBar({
   const [copiedFeedback, setCopiedFeedback] = useState(false);
   const [isDraggingMove, setIsDraggingMove] = useState(false);
   const dragStartRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const hasDraggedRef = useRef(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   // Sync link input if item changes
@@ -70,6 +94,7 @@ export function FloatingFormatBar({
     { label: 'Courier New', value: 'Courier', fontStack: '"Courier New", Courier, monospace' },
     { label: 'Georgia', value: 'Georgia', fontStack: 'Georgia, serif' },
     { label: 'Verdana', value: 'Verdana', fontStack: 'Verdana, Geneva, sans-serif' },
+    { label: 'Trebuchet MS', value: 'Trebuchet MS', fontStack: '"Trebuchet MS", sans-serif' },
   ];
 
   const fontSizes = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36, 44];
@@ -83,7 +108,7 @@ export function FloatingFormatBar({
     { label: 'Emerald Green', hex: '#16A34A' },
     { label: 'Amber Orange', hex: '#D97706' },
     { label: 'Purple', hex: '#9333EA' },
-    { label: 'Muted Gray', hex: '#475569' },
+    { label: 'Muted Gray', hex: '#64748B' },
     { label: 'White', hex: '#FFFFFF' },
   ];
 
@@ -100,16 +125,17 @@ export function FloatingFormatBar({
   const currentFontSize = Math.round(item.fontSize || item.pdfFontSize || 12);
   const currentFontFamily = item.fontFamily || 'Helvetica';
   const currentColor = item.color || '#0F172A';
+  const textContent = item.str ?? item.text ?? '';
 
   // 1. Move Drag Pointer Handlers
   const handleMovePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     e.stopPropagation();
-    e.preventDefault();
+    hasDraggedRef.current = false;
+    dragStartRef.current = { clientX: e.clientX, clientY: e.clientY };
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {}
     setIsDraggingMove(true);
-    dragStartRef.current = { clientX: e.clientX, clientY: e.clientY };
   };
 
   const handleMovePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -117,7 +143,8 @@ export function FloatingFormatBar({
     const dx = e.clientX - dragStartRef.current.clientX;
     const dy = e.clientY - dragStartRef.current.clientY;
 
-    if (Math.abs(dx) > 0 || Math.abs(dy) > 0) {
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+      hasDraggedRef.current = true;
       onMoveItem(dx, dy);
       dragStartRef.current = { clientX: e.clientX, clientY: e.clientY };
     }
@@ -133,9 +160,9 @@ export function FloatingFormatBar({
 
   // 2. Copy Handler
   const handleCopy = () => {
-    if (item.str) {
+    if (textContent) {
       try {
-        navigator.clipboard?.writeText(item.str);
+        navigator.clipboard?.writeText(textContent);
       } catch {}
     }
     setCopiedFeedback(true);
@@ -156,19 +183,18 @@ export function FloatingFormatBar({
         zIndex: 60,
       }}
       onClick={(e) => e.stopPropagation()}
-      onMouseDown={(e) => {
-        // Prevent input in PageCanvasView from losing focus on format bar clicks
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
       className="flex items-center h-9 bg-white dark:bg-slate-900 border border-blue-400 dark:border-blue-500 rounded-lg shadow-xl divide-x divide-blue-200 dark:divide-slate-700 text-blue-600 select-none animate-in fade-in zoom-in-95 duration-100"
     >
       {/* 1. Bold Button (B) */}
       <button
         type="button"
-        title={item.isBold ? 'Remove Bold' : 'Make Bold'}
-        onClick={() => onUpdateItem({ isBold: !item.isBold, isEdited: true })}
+        title={item.isBold ? 'Remove Bold' : 'Make Bold (B)'}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onUpdateItem({ isBold: !item.isBold, isEdited: true });
+        }}
         className={`px-3 h-full flex items-center justify-center font-bold text-sm transition-colors cursor-pointer rounded-l-lg ${
           item.isBold
             ? 'bg-blue-600 text-white font-extrabold shadow-inner'
@@ -181,8 +207,12 @@ export function FloatingFormatBar({
       {/* 2. Italic Button (I) */}
       <button
         type="button"
-        title={item.isItalic ? 'Remove Italic' : 'Make Italic'}
-        onClick={() => onUpdateItem({ isItalic: !item.isItalic, isEdited: true })}
+        title={item.isItalic ? 'Remove Italic' : 'Make Italic (I)'}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onUpdateItem({ isItalic: !item.isItalic, isEdited: true });
+        }}
         className={`px-3 h-full flex items-center justify-center font-serif italic text-sm transition-colors cursor-pointer ${
           item.isItalic
             ? 'bg-blue-600 text-white font-bold shadow-inner'
@@ -196,8 +226,12 @@ export function FloatingFormatBar({
       <div className="relative h-full">
         <button
           type="button"
-          title="Change Font Size"
-          onClick={() => setActiveMenu(activeMenu === 'fontSize' ? 'none' : 'fontSize')}
+          title="Change Font Size (T↕)"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveMenu(activeMenu === 'fontSize' ? 'none' : 'fontSize');
+          }}
           className={`px-2.5 h-full flex items-center gap-1 text-xs font-semibold transition-colors cursor-pointer ${
             activeMenu === 'fontSize'
               ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/70'
@@ -213,7 +247,7 @@ export function FloatingFormatBar({
         </button>
 
         {activeMenu === 'fontSize' && (
-          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-2 min-w-[170px] text-xs">
+          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-2.5 min-w-[190px] text-xs">
             {/* Quick Step Buttons */}
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
               <span className="text-[11px] text-slate-500 font-medium">Font Size: {currentFontSize}pt</span>
@@ -221,7 +255,9 @@ export function FloatingFormatBar({
                 <button
                   type="button"
                   title="Decrease 1pt"
-                  onClick={() => {
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     const newSz = Math.max(6, currentFontSize - 1);
                     onUpdateItem({ fontSize: newSz, pdfFontSize: newSz, isEdited: true });
                   }}
@@ -232,7 +268,9 @@ export function FloatingFormatBar({
                 <button
                   type="button"
                   title="Increase 1pt"
-                  onClick={() => {
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     const newSz = Math.min(72, currentFontSize + 1);
                     onUpdateItem({ fontSize: newSz, pdfFontSize: newSz, isEdited: true });
                   }}
@@ -244,12 +282,14 @@ export function FloatingFormatBar({
             </div>
 
             {/* Size Grid */}
-            <div className="grid grid-cols-5 gap-1 max-h-40 overflow-y-auto">
+            <div className="grid grid-cols-5 gap-1 max-h-40 overflow-y-auto mb-2">
               {fontSizes.map((sz) => (
                 <button
                   key={sz}
                   type="button"
-                  onClick={() => {
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onUpdateItem({ fontSize: sz, pdfFontSize: sz, isEdited: true });
                     setActiveMenu('none');
                   }}
@@ -263,6 +303,19 @@ export function FloatingFormatBar({
                 </button>
               ))}
             </div>
+
+            {/* Switch to Typeface button */}
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenu('fontFamily');
+              }}
+              className="w-full text-center py-1 text-[11px] text-blue-600 hover:underline border-t border-slate-100 dark:border-slate-800 pt-1.5 cursor-pointer font-medium"
+            >
+              Change Typeface / Font Family (Aa) &rarr;
+            </button>
           </div>
         )}
       </div>
@@ -271,8 +324,12 @@ export function FloatingFormatBar({
       <div className="relative h-full">
         <button
           type="button"
-          title="Change Font Family"
-          onClick={() => setActiveMenu(activeMenu === 'fontFamily' ? 'none' : 'fontFamily')}
+          title="Change Font Family / Typeface"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveMenu(activeMenu === 'fontFamily' ? 'none' : 'fontFamily');
+          }}
           className={`px-2.5 h-full flex items-center gap-1 text-xs font-semibold transition-colors cursor-pointer ${
             activeMenu === 'fontFamily'
               ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/70'
@@ -284,7 +341,7 @@ export function FloatingFormatBar({
         </button>
 
         {activeMenu === 'fontFamily' && (
-          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-1.5 min-w-[190px] text-xs">
+          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-1.5 min-w-[200px] text-xs">
             <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold px-2 py-1 border-b border-slate-100 dark:border-slate-800 mb-1">
               Select Typeface
             </div>
@@ -296,7 +353,9 @@ export function FloatingFormatBar({
                     key={f.value}
                     type="button"
                     style={{ fontFamily: f.fontStack }}
-                    onClick={() => {
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation();
                       onUpdateItem({ fontFamily: f.value, isEdited: true });
                       setActiveMenu('none');
                     }}
@@ -321,7 +380,11 @@ export function FloatingFormatBar({
         <button
           type="button"
           title="Change Text Color"
-          onClick={() => setActiveMenu(activeMenu === 'color' ? 'none' : 'color')}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveMenu(activeMenu === 'color' ? 'none' : 'color');
+          }}
           className={`px-2.5 h-full flex items-center gap-1.5 text-xs transition-colors cursor-pointer ${
             activeMenu === 'color'
               ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/70'
@@ -339,7 +402,7 @@ export function FloatingFormatBar({
         </button>
 
         {activeMenu === 'color' && (
-          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-2.5 min-w-[180px]">
+          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-2.5 min-w-[190px]">
             <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2">
               Text Color
             </div>
@@ -350,7 +413,9 @@ export function FloatingFormatBar({
                   key={c.hex}
                   type="button"
                   title={c.label}
-                  onClick={() => {
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onUpdateItem({ color: c.hex, isEdited: true });
                     setActiveMenu('none');
                   }}
@@ -391,8 +456,12 @@ export function FloatingFormatBar({
       <div className="relative h-full">
         <button
           type="button"
-          title="Add or Edit Hyperlink"
-          onClick={() => setActiveMenu(activeMenu === 'link' ? 'none' : 'link')}
+          title="Add or Edit Hyperlink / Underline"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveMenu(activeMenu === 'link' ? 'none' : 'link');
+          }}
           className={`px-2.5 h-full flex items-center justify-center transition-colors cursor-pointer ${
             item.linkUrl || item.isUnderline || activeMenu === 'link'
               ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/70'
@@ -403,7 +472,7 @@ export function FloatingFormatBar({
         </button>
 
         {activeMenu === 'link' && (
-          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-2.5 min-w-[240px] flex flex-col gap-2">
+          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-2.5 min-w-[250px] flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">Hyperlink URL</span>
               {item.linkUrl && (
@@ -430,22 +499,26 @@ export function FloatingFormatBar({
               {item.linkUrl ? (
                 <button
                   type="button"
-                  onClick={() => {
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onUpdateItem({ linkUrl: undefined, isUnderline: false, isEdited: true });
                     setLinkInputUrl('');
                     setActiveMenu('none');
                   }}
-                  className="px-2 py-1 text-[11px] text-rose-500 hover:bg-rose-50 rounded transition"
+                  className="px-2 py-1 text-[11px] text-rose-500 hover:bg-rose-50 rounded transition cursor-pointer"
                 >
                   Remove
                 </button>
               ) : (
                 <button
                   type="button"
-                  onClick={() => {
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onUpdateItem({ isUnderline: !item.isUnderline, isEdited: true });
                   }}
-                  className={`px-2 py-1 text-[11px] rounded transition ${
+                  className={`px-2 py-1 text-[11px] rounded transition cursor-pointer ${
                     item.isUnderline ? 'bg-blue-100 text-blue-700 font-bold' : 'text-slate-500 hover:bg-slate-100'
                   }`}
                 >
@@ -456,14 +529,20 @@ export function FloatingFormatBar({
               <div className="flex gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setActiveMenu('none')}
-                  className="px-2.5 py-1 text-[11px] rounded bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveMenu('none');
+                  }}
+                  className="px-2.5 py-1 text-[11px] rounded bg-slate-100 text-slate-600 hover:bg-slate-200 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     const clean = linkInputUrl.trim();
                     onUpdateItem({
                       linkUrl: clean.length > 0 ? clean : undefined,
@@ -472,7 +551,7 @@ export function FloatingFormatBar({
                     });
                     setActiveMenu('none');
                   }}
-                  className="px-3 py-1 text-[11px] font-bold rounded bg-blue-600 text-white hover:bg-blue-700 transition"
+                  className="px-3 py-1 text-[11px] font-bold rounded bg-blue-600 text-white hover:bg-blue-700 transition cursor-pointer"
                 >
                   Apply
                 </button>
@@ -490,8 +569,9 @@ export function FloatingFormatBar({
           onPointerDown={handleMovePointerDown}
           onPointerMove={handleMovePointerMove}
           onPointerUp={handleMovePointerUp}
-          onClick={() => {
-            if (!isDraggingMove) {
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!hasDraggedRef.current) {
               setActiveMenu(activeMenu === 'move' ? 'none' : 'move');
             }
           }}
@@ -514,7 +594,11 @@ export function FloatingFormatBar({
               <button
                 type="button"
                 title="Move Up 3px"
-                onClick={() => onMoveItem && onMoveItem(0, -3)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMoveItem && onMoveItem(0, -3);
+                }}
                 className="p-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-700 flex items-center justify-center cursor-pointer"
               >
                 <ArrowUp className="w-3.5 h-3.5" />
@@ -524,7 +608,11 @@ export function FloatingFormatBar({
               <button
                 type="button"
                 title="Move Left 3px"
-                onClick={() => onMoveItem && onMoveItem(-3, 0)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMoveItem && onMoveItem(-3, 0);
+                }}
                 className="p-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-700 flex items-center justify-center cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
@@ -532,7 +620,11 @@ export function FloatingFormatBar({
               <button
                 type="button"
                 title="Move Down 3px"
-                onClick={() => onMoveItem && onMoveItem(0, 3)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMoveItem && onMoveItem(0, 3);
+                }}
                 className="p-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-700 flex items-center justify-center cursor-pointer"
               >
                 <ArrowDown className="w-3.5 h-3.5" />
@@ -540,7 +632,11 @@ export function FloatingFormatBar({
               <button
                 type="button"
                 title="Move Right 3px"
-                onClick={() => onMoveItem && onMoveItem(3, 0)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMoveItem && onMoveItem(3, 0);
+                }}
                 className="p-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-700 flex items-center justify-center cursor-pointer"
               >
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -555,7 +651,11 @@ export function FloatingFormatBar({
       <button
         type="button"
         title="Duplicate Text & Copy to Clipboard"
-        onClick={handleCopy}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleCopy();
+        }}
         className={`px-2.5 h-full flex items-center justify-center transition-colors cursor-pointer relative ${
           copiedFeedback
             ? 'bg-emerald-500 text-white'
@@ -573,7 +673,11 @@ export function FloatingFormatBar({
       <button
         type="button"
         title="Delete Text from Document"
-        onClick={onDeleteItem}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDeleteItem();
+        }}
         className="px-3 h-full flex items-center justify-center hover:bg-rose-50 text-rose-500 hover:text-rose-700 dark:hover:bg-rose-950/40 transition-colors cursor-pointer rounded-r-lg"
       >
         <Trash2 className="w-3.5 h-3.5" />

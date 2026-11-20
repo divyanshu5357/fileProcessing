@@ -1,20 +1,35 @@
 // High-Performance Sliding Window & Distributed Rate Limiter
-// Supports IPv4 & IPv6 Subnet Normalization, Anti-Abuse Protection, and Dual-Axis Rate Limiting
+// Supports IPv4 & IPv6 Subnet Normalization, Anti-Abuse Protection, and Multi-Axis Rate Limiting
 
-export type RateLimitCategory = 'auth' | 'admin' | 'api' | 'otp' | 'otp_email' | 'otp_account';
+import { normalizeIp, isLoopbackIp } from './ipUtils';
+
+export type RateLimitCategory =
+  | 'auth'
+  | 'admin'
+  | 'api'
+  | 'otp'
+  | 'otp_email'
+  | 'otp_account'
+  | 'otp_network'
+  | 'otp_cooldown';
 
 interface RateLimitConfig {
   limit: number;
   windowMs: number;
 }
 
-const LIMITS: Record<RateLimitCategory, RateLimitConfig> = {
-  otp: { limit: 5, windowMs: 600_000 },          // 5 OTP dispatches per 10 minutes per IP
-  otp_email: { limit: 3, windowMs: 600_000 },    // 3 OTP dispatches per 10 minutes per Target Email
-  otp_account: { limit: 5, windowMs: 600_000 },  // 5 OTP dispatches per 10 minutes per User Account
-  auth: { limit: 15, windowMs: 60_000 },         // 15 req/min on sensitive auth routes
-  admin: { limit: 30, windowMs: 60_000 },        // 30 req/min on admin endpoints
-  api: { limit: 100, windowMs: 60_000 },         // 100 req/min on standard APIs
+export const LIMITS: Record<RateLimitCategory, RateLimitConfig> = {
+  // Business Logic OTP Limits:
+  otp_email: { limit: 3, windowMs: 600_000 },    // Max 3 OTP dispatches per 10 minutes per Target Email
+  otp_cooldown: { limit: 1, windowMs: 60_000 },   // 60-second cooldown between consecutive OTP requests for an email
+  otp_network: { limit: 30, windowMs: 600_000 },  // Max 30 OTP dispatches per 10 minutes per IP/Subnet (accommodates shared offices/NAT)
+  otp_account: { limit: 5, windowMs: 600_000 },  // Max 5 OTP dispatches per 10 minutes per Authenticated Account
+  otp: { limit: 30, windowMs: 600_000 },          // General OTP network category fallback
+
+  // Middleware Volumetric Protection Limits:
+  auth: { limit: 30, windowMs: 60_000 },          // 30 req/min on auth endpoints (broad volumetric flood guard)
+  admin: { limit: 30, windowMs: 60_000 },         // 30 req/min on admin endpoints
+  api: { limit: 100, windowMs: 60_000 },          // 100 req/min on standard APIs
 };
 
 interface WindowEntry {
@@ -39,24 +54,34 @@ function cleanupExpired() {
 }
 
 /**
- * Normalizes IP addresses:
- * - IPv4: used as-is.
- * - IPv6: groups by /64 prefix to prevent rotation within an allocated /64 subnet.
- * - Non-IP identifiers (emails, tokens): normalized to lowercase trimmed string.
+ * Resets rate limit for a specific identifier and category (used in tests or manual reset).
  */
-export function normalizeIp(ip: string): string {
-  if (!ip) return 'untrusted-client';
-  const clean = ip.trim().toLowerCase();
+export function resetRateLimit(identifier: string, category: RateLimitCategory): void {
+  const normalizedId =
+    category === 'otp_email' || category === 'otp_cooldown'
+      ? identifier.trim().toLowerCase()
+      : normalizeIp(identifier);
+  const key = `${category}:${normalizedId}`;
+  memoryStore.delete(key);
+}
 
-  // If IPv6 with at least 4 segments, group by /64 prefix (first 4 hextets)
-  if (clean.includes(':')) {
-    const parts = clean.split(':');
-    if (parts.length >= 4) {
-      return `${parts.slice(0, 4).join(':')}::/64`;
+/**
+ * Clears all rate limit records in memory (for test isolation).
+ */
+export function clearAllRateLimits(): void {
+  memoryStore.clear();
+}
+
+export function cleanupExpiredRateLimits(): number {
+  let cleaned = 0;
+  const now = Date.now();
+  for (const [key, record] of memoryStore.entries()) {
+    if (record.resetAt <= now) {
+      memoryStore.delete(key);
+      cleaned++;
     }
   }
-
-  return clean;
+  return cleaned;
 }
 
 export interface RateLimitResult {
@@ -80,7 +105,9 @@ export function checkRateLimit(
   const cfg = LIMITS[category] || LIMITS.api;
   const now = Date.now();
   const normalizedId =
-    category === 'otp' ? identifier.trim().toLowerCase() : normalizeIp(identifier);
+    category === 'otp_email' || category === 'otp_cooldown'
+      ? identifier.trim().toLowerCase()
+      : normalizeIp(identifier);
   const key = `${category}:${normalizedId}`;
 
   const current = memoryStore.get(key);
@@ -139,12 +166,13 @@ export async function checkDistributedRateLimit(
 
   const cfg = LIMITS[category] || LIMITS.api;
   const normalizedId =
-    category === 'otp' ? identifier.trim().toLowerCase() : normalizeIp(identifier);
+    category === 'otp_email' || category === 'otp_cooldown'
+      ? identifier.trim().toLowerCase()
+      : normalizeIp(identifier);
   const key = `ratelimit:${category}:${normalizedId}`;
   const windowSec = Math.ceil(cfg.windowMs / 1000);
 
   try {
-    // Atomic INCR + EXPIRE via Redis pipeline
     const pipelineUrl = `${redisUrl.replace(/\/+$/, '')}/pipeline`;
     const res = await fetch(pipelineUrl, {
       method: 'POST',
@@ -193,50 +221,140 @@ export async function checkDistributedRateLimit(
   }
 }
 
+export interface OtpRateLimitResult {
+  allowed: boolean;
+  status?: number;
+  reason?: string;
+  retryAfter?: number;
+  ruleEvaluated: 'email' | 'network' | 'account' | 'cooldown' | 'none';
+  ruleTriggered?: 'otp_email' | 'otp_network' | 'otp_account' | 'otp_cooldown' | 'none';
+  remaining?: number;
+}
+
 /**
- * Multi-axis OTP Rate Limiter:
- * Enforces limits simultaneously across Client IP, Target Email, and Account ID.
- * Prevents:
- * 1. Spraying thousands of emails from a single IP.
- * 2. Flooding a single victim's email from multiple proxy IPs.
- * 3. Circumventing limits by switching between OAuth and credentials.
+ * Multi-Axis OTP Rate Limiter:
+ * 
+ * Design Principles:
+ * 1. Per-Email Isolation (Primary Defense):
+ *    - Each email address is strictly limited to 3 OTP requests per 10 minutes.
+ *    - Unrelated users or devices NEVER share this quota.
+ * 2. Network-Level Abuse Protection (Anti-Bot Spraying):
+ *    - Public networks are limited to 30 OTP requests per 10 minutes per IP/subnet.
+ *    - This accommodates normal shared networks (office Wi-Fi, university campuses, mobile NAT/CGNAT)
+ *      without blocking individual legitimate users on their first request.
+ *    - Loopback connections in development (127.0.0.1, ::1) are given high developer capacity (100/10m)
+ *      so local testing never blocks developer logins.
+ * 3. Account-Level Protection:
+ *    - Authenticated accounts are limited to 5 requests per 10 minutes.
  */
 export function checkOtpRateLimit(
-  ip: string,
-  email: string,
-  accountId?: string
-): { allowed: boolean; reason?: string; retryAfter?: number } {
-  // 1. IP-level restriction (max 5 OTPs per 10m per IP)
-  const ipResult = checkRateLimit(ip, 'otp');
-  if (!ipResult.allowed) {
+  ipOrParams: string | { ip: string; email: string; accountId?: string },
+  emailParam?: string,
+  accountIdParam?: string
+): OtpRateLimitResult {
+  let ip: string;
+  let cleanEmail: string;
+  let accountId: string | undefined;
+
+  if (typeof ipOrParams === 'object' && ipOrParams !== null) {
+    ip = ipOrParams.ip || '127.0.0.1';
+    cleanEmail = (ipOrParams.email || '').toLowerCase().trim();
+    accountId = ipOrParams.accountId;
+  } else {
+    ip = ipOrParams || '127.0.0.1';
+    cleanEmail = (emailParam || '').toLowerCase().trim();
+    accountId = accountIdParam;
+  }
+
+  // 0. Cooldown check (60s cooldown per email)
+  const cooldownKey = `otp_cooldown:${cleanEmail}`;
+  const existingCooldown = memoryStore.get(cooldownKey);
+  const now = Date.now();
+  if (existingCooldown && existingCooldown.resetAt > now) {
+    const retryAfter = Math.ceil((existingCooldown.resetAt - now) / 1000);
     return {
       allowed: false,
-      reason: `Too many verification requests from your network. Please wait ${ipResult.retryAfter}s.`,
-      retryAfter: ipResult.retryAfter,
+      status: 429,
+      reason: `Please wait ${retryAfter}s before requesting another verification code.`,
+      retryAfter,
+      ruleEvaluated: 'cooldown',
+      ruleTriggered: 'otp_cooldown',
+      remaining: 0,
     };
   }
 
-  // 2. Email-level restriction (max 3 OTPs per 10m per Email)
-  const emailResult = checkRateLimit(email.toLowerCase().trim(), 'otp_email');
+  // 1. Per-Email Limit (Max 3 OTP requests per 10m per email)
+  const emailResult = checkRateLimit(cleanEmail, 'otp_email');
   if (!emailResult.allowed) {
     return {
       allowed: false,
+      status: 429,
       reason: `Too many verification requests for this email address. Please try again in ${emailResult.retryAfter}s.`,
       retryAfter: emailResult.retryAfter,
+      ruleEvaluated: 'email',
+      ruleTriggered: 'otp_email',
+      remaining: 0,
     };
   }
 
-  // 3. Account-level restriction if authenticated user account exists
+  // 2. Account-Level Limit (if authenticated account ID is present)
   if (accountId && accountId.trim()) {
     const acctResult = checkRateLimit(accountId.trim(), 'otp_account');
     if (!acctResult.allowed) {
       return {
         allowed: false,
+        status: 429,
         reason: `Too many verification requests on this account. Please wait ${acctResult.retryAfter}s.`,
         retryAfter: acctResult.retryAfter,
+        ruleEvaluated: 'account',
+        ruleTriggered: 'otp_account',
+        remaining: 0,
       };
     }
   }
 
-  return { allowed: true };
+  // 3. Network-Level Limit (Anti-Bot Spraying)
+  const isLoopback = isLoopbackIp(ip);
+  if (isLoopback && process.env.NODE_ENV !== 'production') {
+    // In local dev, loopback requests are granted up to 100 attempts per 10m
+    const devResult = checkRateLimit('loopback', 'api');
+    if (!devResult.allowed) {
+      return {
+        allowed: false,
+        status: 429,
+        reason: `Too many local requests. Please wait ${devResult.retryAfter}s.`,
+        retryAfter: devResult.retryAfter,
+        ruleEvaluated: 'network',
+        ruleTriggered: 'otp_network',
+        remaining: 0,
+      };
+    }
+  } else {
+    // For public network IPs, enforce network abuse threshold (30 requests per 10m per IP/subnet)
+    const netResult = checkRateLimit(ip, 'otp_network');
+    if (!netResult.allowed) {
+      return {
+        allowed: false,
+        status: 429,
+        reason: `Too many verification requests from your network. Please wait ${netResult.retryAfter}s.`,
+        retryAfter: netResult.retryAfter,
+        ruleEvaluated: 'network',
+        ruleTriggered: 'otp_network',
+        remaining: 0,
+      };
+    }
+  }
+
+  // Mark 60s cooldown for this email
+  memoryStore.set(cooldownKey, { count: 1, resetAt: now + 60_000 });
+
+  return {
+    allowed: true,
+    status: 200,
+    ruleEvaluated: 'none',
+    ruleTriggered: 'none',
+    remaining: emailResult.remaining,
+  };
 }
+
+export { normalizeIp };

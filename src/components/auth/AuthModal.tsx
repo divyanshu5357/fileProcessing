@@ -64,6 +64,7 @@ export function AuthModal() {
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     const cleanEmail = email.toLowerCase().trim();
     if (!cleanEmail || !cleanEmail.includes('@')) {
       setError('Please enter a valid email address.');
@@ -129,6 +130,7 @@ export function AuthModal() {
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     const fullCode = otp.join('').trim();
     if (fullCode.length !== 8) {
       setError('Please enter the complete 8-digit verification code.');

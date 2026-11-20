@@ -1,4 +1,4 @@
-// Safe browser dynamic loader for PDF.js (prevents Turbopack/Next.js 'canvas' binary build errors)
+// Safe browser dynamic loader for PDF.js (serves local static bundle first, falls back to CDN)
 let pdfjsPromise: Promise<any> | null = null;
 
 export async function getPdfJs(): Promise<any> {
@@ -9,7 +9,7 @@ export async function getPdfJs(): Promise<any> {
   if ((window as any).pdfjsLib) {
     const pdfjs = (window as any).pdfjsLib;
     if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-      pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      pdfjs.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
     }
     return pdfjs;
   }
@@ -21,7 +21,7 @@ export async function getPdfJs(): Promise<any> {
       if (existingScript) {
         if ((window as any).pdfjsLib) {
           const pdfjs = (window as any).pdfjsLib;
-          pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          pdfjs.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
           resolve(pdfjs);
           return;
         }
@@ -29,7 +29,7 @@ export async function getPdfJs(): Promise<any> {
         const onLoad = () => {
           const pdfjs = (window as any).pdfjsLib;
           if (pdfjs) {
-            pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            pdfjs.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
             resolve(pdfjs);
           } else {
             pdfjsPromise = null;
@@ -38,12 +38,11 @@ export async function getPdfJs(): Promise<any> {
         };
 
         existingScript.addEventListener('load', onLoad);
-        existingScript.addEventListener('error', (e) => {
-          pdfjsPromise = null;
-          reject(new Error('Failed to load PDF.js script: ' + e));
+        existingScript.addEventListener('error', () => {
+          // Fall back to CDN
+          loadFromCdn().then(resolve).catch(reject);
         });
 
-        // Quick check in case script completed right before listener attached
         setTimeout(() => {
           if ((window as any).pdfjsLib) {
             onLoad();
@@ -52,26 +51,47 @@ export async function getPdfJs(): Promise<any> {
         return;
       }
 
+      // Try local static script first
       const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      script.src = '/pdfjs/pdf.min.js';
       script.async = true;
       script.onload = () => {
         const pdfjs = (window as any).pdfjsLib;
         if (pdfjs) {
-          pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          pdfjs.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
           resolve(pdfjs);
         } else {
-          pdfjsPromise = null;
-          reject(new Error('PDF.js failed to attach to window'));
+          loadFromCdn().then(resolve).catch(reject);
         }
       };
-      script.onerror = (e) => {
-        pdfjsPromise = null;
-        reject(new Error('Failed to load PDF.js engine: ' + e));
+      script.onerror = () => {
+        // Fall back to CDN if local bundle fails
+        loadFromCdn().then(resolve).catch(reject);
       };
       document.head.appendChild(script);
     });
   }
 
   return pdfjsPromise;
+}
+
+function loadFromCdn(): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.async = true;
+    script.onload = () => {
+      const pdfjs = (window as any).pdfjsLib;
+      if (pdfjs) {
+        pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        resolve(pdfjs);
+      } else {
+        reject(new Error('PDF.js failed to load from CDN'));
+      }
+    };
+    script.onerror = (e) => {
+      reject(new Error('Failed to load PDF.js engine: ' + e));
+    };
+    document.head.appendChild(script);
+  });
 }

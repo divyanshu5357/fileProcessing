@@ -193,7 +193,7 @@ export async function extractPdfDocumentModel(pdfArrayBuffer: ArrayBuffer | Uint
     // 2. Sort chunks: Top to bottom (ty descending), then left to right (tx ascending)
     processedChunks.sort((a, b) => {
       const yDiff = b.ty - a.ty;
-      if (Math.abs(yDiff) > Math.min(a.fontHeight, b.fontHeight) * 0.35) {
+      if (Math.abs(yDiff) > Math.min(a.fontHeight, b.fontHeight) * 0.45) {
         return yDiff;
       }
       return a.tx - b.tx;
@@ -208,19 +208,29 @@ export async function extractPdfDocumentModel(pdfArrayBuffer: ArrayBuffer | Uint
       }
 
       const prev = mergedLines[mergedLines.length - 1];
-      const sameLine = Math.abs(prev.ty - chunk.ty) <= Math.min(prev.fontHeight, chunk.fontHeight) * 0.35;
-      const similarFont = prev.fontFamily === chunk.fontFamily && Math.abs(prev.fontHeight - chunk.fontHeight) <= 2.5;
-      const sameStyle = prev.isBold === chunk.isBold && prev.isItalic === chunk.isItalic;
-
+      // On the same horizontal line: baseline diff should be within tolerance
+      const lineTolerance = Math.max(3.5, Math.min(prev.fontHeight, chunk.fontHeight) * 0.55);
+      const sameLine = Math.abs(prev.ty - chunk.ty) <= lineTolerance;
       const prevRight = prev.tx + prev.width;
       const gap = chunk.tx - prevRight;
-      // Contiguous if gap is small or normal word space
-      const isContiguous = gap >= -3 && gap <= prev.fontHeight * 2.2;
 
-      if (sameLine && similarFont && sameStyle && isContiguous) {
-        const needsSpace = !prev.str.endsWith(' ') && !chunk.str.startsWith(' ') && gap > prev.fontHeight * 0.12;
+      // Allow natural word gap, justified line spaces, or kerning overlap (from -12px kerning up to 70px gap)
+      const isContiguous = gap >= -12 && gap <= Math.max(70, prev.fontHeight * 6);
+
+      if (sameLine && isContiguous) {
+        const needsSpace =
+          !prev.str.endsWith(' ') &&
+          !chunk.str.startsWith(' ') &&
+          !prev.str.endsWith('-') &&
+          gap > prev.fontHeight * 0.12;
+
         prev.str = prev.str + (needsSpace ? ' ' : '') + chunk.str;
         prev.width = Math.max(prev.width, chunk.tx + chunk.width - prev.tx);
+        // Retain dominant font family & weight
+        if (chunk.isBold && !prev.isBold && chunk.str.length > prev.str.length) {
+          prev.isBold = true;
+          prev.fontFamily = chunk.fontFamily;
+        }
       } else {
         mergedLines.push({ ...chunk });
       }
@@ -231,9 +241,10 @@ export async function extractPdfDocumentModel(pdfArrayBuffer: ArrayBuffer | Uint
       const line = mergedLines[i];
       if (!line.str || line.str.trim() === '') continue;
 
+      const baselineFromTop = viewport.height - line.ty;
       const domX = line.tx;
-      // In PDF, ty is baseline. Exact DOM top:
-      const domY = viewport.height - line.ty - line.fontHeight;
+      // In CSS, font ascent for Latin fonts sits around 0.82 of font size
+      const domY = baselineFromTop - line.fontHeight * 0.85;
       const domWidth = line.width;
       const domHeight = line.fontHeight * 1.15;
 
@@ -246,6 +257,8 @@ export async function extractPdfDocumentModel(pdfArrayBuffer: ArrayBuffer | Uint
         y: domY,
         width: domWidth,
         height: domHeight,
+        baselineY: baselineFromTop,
+        originalBaselineY: baselineFromTop,
         pdfX: line.tx,
         pdfY: line.ty,
         pdfWidth: domWidth,
@@ -354,6 +367,17 @@ export async function exportModifiedPdfDocument({
             font,
             color: hexToPdfRgb(item.color || '#0F172A'),
           });
+
+          // Draw underline if enabled
+          if (item.isUnderline) {
+            const lineWidth = font.widthOfTextAtSize(item.str, item.pdfFontSize);
+            page.drawLine({
+              start: { x: item.pdfX, y: item.pdfY - 1 },
+              end: { x: item.pdfX + lineWidth, y: item.pdfY - 1 },
+              thickness: 1,
+              color: hexToPdfRgb(item.color || '#0F172A'),
+            });
+          }
         }
       }
     }
