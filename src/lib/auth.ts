@@ -5,18 +5,34 @@ import { sendOtpEmail } from './email';
 
 const databaseUrl = process.env.DATABASE_URL;
 
+const getBetterAuthSecret = (): string => {
+  const secret = process.env.BETTER_AUTH_SECRET;
+  if (!secret || secret.trim().length < 32) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        '[CRITICAL SECURITY] BETTER_AUTH_SECRET must be explicitly configured with at least 32 characters in production.'
+      );
+    }
+    return 'gyanvatsala_super_secret_auth_key_must_be_at_least_32_characters_long';
+  }
+  return secret.trim();
+};
+
 export const pool = databaseUrl
   ? new Pool({
       connectionString: databaseUrl,
       max: 10,
-      ssl: { rejectUnauthorized: false },
+      ssl:
+        databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1')
+          ? false
+          : { rejectUnauthorized: process.env.NODE_ENV === 'production' },
     })
   : null;
 
 export const auth = betterAuth({
   appName: 'Gyanvatsala Workspace',
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
-  secret: process.env.BETTER_AUTH_SECRET || 'gyanvatsala_super_secret_auth_key_must_be_at_least_32_characters_long',
+  secret: getBetterAuthSecret(),
   database: pool || undefined,
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days

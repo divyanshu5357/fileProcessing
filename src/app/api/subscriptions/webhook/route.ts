@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { Pool } from 'pg';
-
-const databaseUrl = process.env.DATABASE_URL;
-const pool = databaseUrl
-  ? new Pool({
-      connectionString: databaseUrl,
-      ssl: { rejectUnauthorized: false },
-    })
-  : null;
+import { pool } from '@/lib/auth';
 
 function timingSafeSecretCheck(provided: string, expected: string): boolean {
   if (!provided || !expected) return false;

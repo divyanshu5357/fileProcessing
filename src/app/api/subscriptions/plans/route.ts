@@ -1,13 +1,5 @@
 import { NextResponse } from 'next/server';
-import { Pool } from 'pg';
-
-const databaseUrl = process.env.DATABASE_URL;
-const pool = databaseUrl
-  ? new Pool({
-      connectionString: databaseUrl,
-      ssl: { rejectUnauthorized: false },
-    })
-  : null;
+import { pool } from '@/lib/auth';
 
 export async function GET() {
   if (!pool) {

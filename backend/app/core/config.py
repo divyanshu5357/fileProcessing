@@ -30,7 +30,7 @@ class Settings(BaseSettings):
         description="Secret key shared with Better Auth"
     )
     INTERNAL_SERVICE_KEY: str = Field(
-        default="gyanvatsala_super_secret_auth_key_must_be_at_least_32_characters_long",
+        default="gyanvatsala_super_secret_internal_key_must_be_at_least_32_chars_long",
         description="Internal service key for Next.js to FastAPI secure inter-service communication"
     )
     WEBHOOK_SECRET: str = Field(

@@ -35,6 +35,12 @@ def verify_internal_service_secret(secret_header: Optional[str]) -> bool:
     """
     if not secret_header:
         return False
+
+    better_auth_sec = getattr(settings, "BETTER_AUTH_SECRET", None)
+    if better_auth_sec and hmac.compare_digest(secret_header, better_auth_sec):
+        logger.warning("[SECURITY] Request attempted to use BETTER_AUTH_SECRET as internal service secret; rejected.")
+        return False
+
     expected_srv = getattr(settings, "INTERNAL_SERVICE_KEY", None)
     if not expected_srv or len(expected_srv) < 16:
         logger.error("[SECURITY] INTERNAL_SERVICE_KEY is unconfigured or insecure; failing closed.")
