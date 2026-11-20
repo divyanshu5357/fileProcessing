@@ -1,43 +1,69 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RateLimitCategory } from '@/lib/rateLimit';
 
+// Strict IPv4 and IPv6 format validators
+const IPV4_REGEX = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+const IPV6_REGEX = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^(?:[0-9a-fA-F]{1,4}:)+:[0-9a-fA-F]{1,4}$/;
+
+function isValidIp(ip: string): boolean {
+  if (!ip || typeof ip !== 'string') return false;
+  const clean = ip.trim();
+  return IPV4_REGEX.test(clean) || IPV6_REGEX.test(clean);
+}
+
 /**
- * Hardened client IP extraction with anti-spoofing defense.
- * Prioritizes trusted infrastructure headers over client-supplied X-Forwarded-For.
+ * Hardened client IP extraction with anti-spoofing and IP-format validation.
+ * Protects against forged headers by verifying IP syntax and prioritizing verified edges.
  */
 function getClientIp(req: NextRequest): string {
-  // 1. Cloudflare edge
+  // Check Cloudflare edge (validated syntax only)
   const cfIp = req.headers.get('cf-connecting-ip');
-  if (cfIp && cfIp.trim()) return cfIp.trim();
+  if (cfIp && isValidIp(cfIp)) return cfIp.trim();
 
-  // 2. Akamai / CloudFront / Enterprise edge
+  // Check True-Client-IP (validated syntax only)
   const trueClientIp = req.headers.get('true-client-ip');
-  if (trueClientIp && trueClientIp.trim()) return trueClientIp.trim();
+  if (trueClientIp && isValidIp(trueClientIp)) return trueClientIp.trim();
 
-  // 3. Trusted Reverse Proxy (Nginx / ALB)
+  // Check X-Real-IP from trusted reverse proxies
   const realIp = req.headers.get('x-real-ip');
-  if (realIp && realIp.trim()) return realIp.trim();
+  if (realIp && isValidIp(realIp)) return realIp.trim();
 
-  // 4. X-Forwarded-For: extract first valid IP
+  // Check X-Forwarded-For: find first syntactically valid public/client IP
   const forwarded = req.headers.get('x-forwarded-for');
   if (forwarded) {
     const ips = forwarded
       .split(',')
       .map((s) => s.trim())
-      .filter((s) => s.length > 0 && !s.startsWith('unknown'));
+      .filter((s) => isValidIp(s));
     if (ips.length > 0) {
       return ips[0];
     }
   }
 
-  // 5. Fallback to socket IP or localhost
   return '127.0.0.1';
 }
 
 /**
- * Applies OWASP-recommended production HTTP security headers to all responses.
+ * Applies production-grade Content-Security-Policy (CSP) and OWASP security headers.
  */
 function applySecurityHeaders(res: NextResponse): NextResponse {
+  // Modern Content-Security-Policy tailored for Next.js, Google OAuth, Neon, and S3
+  const cspDirectives = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com https://accounts.google.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' data: blob: https:",
+    "connect-src 'self' https://accounts.google.com https://*.neon.tech http://127.0.0.1:8000 http://localhost:8000",
+    "frame-src 'self' https://accounts.google.com",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self' https://accounts.google.com",
+    "frame-ancestors 'self'",
+  ].join('; ');
+
+  res.headers.set('Content-Security-Policy', cspDirectives);
+
   // Prevent clickjacking attacks (iframe framing)
   res.headers.set('X-Frame-Options', 'SAMEORIGIN');
 
@@ -52,9 +78,6 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
     'Permissions-Policy',
     'camera=(), microphone=(), geolocation=(), payment=(self)'
   );
-
-  // Legacy XSS protection for older browsers
-  res.headers.set('X-XSS-Protection', '1; mode=block');
 
   // Enforce HTTPS transport security (1 year, includeSubDomains, preload)
   res.headers.set(
@@ -72,7 +95,7 @@ export function middleware(req: NextRequest) {
   if (pathname.startsWith('/api/')) {
     const ip = getClientIp(req);
 
-    // Determine category based on sensitivity
+    // Determine category based on endpoint sensitivity
     let category: RateLimitCategory = 'api';
     if (pathname.startsWith('/api/auth')) {
       category = 'auth';

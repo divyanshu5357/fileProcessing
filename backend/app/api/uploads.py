@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 import uuid
+import os
+import re
 from datetime import datetime, timezone, timedelta
 from backend.app.core.security import get_current_user, AuthenticatedUser
 from backend.app.database.connection import get_db
@@ -19,6 +21,25 @@ from backend.app.schemas.file_schemas import (
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 
+DISALLOWED_EXTENSIONS = {
+    ".exe", ".sh", ".bat", ".cmd", ".com", ".msi", ".dll", ".so", ".bin",
+    ".php", ".py", ".pl", ".cgi", ".vbs", ".ps1", ".scr", ".pif", ".hta",
+    ".jar", ".war", ".apk", ".dmg", ".pkg", ".deb", ".rpm", ".elf"
+}
+
+DISALLOWED_CONTENT_TYPES = {
+    "application/x-msdownload",
+    "application/x-sh",
+    "application/x-bash",
+    "application/x-bat",
+    "application/x-executable",
+    "application/x-dosexec",
+    "application/x-php",
+    "text/x-php",
+    "application/x-python",
+    "text/x-python",
+}
+
 @router.post("/initiate", response_model=UploadInitiateResponse)
 async def initiate_upload(
     payload: UploadInitiateRequest,
@@ -27,8 +48,27 @@ async def initiate_upload(
 ):
     """
     Initiates direct browser-to-S3 upload session.
-    Verifies user storage quota and maximum file size prior to issuing presigned S3 URLs.
+    Verifies user storage quota, file extension, and maximum file size prior to issuing presigned S3 URLs.
     """
+    if payload.file_size <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File size must be strictly positive."
+        )
+
+    ext = os.path.splitext(payload.file_name.lower())[1]
+    if ext in DISALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Executable and script file uploads ({ext}) are forbidden for security reasons."
+        )
+
+    if payload.content_type.lower().strip() in DISALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"MIME type '{payload.content_type}' is not permitted."
+        )
+
     # 1. Quota Check based on user's database plan
     await quota_service.verify_upload_quota(
         db=db,

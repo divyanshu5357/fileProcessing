@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getRecentDeliveryStatus, clearDeliveryStatus } from '@/lib/email';
+import { checkOtpRateLimit } from '@/lib/rateLimit';
 
 // In-memory rate limiting and cooldown map: normalized email -> timestamp
 const lastRequestTimestamps = new Map<string, number>();
 const COOLDOWN_SECONDS = 60;
+
+function getClientIp(req: NextRequest): string {
+  const cf = req.headers.get('cf-connecting-ip');
+  if (cf && cf.trim()) return cf.trim();
+  const real = req.headers.get('x-real-ip');
+  if (real && real.trim()) return real.trim();
+  const fwd = req.headers.get('x-forwarded-for');
+  if (fwd) {
+    const first = fwd.split(',')[0].trim();
+    if (first) return first;
+  }
+  return '127.0.0.1';
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,7 +35,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Cooldown check (60 seconds)
+    // 2. Dual-Axis Rate Limiting (IP + Email abuse protection)
+    const clientIp = getClientIp(req);
+    const otpLimitCheck = checkOtpRateLimit(clientIp, cleanEmail);
+    if (!otpLimitCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: otpLimitCheck.reason || 'Verification rate limit exceeded.',
+          retryAfter: otpLimitCheck.retryAfter || 60,
+        },
+        { status: 429 }
+      );
+    }
+
+    // 3. Cooldown check (60 seconds)
     const now = Date.now();
     const lastRequest = lastRequestTimestamps.get(cleanEmail);
     if (lastRequest) {

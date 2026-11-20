@@ -2,6 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from backend.app.main import app
 from backend.app.core.config import settings
+from backend.app.core.security import create_test_internal_assertion
+from backend.app.services.s3_service import s3_service
 
 client = TestClient(app)
 
@@ -199,45 +201,89 @@ def test_admin_endpoints_rejected_for_normal_user():
     assert rev_res.status_code == 403
 
 def test_admin_endpoints_accessible_for_authorized_admin():
-    """Verify verified admin with internal secret can access overview and revenue."""
-    headers = {
+    """Verify verified admin with internal secret AND signed assertion can access overview and revenue."""
+    assertion1 = create_test_internal_assertion(
+        user_id="usr_sole_admin",
+        email="admin.security@gyanvatsala.in",
+        role="admin"
+    )
+    headers1 = {
         "X-User-Email": "admin.security@gyanvatsala.in",
         "X-User-Role": "admin",
         "X-User-Id": "usr_sole_admin",
         "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        "X-Internal-Assertion": assertion1,
     }
-    me_res = client.get("/api/admin/me", headers=headers)
+    me_res = client.get("/api/admin/me", headers=headers1)
     assert me_res.status_code == 200
     me_data = me_res.json()
     assert me_data["is_admin"] is True
     assert me_data["role"] == "admin"
     assert me_data["permissions"]["can_view_revenue"] is True
 
-    rev_res = client.get("/api/admin/revenue", headers=headers)
+    # Revenue call with a fresh assertion to adhere to JTI nonce uniqueness
+    assertion2 = create_test_internal_assertion(
+        user_id="usr_sole_admin",
+        email="admin.security@gyanvatsala.in",
+        role="admin"
+    )
+    headers2 = {
+        "X-User-Email": "admin.security@gyanvatsala.in",
+        "X-User-Role": "admin",
+        "X-User-Id": "usr_sole_admin",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        "X-Internal-Assertion": assertion2,
+    }
+    rev_res = client.get("/api/admin/revenue", headers=headers2)
     assert rev_res.status_code == 200
     assert "total_verified_revenue_inr" in rev_res.json()
 
 def test_support_role_cannot_access_revenue():
     """Verify support role can view overview and users, but is forbidden from financial revenue data."""
-    headers = {
+    assertion1 = create_test_internal_assertion(
+        user_id="usr_support_1",
+        email="support@gyanvatsala.in",
+        role="support"
+    )
+    headers1 = {
         "X-User-Email": "support@gyanvatsala.in",
         "X-User-Role": "support",
         "X-User-Id": "usr_support_1",
         "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        "X-Internal-Assertion": assertion1,
     }
-    ov_res = client.get("/api/admin/overview", headers=headers)
+    ov_res = client.get("/api/admin/overview", headers=headers1)
     assert ov_res.status_code == 200
 
-    rev_res = client.get("/api/admin/revenue", headers=headers)
+    # Fresh assertion for second call
+    assertion2 = create_test_internal_assertion(
+        user_id="usr_support_1",
+        email="support@gyanvatsala.in",
+        role="support"
+    )
+    headers2 = {
+        "X-User-Email": "support@gyanvatsala.in",
+        "X-User-Role": "support",
+        "X-User-Id": "usr_support_1",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        "X-Internal-Assertion": assertion2,
+    }
+    rev_res = client.get("/api/admin/revenue", headers=headers2)
     assert rev_res.status_code == 403
 
 def test_admin_cannot_demote_self():
     """Verify administrators cannot accidentally or maliciously modify their own role."""
+    assertion = create_test_internal_assertion(
+        user_id="usr_sole_admin",
+        email="admin.security@gyanvatsala.in",
+        role="admin"
+    )
     headers = {
         "X-User-Email": "admin.security@gyanvatsala.in",
         "X-User-Role": "admin",
         "X-User-Id": "usr_sole_admin",
         "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        "X-Internal-Assertion": assertion,
     }
     res = client.post(
         "/api/admin/users/usr_sole_admin/role",
@@ -249,11 +295,17 @@ def test_admin_cannot_demote_self():
 
 def test_admin_role_cannot_be_assigned_dynamically():
     """Verify nobody can assign the role 'admin' dynamically via the API."""
+    assertion = create_test_internal_assertion(
+        user_id="usr_sole_admin",
+        email="admin.security@gyanvatsala.in",
+        role="admin"
+    )
     headers = {
         "X-User-Email": "admin.security@gyanvatsala.in",
         "X-User-Role": "admin",
         "X-User-Id": "usr_sole_admin",
         "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        "X-Internal-Assertion": assertion,
     }
     res = client.post(
         "/api/admin/users/usr_target_candidate/role",
@@ -262,3 +314,153 @@ def test_admin_role_cannot_be_assigned_dynamically():
     )
     assert res.status_code == 400
     assert "sole administrator" in res.json()["detail"].lower() or "cannot be dynamically assigned" in res.json()["detail"].lower()
+
+def test_admin_elevation_without_signed_assertion_rejected():
+    """Verify that knowing X-Internal-Secret alone CANNOT grant admin elevation without a signed assertion."""
+    headers = {
+        "X-User-Email": "attacker@evil.com",
+        "X-User-Role": "admin",
+        "X-User-Id": "usr_attacker",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        # Intentionally missing X-Internal-Assertion
+    }
+    res = client.get("/api/admin/overview", headers=headers)
+    assert res.status_code == 403
+    assert "signed" in res.json()["detail"].lower() and "assertion" in res.json()["detail"].lower()
+
+def test_expired_internal_assertion_rejected():
+    """Verify that expired signed assertions are strictly rejected."""
+    expired_assertion = create_test_internal_assertion(
+        user_id="usr_sole_admin",
+        email="admin.security@gyanvatsala.in",
+        role="admin",
+        exp_offset_seconds=-30 # Expired 30 seconds ago
+    )
+    headers = {
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        "X-Internal-Assertion": expired_assertion,
+    }
+    res = client.get("/api/admin/overview", headers=headers)
+    assert res.status_code == 401
+
+def test_replayed_internal_assertion_rejected():
+    """Verify that reusing the same JTI nonce is detected as a replay attack and rejected."""
+    fixed_jti = "nonce-test-replay-unique-12345"
+    assertion1 = create_test_internal_assertion(
+        user_id="usr_sole_admin",
+        email="admin.security@gyanvatsala.in",
+        role="admin",
+        custom_jti=fixed_jti
+    )
+    headers = {
+        "X-User-Role": "admin",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        "X-Internal-Assertion": assertion1,
+    }
+    # First request: JTI accepted
+    res1 = client.get("/api/admin/overview", headers=headers)
+    assert res1.status_code == 200
+
+    # Second request with identical JTI: Replay attack detected
+    res2 = client.get("/api/admin/overview", headers=headers)
+    assert res2.status_code == 401
+
+def test_tampered_internal_assertion_rejected():
+    """Verify that assertions signed with an invalid key or modified claims are rejected."""
+    tampered_assertion = create_test_internal_assertion(
+        user_id="usr_sole_admin",
+        email="admin.security@gyanvatsala.in",
+        role="admin",
+        tamper_secret="forged_attacker_secret_9999"
+    )
+    headers = {
+        "X-User-Role": "admin",
+        "X-Internal-Secret": settings.INTERNAL_SERVICE_KEY,
+        "X-Internal-Assertion": tampered_assertion,
+    }
+    res = client.get("/api/admin/overview", headers=headers)
+    assert res.status_code == 401
+
+def test_webhook_underpayment_rejected():
+    """Verify that payment webhook with amount less than plan price is rejected with 400 Bad Request."""
+    payload = {
+        "event": "payment.succeeded",
+        "transaction_id": "txn_underpay_attack_001",
+        "user_id": "usr_cheap_attacker",
+        "plan_id": "prime_plus",
+        "amount_inr": 1,
+        "billing_cycle": "monthly"
+    }
+    res = client.post(
+        "/api/subscriptions/webhook",
+        json=payload,
+        headers={"X-Webhook-Secret": settings.WEBHOOK_SECRET}
+    )
+    assert res.status_code == 400
+    assert "insufficient payment amount" in res.json()["detail"].lower()
+
+def test_webhook_duplicate_replay_idempotent():
+    """Verify that replaying a payment webhook with the same transaction_id returns already_processed."""
+    unique_txn = "txn_idempotent_test_998877"
+    payload = {
+        "event": "payment.succeeded",
+        "transaction_id": unique_txn,
+        "user_id": "usr_idempotent_user",
+        "plan_id": "prime_plus",
+        "amount_inr": 99,
+        "billing_cycle": "monthly"
+    }
+    # 1. First webhook execution succeeds
+    res1 = client.post(
+        "/api/subscriptions/webhook",
+        json=payload,
+        headers={"X-Webhook-Secret": settings.WEBHOOK_SECRET}
+    )
+    assert res1.status_code == 200
+    assert res1.json()["status"] == "subscription_activated"
+
+    # 2. Replay of same transaction returns already_processed without re-extending
+    res2 = client.post(
+        "/api/subscriptions/webhook",
+        json=payload,
+        headers={"X-Webhook-Secret": settings.WEBHOOK_SECRET}
+    )
+    assert res2.status_code == 200
+    assert res2.json()["status"] == "already_processed"
+
+def test_s3_key_sanitization_path_traversal():
+    """Verify s3_service.generate_s3_key strips path traversal sequences and null bytes."""
+    clean_key = s3_service.generate_s3_key(
+        user_id="usr_tester",
+        file_id="fil_xyz",
+        file_name="../../../etc/passwd\x00malicious.pdf",
+        folder="originals"
+    )
+    assert "../" not in clean_key
+    assert "\x00" not in clean_key
+    assert clean_key.startswith("users/usr_tester/originals/fil_xyz/")
+
+def test_upload_dangerous_extension_rejected():
+    """Verify upload initiation rejects dangerous executable and script file extensions."""
+    for bad_file in ["trojan.exe", "script.sh", "payload.bat", "webshell.php", "rootkit.bin"]:
+        payload = {
+            "file_name": bad_file,
+            "file_size": 1024,
+            "content_type": "application/octet-stream",
+            "is_multipart": False
+        }
+        res = client.post("/api/uploads/initiate", json=payload, headers=AUTH_HEADERS)
+        assert res.status_code == 400
+        assert "forbidden" in res.json()["detail"].lower()
+
+def test_upload_zero_or_negative_file_size_rejected():
+    """Verify upload initiation rejects zero-byte or negative-size payloads."""
+    payload_zero = {
+        "file_name": "empty.pdf",
+        "file_size": 0,
+        "content_type": "application/pdf",
+        "is_multipart": False
+    }
+    res = client.post("/api/uploads/initiate", json=payload_zero, headers=AUTH_HEADERS)
+    assert res.status_code == 400
+    assert "positive" in res.json()["detail"].lower()

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, pool } from '@/lib/auth';
+import { createInternalAssertion } from '@/lib/internalAuth';
 
 const getInternalSecret = () =>
   process.env.INTERNAL_SERVICE_KEY || process.env.BETTER_AUTH_SECRET || '';
@@ -97,6 +98,13 @@ export async function POST(req: NextRequest) {
         'http://127.0.0.1:8000'
       ).replace(/\/+$/, '');
 
+      const assertion = createInternalAssertion({
+        id: userId,
+        email: userEmail,
+        role: 'user',
+        plan: 'Free',
+      });
+
       const backendRes = await fetch(`${backendBase}/api/subscriptions/activate-free`, {
         method: 'POST',
         headers: {
@@ -104,6 +112,7 @@ export async function POST(req: NextRequest) {
           'X-User-Id': userId,
           'X-User-Email': userEmail,
           'X-Internal-Secret': getInternalSecret(),
+          'X-Internal-Assertion': assertion,
         },
       });
 

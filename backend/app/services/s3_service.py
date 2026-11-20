@@ -30,9 +30,15 @@ class S3Service:
         Organized S3 object hierarchy:
         users/{user_id}/originals/{file_id}/{file_name}
         users/{user_id}/processed/{file_id}/{file_name}
+        Strictly sanitizes inputs to eliminate path traversal vulnerabilities (../, null bytes).
         """
-        clean_name = file_name.replace(" ", "_")
-        return f"users/{user_id}/{folder}/{file_id}/{clean_name}"
+        import os, re
+        base = os.path.basename(file_name).replace("\0", "").strip()
+        clean_name = re.sub(r'[^a-zA-Z0-9._-]', '_', base) or "document.pdf"
+        clean_folder = "processed" if folder == "processed" else "originals"
+        clean_user_id = re.sub(r'[^a-zA-Z0-9._-]', '', user_id)
+        clean_file_id = re.sub(r'[^a-zA-Z0-9._-]', '', file_id)
+        return f"users/{clean_user_id}/{clean_folder}/{clean_file_id}/{clean_name}"
 
     def generate_presigned_upload_url(self, s3_key: str, content_type: str) -> str:
         """Generates a short-lived PUT presigned URL for direct browser-to-S3 single uploads."""
@@ -113,22 +119,24 @@ class S3Service:
     def generate_presigned_download_url(self, s3_key: str, original_name: str) -> str:
         """
         Generates a short-lived (15 min) GET presigned URL with Content-Disposition
-        forcing secure browser download.
+        forcing secure browser download. Sanitizes original_name against CRLF and quotes.
         """
+        import os, re
+        safe_name = os.path.basename(original_name).replace('"', '').replace('\r', '').replace('\n', '').strip() or "document.pdf"
         try:
             return self.client.generate_presigned_url(
                 ClientMethod="get_object",
                 Params={
                     "Bucket": self.bucket,
                     "Key": s3_key,
-                    "ResponseContentDisposition": f'attachment; filename="{original_name}"'
+                    "ResponseContentDisposition": f'attachment; filename="{safe_name}"'
                 },
                 ExpiresIn=self.expires,
             )
         except Exception as e:
             logger.warning(f"Using mock S3 download URL: {e}")
             endpoint = settings.AWS_ENDPOINT_URL_S3 or f"https://{self.bucket}.s3.{self.region}.amazonaws.com"
-            return f"{endpoint}/{s3_key}?download=1&filename={original_name}"
+            return f"{endpoint}/{s3_key}?download=1&filename={safe_name}"
 
     def get_actual_object_size(self, s3_key: str) -> int:
         """

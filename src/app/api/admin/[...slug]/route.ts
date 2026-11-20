@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, pool } from '@/lib/auth';
 import { verifyIsSoleAdmin } from '@/lib/adminSecurity';
+import { createInternalAssertion } from '@/lib/internalAuth';
 
 const SUPPORT_EMAILS = new Set([
   'support@gyanvatsala.in',
@@ -149,12 +150,14 @@ export async function GET(
   // Forward to FastAPI backend
   try {
     const backendUrl = `${getBackendBase()}/api/admin/${path}${req.nextUrl.search}`;
+    const assertion = createInternalAssertion(user);
     const res = await fetch(backendUrl, {
       headers: {
         'X-User-Email': user.email,
         'X-User-Role': user.role,
         'X-User-Id': user.userId,
         'X-Internal-Secret': getInternalSecret(),
+        'X-Internal-Assertion': assertion,
       },
     });
 
@@ -210,6 +213,7 @@ export async function POST(
   try {
     const body = await req.json();
     const backendUrl = `${getBackendBase()}/api/admin/${path}`;
+    const assertion = createInternalAssertion(user);
     const res = await fetch(backendUrl, {
       method: 'POST',
       headers: {
@@ -218,6 +222,7 @@ export async function POST(
         'X-User-Role': user.role,
         'X-User-Id': user.userId,
         'X-Internal-Secret': getInternalSecret(),
+        'X-Internal-Assertion': assertion,
       },
       body: JSON.stringify(body),
     });

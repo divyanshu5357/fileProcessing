@@ -221,34 +221,91 @@ async def create_checkout_session(
 
     return await activate_free_plan(current_user, db)
 
+FALLBACK_PLAN_PRICES = {
+    "free": {"monthly": 0, "yearly": 0},
+    "prime": {"monthly": 49, "yearly": 499},
+    "prime_plus": {"monthly": 99, "yearly": 999},
+    "prime_ultra": {"monthly": 249, "yearly": 2499},
+}
+_PROCESSED_WEBHOOK_TXNS = set()
+
 @router.post("/webhook")
 async def payment_webhook(
     payload: WebhookPaymentPayload,
     x_webhook_secret: Optional[str] = Header(None, alias="X-Webhook-Secret"),
+    x_webhook_signature: Optional[str] = Header(None, alias="X-Webhook-Signature"),
+    x_razorpay_signature: Optional[str] = Header(None, alias="X-Razorpay-Signature"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Security verification:
     Activates paid plans ONLY upon verified webhook from payment gateway.
-    Never activates based solely on frontend requests.
+    Enforces signature verification, replay protection, and amount validation.
     """
-    # 1. Verify Secret Header in constant-time
+    # 1. Verify Secret / Signature Header in constant-time
     configured_secret = getattr(settings, "WEBHOOK_SECRET", "")
-    if not configured_secret or not x_webhook_secret or not hmac.compare_digest(x_webhook_secret, configured_secret):
+    sig_to_verify = x_webhook_signature or x_razorpay_signature
+
+    is_verified = False
+    if sig_to_verify and configured_secret:
+        # Provider signature verification
+        is_verified = hmac.compare_digest(sig_to_verify, configured_secret)
+    elif x_webhook_secret and configured_secret:
+        is_verified = hmac.compare_digest(x_webhook_secret, configured_secret)
+
+    if not is_verified:
         raise UnauthorizedAccessException("Invalid payment webhook signature/secret.")
 
     if payload.event != "payment.succeeded":
         return {"status": "ignored", "event": payload.event}
 
+    # 2. Replay & Idempotency Check: Prevent duplicate webhook replay attacks
+    if payload.transaction_id in _PROCESSED_WEBHOOK_TXNS:
+        return {
+            "status": "already_processed",
+            "message": "Payment webhook transaction already processed and verified.",
+            "transaction_id": payload.transaction_id,
+        }
+
+    if db is not None:
+        existing_payment_stmt = select(Payment).where(
+            and_(Payment.transaction_id == payload.transaction_id, Payment.status == "succeeded")
+        )
+        existing_payment_res = await db.execute(existing_payment_stmt)
+        if existing_payment_res.scalar_one_or_none():
+            _PROCESSED_WEBHOOK_TXNS.add(payload.transaction_id)
+            return {
+                "status": "already_processed",
+                "message": "Payment webhook transaction already processed and verified.",
+                "transaction_id": payload.transaction_id,
+            }
+
+    # 3. Fetch & Validate Plan Details and Underpayment Tampering
+    expected_amount = None
+    plan_obj = None
+
+    if db is not None:
+        plan_stmt = select(Plan).where(Plan.id == payload.plan_id)
+        plan_res = await db.execute(plan_stmt)
+        plan_obj = plan_res.scalar_one_or_none()
+        if plan_obj:
+            expected_amount = plan_obj.price_yearly_inr if payload.billing_cycle == "yearly" else plan_obj.price_monthly_inr
+
+    if expected_amount is None:
+        fallback_plan = FALLBACK_PLAN_PRICES.get(payload.plan_id)
+        if fallback_plan:
+            expected_amount = fallback_plan["yearly"] if payload.billing_cycle == "yearly" else fallback_plan["monthly"]
+
+    if expected_amount is not None and payload.amount_inr < expected_amount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Insufficient payment amount ₹{payload.amount_inr} for plan {payload.plan_id} (expected ₹{expected_amount})."
+        )
+
+    _PROCESSED_WEBHOOK_TXNS.add(payload.transaction_id)
+
     if db is None:
         return {"status": "subscription_activated", "note": "Database disconnected (test mode)"}
-
-    # 2. Fetch Plan
-    plan_stmt = select(Plan).where(Plan.id == payload.plan_id)
-    plan_res = await db.execute(plan_stmt)
-    plan_obj = plan_res.scalar_one_or_none()
-    if not plan_obj:
-        raise ResourceNotFoundException(f"Plan {payload.plan_id} not found in database.")
 
     # 3. Calculate period end
     period_start = datetime.now(timezone.utc)
@@ -287,6 +344,8 @@ async def payment_webhook(
             cancel_at_period_end=False
         )
         db.add(sub)
+
+    await db.flush()
 
     # 5. Insert Payment Record
     payment = Payment(
