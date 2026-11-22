@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, desc, asc
-from typing import List, Optional
+from typing import List, Optional, Literal
 from datetime import datetime, timezone
 from pydantic import BaseModel
 
@@ -28,8 +28,8 @@ class BulkDeleteRequest(BaseModel):
 async def list_user_files(
     folder_id: Optional[str] = None,
     search: Optional[str] = None,
-    sort_by: str = Query("created_at", enum=["created_at", "original_name", "file_size"]),
-    sort_order: str = Query("desc", enum=["asc", "desc"]),
+    sort_by: Literal["created_at", "original_name", "file_size"] = Query("created_at"),
+    sort_order: Literal["asc", "desc"] = Query("desc"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     current_user: AuthenticatedUser = Depends(get_current_user),
