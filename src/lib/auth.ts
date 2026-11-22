@@ -8,6 +8,9 @@ const databaseUrl = process.env.DATABASE_URL;
 const getBetterAuthSecret = (): string => {
   const secret = process.env.BETTER_AUTH_SECRET;
   if (!secret || secret.trim().length < 32) {
+    if (process.env.NEXT_PHASE === 'phase-production-build') {
+      return 'build_phase_placeholder_secret_must_be_at_least_32_chars';
+    }
     if (process.env.NODE_ENV === 'production') {
       throw new Error(
         '[CRITICAL SECURITY] BETTER_AUTH_SECRET must be explicitly configured with at least 32 characters in production.'
