@@ -72,6 +72,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Special bypass for Razorpay merchant verification reviewer test account
+    if (cleanEmail === 'test@gyanvatsala.in') {
+      return NextResponse.json({
+        success: true,
+        message: 'Verification code sent (Test code: 12345678).',
+      });
+    }
+
     // 2. Cooldown check (60 seconds) evaluated FIRST so premature retries don't burn window quota
     const now = Date.now();
     const lastRequest = lastRequestTimestamps.get(cleanEmail);
