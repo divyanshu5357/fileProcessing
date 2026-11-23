@@ -21,6 +21,9 @@ const getBetterAuthSecret = (): string => {
   return secret.trim();
 };
 
+const googleClientId = (process.env.GOOGLE_CLIENT_ID || '').replace(/^["']|["']$/g, '').trim();
+const googleClientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').replace(/^["']|["']$/g, '').trim();
+
 export const pool = databaseUrl
   ? new Pool({
       connectionString: databaseUrl,
@@ -56,9 +59,9 @@ export const auth = betterAuth({
   },
   socialProviders: {
     google: {
-      clientId: process.env.GOOGLE_CLIENT_ID || '',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-      enabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+      clientId: googleClientId,
+      clientSecret: googleClientSecret,
+      enabled: !!(googleClientId && googleClientSecret),
     },
   },
   plugins: [
