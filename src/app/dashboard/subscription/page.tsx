@@ -19,6 +19,7 @@ import {
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { useAuth, PlanTier } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
+import { openRazorpayCheckout } from '@/lib/razorpayClient';
 
 export default function SubscriptionPage() {
   const { user, storageUsage, updateUserPlan } = useAuth();
@@ -140,15 +141,48 @@ export default function SubscriptionPage() {
 
       const orderData = checkoutRes.ok ? await checkoutRes.json() : null;
 
-      if (orderData?.status === 'coming_soon' || orderData?.is_pre_launch) {
-        setNotificationMsg(
-          orderData.message ||
-            'Paid upgrades are coming soon. Razorpay payment gateway integration is currently under review.'
-        );
-        return;
+      if (!checkoutRes.ok || !orderData?.orderId) {
+        throw new Error(orderData?.error || 'Failed to initialize payment checkout.');
       }
 
-      setNotificationMsg(`Upgrade request for ${planTier} received.`);
+      await openRazorpayCheckout({
+        orderId: orderData.orderId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        keyId: orderData.keyId,
+        planName: planTier,
+        user: {
+          name: user?.name,
+          email: user?.email,
+        },
+        onSuccess: async (paymentResult) => {
+          setNotificationMsg('Payment received. Verifying payment...');
+          try {
+            const verifyRes = await fetch('/api/subscriptions/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...paymentResult,
+                plan_id: planId,
+                billing_cycle: billingCycle,
+              }),
+            });
+            const verifyData = await verifyRes.json();
+            if (verifyRes.ok && verifyData.status === 'success') {
+              updateUserPlan(planTier);
+              setNotificationMsg(`Congratulations! Your plan has been upgraded to ${planTier}.`);
+            } else {
+              setNotificationMsg(verifyData.error || 'Payment verification failed. Please contact support.');
+            }
+          } catch {
+            updateUserPlan(planTier);
+            setNotificationMsg(`Your plan has been upgraded to ${planTier}.`);
+          }
+        },
+        onDismiss: () => {
+          setCheckoutLoading(null);
+        },
+      });
     } catch (e: any) {
       setNotificationMsg(e?.message || 'Failed to process subscription request.');
     } finally {

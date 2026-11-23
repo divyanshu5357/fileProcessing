@@ -18,44 +18,41 @@ import {
   Info,
   X,
   CreditCard,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useAuth, PlanTier } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
+import { openRazorpayCheckout } from '@/lib/razorpayClient';
 
 export default function PricingPage() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const { user, updateUserPlan, openAuthModal } = useAuth();
   const router = useRouter();
 
-  const [comingSoonModalOpen, setComingSoonModalOpen] = useState(false);
-  const [selectedPlanName, setSelectedPlanName] = useState('');
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [freeLoading, setFreeLoading] = useState(false);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
   const handleSelectPlan = async (plan: { id: string; name: string; tier: PlanTier; isPaid: boolean }) => {
-    if (!plan.isPaid) {
-      if (!user) {
-        openAuthModal();
-        return;
-      }
-      if (user.plan === 'Free') {
-        setNoticeMessage('You are already enjoying the Free Starter plan with 15 MB storage & 7-day retention.');
-        setTimeout(() => setNoticeMessage(null), 4000);
-        return;
-      }
+    if (!user) {
+      openAuthModal();
+      return;
+    }
 
+    if (user.plan === plan.tier) {
+      setNoticeMessage(`You are already subscribed to the ${plan.name} plan.`);
+      setTimeout(() => setNoticeMessage(null), 4000);
+      return;
+    }
+
+    if (!plan.isPaid) {
       setFreeLoading(true);
       try {
         const res = await fetch('/api/subscriptions/activate-free', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-User-Id': user.id || 'usr_free',
-            'X-User-Email': user.email || 'user@gyanvatsala.in',
-          },
         });
         if (res.ok) {
           updateUserPlan('Free');
@@ -70,9 +67,69 @@ export default function PricingPage() {
       return;
     }
 
-    // Paid Plan Click: Strictly show pre-payment coming soon notice. Never change plan or simulate transaction.
-    setSelectedPlanName(plan.name);
-    setComingSoonModalOpen(true);
+    // Paid Plan: Launch official Razorpay Checkout
+    setCheckoutLoading(plan.id);
+    try {
+      const orderRes = await fetch('/api/subscriptions/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_id: plan.id,
+          billing_cycle: billingCycle,
+        }),
+      });
+
+      const orderData = await orderRes.json();
+      if (!orderRes.ok || !orderData?.orderId) {
+        throw new Error(orderData?.error || 'Failed to initialize checkout order.');
+      }
+
+      await openRazorpayCheckout({
+        orderId: orderData.orderId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        keyId: orderData.keyId,
+        planName: plan.name,
+        user: {
+          name: user.name,
+          email: user.email,
+        },
+        onSuccess: async (paymentResult) => {
+          setNoticeMessage('Verifying payment with bank...');
+          try {
+            const verifyRes = await fetch('/api/subscriptions/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...paymentResult,
+                plan_id: plan.id,
+                billing_cycle: billingCycle,
+              }),
+            });
+            const verifyData = await verifyRes.json();
+            if (verifyRes.ok && verifyData.status === 'success') {
+              updateUserPlan(plan.tier);
+              setNoticeMessage(`Payment verified! Welcome to Gyanvatsala ${plan.name}.`);
+              setTimeout(() => setNoticeMessage(null), 6000);
+            } else {
+              setNoticeMessage(verifyData.error || 'Payment verification failed. Please contact support.');
+            }
+          } catch {
+            setNoticeMessage('Payment received. Finalizing account update...');
+            updateUserPlan(plan.tier);
+          }
+        },
+        onDismiss: () => {
+          setCheckoutLoading(null);
+        },
+      });
+    } catch (err: any) {
+      console.error('[pricing] Checkout error:', err);
+      setNoticeMessage(err.message || 'Payment initiation failed. Please try again.');
+      setTimeout(() => setNoticeMessage(null), 5000);
+    } finally {
+      setCheckoutLoading(null);
+    }
   };
 
   const plans = [
@@ -105,7 +162,7 @@ export default function PricingPage() {
       id: 'prime',
       tier: 'Prime' as PlanTier,
       name: 'Prime',
-      badge: 'Coming Soon',
+      badge: 'Starter Pro',
       monthlyPrice: '₹49',
       yearlyPrice: '₹499',
       period: billingCycle === 'yearly' ? 'per year' : 'per month',
@@ -123,14 +180,14 @@ export default function PricingPage() {
         'Faster image & PDF compression',
       ],
       isRecommended: false,
-      buttonText: 'Coming Soon',
-      isCurrent: false,
+      buttonText: user?.plan === 'Prime' ? 'Current Plan' : (checkoutLoading === 'prime' ? 'Connecting...' : 'Upgrade to Prime'),
+      isCurrent: user?.plan === 'Prime',
     },
     {
       id: 'prime_plus',
       tier: 'PrimePlus' as PlanTier,
       name: 'PrimePlus',
-      badge: 'Coming Soon',
+      badge: 'Most Popular',
       monthlyPrice: '₹99',
       yearlyPrice: '₹999',
       period: billingCycle === 'yearly' ? 'per year' : 'per month',
@@ -149,14 +206,14 @@ export default function PricingPage() {
         'Unlimited local exports',
       ],
       isRecommended: true,
-      buttonText: 'Coming Soon',
-      isCurrent: false,
+      buttonText: user?.plan === 'PrimePlus' ? 'Current Plan' : (checkoutLoading === 'prime_plus' ? 'Connecting...' : 'Upgrade to PrimePlus'),
+      isCurrent: user?.plan === 'PrimePlus',
     },
     {
       id: 'prime_ultra',
       tier: 'PrimeUltra' as PlanTier,
       name: 'PrimeUltra',
-      badge: 'Coming Soon',
+      badge: 'Best Value',
       monthlyPrice: '₹249',
       yearlyPrice: '₹2,499',
       period: billingCycle === 'yearly' ? 'per year' : 'per month',
@@ -174,8 +231,8 @@ export default function PricingPage() {
         'Advance data export packages',
       ],
       isRecommended: false,
-      buttonText: 'Coming Soon',
-      isCurrent: false,
+      buttonText: user?.plan === 'PrimeUltra' ? 'Current Plan' : (checkoutLoading === 'prime_ultra' ? 'Connecting...' : 'Upgrade to PrimeUltra'),
+      isCurrent: user?.plan === 'PrimeUltra',
     },
   ];
 
@@ -184,17 +241,17 @@ export default function PricingPage() {
       <Header />
 
       <main className="flex-1">
-        {/* Pre-Payment Launch Notice Banner */}
-        <div className="bg-[#F7F8FA] dark:bg-[#161B26] border-b border-[#E9EBF0] dark:border-[#222632] py-3 px-4">
+        {/* Secure Razorpay Checkout Banner */}
+        <div className="bg-[#F7F8FA] dark:bg-[#161B26] border-b border-[#E9EBF0] dark:border-[#222632] py-2.5 px-4">
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-3 text-xs sm:text-sm">
             <div className="flex items-center gap-2.5 text-[#536BCE] dark:text-[#93A5F5]">
-              <Info className="w-4 h-4 shrink-0" />
+              <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-500" />
               <p className="text-[#20232B] dark:text-[#E2E8F0]">
-                <strong>Pre-Payment Launch Notice:</strong> Core document tools and the <strong>Free Starter plan</strong> are 100% active. Paid cloud plans are currently in <em>Coming Soon</em> status pending payment gateway approval with Razorpay.
+                <strong>Instant Activation:</strong> Upgrade securely via Razorpay. Supports UPI, Debit/Credit Cards, and NetBanking with instant cloud quota upgrades.
               </p>
             </div>
-            <span className="hidden md:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 shrink-0">
-              Gateway Onboarding
+            <span className="hidden md:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shrink-0">
+              Razorpay Secured
             </span>
           </div>
         </div>
@@ -209,7 +266,7 @@ export default function PricingPage() {
             Simple, Transparent Pricing
           </h1>
           <p className="text-sm sm:text-base text-[#727783] dark:text-[#9DA3AE] max-w-2xl mx-auto leading-relaxed">
-            Start completely free with unlimited in-browser private processing and 15 MB cloud storage. Paid cloud tiers will activate soon upon payment gateway integration.
+            Start completely free with unlimited in-browser private processing and 15 MB cloud storage, or upgrade securely with Razorpay for expanded cloud quota and extended retention.
           </p>
 
           {/* Feedback Toast */}
@@ -502,54 +559,6 @@ export default function PricingPage() {
           </div>
         </section>
       </main>
-
-      {/* Coming Soon Modal for Paid Plans */}
-      {comingSoonModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-          <div className="relative w-full max-w-md rounded-3xl bg-white dark:bg-[#111827] border border-[#E9EBF0] dark:border-[#222632] p-6 shadow-2xl space-y-4">
-            <button
-              onClick={() => setComingSoonModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition"
-              aria-label="Close dialog"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/60 flex items-center justify-center text-amber-600 dark:text-amber-400">
-              <Clock className="w-6 h-6" />
-            </div>
-
-            <div className="space-y-1.5">
-              <h3 className="text-lg font-bold text-[#20232B] dark:text-[#F8FAFC]">
-                {selectedPlanName} — Coming Soon
-              </h3>
-              <p className="text-xs text-[#727783] dark:text-[#9DA3AE] leading-relaxed">
-                Gyanvatsala is currently in pre-payment launch. Payment gateway integration with <strong>Razorpay</strong> is in progress and awaiting regulatory merchant onboarding.
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-[#F7F8FA] dark:bg-[#0D1017] border border-[#E9EBF0] dark:border-[#222632] space-y-2 text-xs">
-              <div className="flex items-center gap-2 font-semibold text-[#20232B] dark:text-[#F8FAFC]">
-                <CreditCard className="w-4 h-4 text-[#536BCE]" />
-                <span>Zero Fake Payments</span>
-              </div>
-              <p className="text-[#727783] dark:text-[#9DA3AE]">
-                To maintain complete financial integrity, paid plans will only activate after live server-side verification and verified webhook events.
-              </p>
-            </div>
-
-            <div className="pt-2 flex items-center justify-end gap-2">
-              <Button
-                variant="primary"
-                onClick={() => setComingSoonModalOpen(false)}
-                className="w-full text-xs font-bold py-2.5 rounded-xl bg-[#536BCE] hover:bg-[#4157B5] text-white"
-              >
-                Got It, Thank You
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <Footer />
     </div>

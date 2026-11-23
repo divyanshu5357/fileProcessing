@@ -13,8 +13,8 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob: https:",
-    "connect-src 'self' https://accounts.google.com https://*.neon.tech https://*.onrender.com https://api.razorpay.com https://*.amazonaws.com https://*.r2.cloudflarestorage.com http://127.0.0.1:8000 http://localhost:8000",
-    "frame-src 'self' https://accounts.google.com https://api.razorpay.com",
+    "connect-src 'self' https://accounts.google.com https://*.neon.tech https://*.onrender.com https://*.razorpay.com https://api.razorpay.com https://*.amazonaws.com https://*.r2.cloudflarestorage.com http://127.0.0.1:8000 http://localhost:8000",
+    "frame-src 'self' https://accounts.google.com https://api.razorpay.com https://checkout.razorpay.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self' https://accounts.google.com",
@@ -32,10 +32,10 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
   // Referrer information control
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
-  // Restrict sensitive browser features
+  // Restrict sensitive browser features while permitting payment gateway checkout
   res.headers.set(
     'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), payment=(self)'
+    'camera=(), microphone=(), geolocation=(), payment=*'
   );
 
   // Enforce HSTS only in production environments
