@@ -108,7 +108,7 @@ export default function RootLayout({
             __html: `
               try {
                 var saved = localStorage.getItem('gyanvatsala-theme') || localStorage.getItem('pixelkit-theme');
-                var isDark = saved ? saved === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                var isDark = saved === 'dark';
                 if (isDark) {
                   document.documentElement.classList.add('dark');
                   document.documentElement.classList.remove('light');

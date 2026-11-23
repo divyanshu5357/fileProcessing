@@ -11,7 +11,7 @@ interface ThemeContextType {
 }
 
 const defaultThemeContext: ThemeContextType = {
-  theme: 'dark',
+  theme: 'light',
   setTheme: () => {},
   toggleTheme: () => {},
 };
@@ -19,19 +19,13 @@ const defaultThemeContext: ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType>(defaultThemeContext);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('dark');
+  const [theme, setThemeState] = useState<Theme>('light');
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Check saved theme or system preference
+    // Default to light background unless the user explicitly saved 'dark'
     const saved = (localStorage.getItem('gyanvatsala-theme') || localStorage.getItem('pixelkit-theme')) as Theme | null;
-    let initialTheme: Theme = 'dark';
-
-    if (saved === 'light' || saved === 'dark') {
-      initialTheme = saved;
-    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-      initialTheme = 'light';
-    }
+    const initialTheme: Theme = saved === 'dark' ? 'dark' : 'light';
 
     setThemeState(initialTheme);
     applyTheme(initialTheme);
