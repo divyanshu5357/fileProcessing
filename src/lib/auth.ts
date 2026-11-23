@@ -37,7 +37,13 @@ export const pool = databaseUrl
 
 export const auth = betterAuth({
   appName: 'Gyanvatsala Workspace',
-  baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
+  baseURL: process.env.BETTER_AUTH_URL || 'https://www.gyanvatsala.in',
+  trustedOrigins: [
+    'https://www.gyanvatsala.in',
+    'https://gyanvatsala.in',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+  ],
   secret: getBetterAuthSecret(),
   database: pool || undefined,
   session: {
@@ -61,7 +67,6 @@ export const auth = betterAuth({
     google: {
       clientId: googleClientId,
       clientSecret: googleClientSecret,
-      enabled: !!(googleClientId && googleClientSecret),
     },
   },
   plugins: [
