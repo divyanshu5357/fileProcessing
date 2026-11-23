@@ -21,11 +21,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, storageUsage } = useAuth();
 
+  const isPaid = Boolean(user && user.plan !== 'Free');
   // Simplified SaaS navigation matching product vision
   const navLinks = [
     { href: '/workspace', label: 'Workspace', icon: LayoutDashboard },
     { href: '/pdf', label: 'All Tools', icon: Wrench },
-    { href: '/workspace#activity', label: 'Recent Activity', icon: Clock },
+    ...(isPaid ? [{ href: '/workspace#activity', label: 'Recent Activity', icon: Clock }] : []),
     { href: '/dashboard/files', label: 'My Cloud Files', icon: FolderOpen },
     { href: '/dashboard/subscription', label: 'Subscription & Plans', icon: CreditCard },
     { href: '/pricing', label: 'Pricing & Upgrades', icon: Sparkles },

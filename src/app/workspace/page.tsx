@@ -100,6 +100,7 @@ export default function AuthenticatedWorkspace() {
 
   // Load activities on mount
   useEffect(() => {
+    activityService.clearMockActivities();
     setActivities(activityService.getActivities());
   }, []);
 
@@ -365,12 +366,14 @@ export default function AuthenticatedWorkspace() {
             >
               All Tools
             </a>
-            <a
-              href="#activity"
-              className="px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition"
-            >
-              Recent Activity
-            </a>
+            {user && user.plan !== 'Free' && (
+              <a
+                href="#activity"
+                className="px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition"
+              >
+                Recent Activity
+              </a>
+            )}
             <Link
               href="/dashboard/files"
               className="px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition"
@@ -800,123 +803,125 @@ export default function AuthenticatedWorkspace() {
         </section>
 
         {/* ======================================================== */}
-        {/* 5. RECENT FILES & ACTIVITY TIMELINE                      */}
+        {/* 5. RECENT FILES & ACTIVITY TIMELINE (PAID PLANS ONLY)     */}
         {/* ======================================================== */}
-        <section id="activity" className="space-y-4 pt-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                Recent Processing Activity
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-                Chronological history of your file conversions and edits.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Search history..."
-                value={activitySearch}
-                onChange={(e) => setActivitySearch(e.target.value)}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
-              />
-              <select
-                value={activityTypeFilter}
-                onChange={(e) => setActivityTypeFilter(e.target.value)}
-                className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
-              >
-                <option value="all">All Types</option>
-                <option value="pdf">PDFs</option>
-                <option value="image">Images</option>
-                <option value="word">Word Docs</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Activity Cards List */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
-            {filteredActivities.length === 0 ? (
-              <div className="text-center py-12 text-slate-400">
-                <Clock className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-xs font-semibold">No recent activity matching your filters</p>
+        {user && user.plan !== 'Free' && (
+          <section id="activity" className="space-y-4 pt-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+                  Recent Processing Activity
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+                  Chronological history of your file conversions and edits.
+                </p>
               </div>
-            ) : (
-              filteredActivities.map((act) => {
-                const dateObj = new Date(act.timestamp);
-                const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
 
-                return (
-                  <div
-                    key={act.id}
-                    className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition"
-                  >
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
-                        {act.fileType === 'pdf' ? (
-                          <FileText className="w-5 h-5 text-red-500" />
-                        ) : act.fileType === 'image' ? (
-                          <ImageIcon className="w-5 h-5 text-blue-500" />
-                        ) : act.fileType === 'word' ? (
-                          <FileText className="w-5 h-5 text-blue-600" />
-                        ) : (
-                          <FileSpreadsheet className="w-5 h-5 text-emerald-500" />
-                        )}
-                      </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Search history..."
+                  value={activitySearch}
+                  onChange={(e) => setActivitySearch(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
+                />
+                <select
+                  value={activityTypeFilter}
+                  onChange={(e) => setActivityTypeFilter(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
+                >
+                  <option value="all">All Types</option>
+                  <option value="pdf">PDFs</option>
+                  <option value="image">Images</option>
+                  <option value="word">Word Docs</option>
+                </select>
+              </div>
+            </div>
 
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
-                            {act.fileName}
-                          </span>
-                          <span
-                            className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
-                              act.status === 'Completed'
-                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
-                                : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400'
-                            }`}
-                          >
-                            {act.status}
-                          </span>
+            {/* Activity Cards List */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredActivities.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <Clock className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-xs font-semibold">No recent activity matching your filters</p>
+                </div>
+              ) : (
+                filteredActivities.map((act) => {
+                  const dateObj = new Date(act.timestamp);
+                  const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+                  return (
+                    <div
+                      key={act.id}
+                      className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition"
+                    >
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                          {act.fileType === 'pdf' ? (
+                            <FileText className="w-5 h-5 text-red-500" />
+                          ) : act.fileType === 'image' ? (
+                            <ImageIcon className="w-5 h-5 text-blue-500" />
+                          ) : act.fileType === 'word' ? (
+                            <FileText className="w-5 h-5 text-blue-600" />
+                          ) : (
+                            <FileSpreadsheet className="w-5 h-5 text-emerald-500" />
+                          )}
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {act.operation} • <span className="font-mono">{formatBytes(act.fileSize)}</span> • {dateStr} at {timeStr}
-                        </p>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                      {act.resultFileName && (
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                              {act.fileName}
+                            </span>
+                            <span
+                              className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                                act.status === 'Completed'
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+                                  : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400'
+                              }`}
+                            >
+                              {act.status}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {act.operation} • <span className="font-mono">{formatBytes(act.fileSize)}</span> • {dateStr} at {timeStr}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                        {act.resultFileName && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              alert(`Result "${act.resultFileName}" is ready for download.`);
+                            }}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950 text-blue-600 hover:bg-blue-100 transition cursor-pointer"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Result</span>
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           onClick={() => {
-                            alert(`Result "${act.resultFileName}" is ready for download.`);
+                            activityService.deleteActivity(act.id);
+                            setActivities(activityService.getActivities());
                           }}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950 text-blue-600 hover:bg-blue-100 transition cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer transition"
                         >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Result</span>
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          activityService.deleteActivity(act.id);
-                          setActivities(activityService.getActivities());
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer transition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      </div>
                     </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </section>
+                  );
+                })
+              )}
+            </div>
+          </section>
+        )}
       </main>
 
       {/* Pre-Download Export Modal */}

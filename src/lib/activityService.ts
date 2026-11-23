@@ -20,60 +20,8 @@ export interface UserActivityItem {
 const ACTIVITY_STORAGE_KEY = 'gyanvatsala_user_activities_v2';
 const LEGACY_STORAGE_KEY = 'pixelkit_user_activities_v2';
 
-// Initial realistic default activities reflecting the user's recent operations
 const getDefaultActivities = (): UserActivityItem[] => {
-  const now = Date.now();
-  const oneHourAgo = new Date(now - 3600000 * 2).toISOString();
-  const fourHoursAgo = new Date(now - 3600000 * 5).toISOString();
-  const yesterday = new Date(now - 86400000).toISOString();
-  const twoDaysAgo = new Date(now - 86400000 * 2).toISOString();
-
-  return [
-    {
-      id: 'act-1',
-      fileName: 'Practical_File.pdf',
-      fileType: 'pdf',
-      fileSize: 4210000,
-      operation: 'PDF to Word (DOCX)',
-      status: 'Completed',
-      timestamp: oneHourAgo,
-      resultFileName: 'Practical_File.docx',
-      resultSize: 1820000,
-    },
-    {
-      id: 'act-2',
-      fileName: 'University_Logo.png',
-      fileType: 'image',
-      fileSize: 1250000,
-      operation: 'Compress Image (Lossless)',
-      status: 'Completed',
-      timestamp: fourHoursAgo,
-      resultFileName: 'University_Logo_compressed.png',
-      resultSize: 420000,
-    },
-    {
-      id: 'act-3',
-      fileName: 'Quarterly_Financial_Report_2026.pdf',
-      fileType: 'pdf',
-      fileSize: 3100000,
-      operation: 'PDF Editor — Annotated & Signed',
-      status: 'Completed',
-      timestamp: yesterday,
-      resultFileName: 'Quarterly_Financial_Report_2026_edited.pdf',
-      resultSize: 3200000,
-    },
-    {
-      id: 'act-4',
-      fileName: 'Lecture_Handout_Scanned.pdf',
-      fileType: 'pdf',
-      fileSize: 5800000,
-      operation: 'Scan Studio — Deskew & Warm Paper',
-      status: 'Completed',
-      timestamp: twoDaysAgo,
-      resultFileName: 'Lecture_Handout_Scanned.pdf',
-      resultSize: 4900000,
-    },
-  ];
+  return [];
 };
 
 export const activityService = {
@@ -81,15 +29,30 @@ export const activityService = {
     if (typeof window === 'undefined') return [];
     try {
       const data = localStorage.getItem(ACTIVITY_STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
-      if (!data) {
-        const defaults = getDefaultActivities();
-        localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(defaults));
-        return defaults;
+      if (!data) return [];
+      let parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item: UserActivityItem) => !item.id?.startsWith('act-'));
       }
-      return JSON.parse(data);
+      return [];
     } catch {
-      return getDefaultActivities();
+      return [];
     }
+  },
+
+  clearMockActivities: (): void => {
+    if (typeof window === 'undefined') return;
+    try {
+      const data = localStorage.getItem(ACTIVITY_STORAGE_KEY);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((item: UserActivityItem) => !item.id?.startsWith('act-'));
+          localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(cleaned));
+        }
+      }
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {}
   },
 
   logActivity: (
