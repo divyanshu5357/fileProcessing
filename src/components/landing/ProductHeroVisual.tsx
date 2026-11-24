@@ -1,37 +1,20 @@
-'use client';
-
-import React, { useState } from 'react';
-import Link from 'next/link';
+import React from 'react';
 import {
   FileText,
-  ScanLine,
-  Image as ImageIcon,
   PenTool,
-  Check,
-  Download,
-  Share2,
   ZoomIn,
   ZoomOut,
   Highlighter,
   Type,
   Folder,
   Cloud,
-  ShieldCheck,
   CheckCircle2,
-  Sliders,
-  ChevronRight,
-  Maximize2,
 } from 'lucide-react';
 
 export function ProductHeroVisual() {
-  const [activeTab, setActiveTab] = useState<'editor' | 'scan' | 'convert'>('editor');
-  const [isHovered, setIsHovered] = useState(false);
-
   return (
     <div
       className="relative w-full max-w-2xl mx-auto rounded-3xl bg-gradient-to-tr from-[#EDF2FE] via-[#F4F7FF] to-[#EDF4FF] dark:from-[#131929] dark:via-[#161D30] dark:to-[#111726] border border-[#E2E8F8] dark:border-[#222B42] p-4 sm:p-7 shadow-lg shadow-blue-500/5 transition-all duration-300 select-none group"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       {/* Subtle background ambient line/accent */}
       <div className="absolute top-0 right-0 w-72 h-72 bg-[#536BCE]/8 rounded-full blur-3xl pointer-events-none" />

@@ -165,79 +165,94 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // 1. Authoritative server-verified session sync via /api/auth/me
-        try {
-          const meRes = await fetch('/api/auth/me');
-          if (meRes.ok) {
-            const meData = await meRes.json();
-            if (meData?.authenticated && meData?.user && !isStaleOrTestAccount(meData.user) && !isExpired) {
-              const u = meData.user;
-              const verifiedUser: UserProfile = {
-                id: u.id,
-                name: u.name || u.email?.split('@')[0] || 'User',
-                email: u.email,
-                avatarUrl: u.avatarUrl || undefined,
-                plan: u.plan || 'Free',
-                role: u.role || 'user',
-              };
-              setUser(verifiedUser);
-              localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(verifiedUser));
-              if (!localStorage.getItem(SESSION_START_KEY)) {
-                localStorage.setItem(SESSION_START_KEY, Date.now().toString());
-              }
-              localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
-            } else {
-              // Server says unauthenticated or account is stale/expired -> wipe state
-              setUser(null);
-              purgeLocalStorage();
-            }
-          } else {
-            setUser((prev) => {
-              if (isStaleOrTestAccount(prev)) {
-                purgeLocalStorage();
-                return null;
-              }
-              return prev;
-            });
-          }
-        } catch (meErr) {
-          console.debug('Failed to fetch /api/auth/me', meErr);
-        }
-
-        // 2. Also sync with Better Auth client session
-        try {
-          const sessionRes = await authClient.getSession();
-          if (sessionRes?.data?.user) {
-            if (isStaleOrTestAccount(sessionRes.data.user) || isExpired) {
-              await authClient.signOut().catch(() => {});
-              setUser(null);
-              purgeLocalStorage();
-            } else {
-              const u = sessionRes.data.user;
-              const serverRole = (u as any).role || 'user';
-              const realUser: UserProfile = {
-                id: u.id,
-                name: u.name || u.email?.split('@')[0] || 'User',
-                email: u.email,
-                avatarUrl: u.image || undefined,
-                plan: (u as any).plan || 'Free',
-                role: serverRole,
-              };
-              setUser(realUser);
-              localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(realUser));
-            }
-          }
-        } catch (sessErr) {
-          console.debug('No active Better Auth session', sessErr);
-        }
-
         const savedStorage = localStorage.getItem(LOCAL_STORAGE_STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_STORAGE_KEY);
         if (savedStorage) {
-          setStorageUsage(JSON.parse(savedStorage));
+          try {
+            setStorageUsage(JSON.parse(savedStorage));
+          } catch {}
+        }
+
+        // Set initial local state immediately to avoid blocking hydration or first paint
+        setIsLoading(false);
+
+        // Defer authoritative server-verified session sync so it does not block initial load or TBT
+        const verifyServerSession = async () => {
+          // 1. Authoritative server-verified session sync via /api/auth/me
+          try {
+            const meRes = await fetch('/api/auth/me');
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              if (meData?.authenticated && meData?.user && !isStaleOrTestAccount(meData.user) && !isExpired) {
+                const u = meData.user;
+                const verifiedUser: UserProfile = {
+                  id: u.id,
+                  name: u.name || u.email?.split('@')[0] || 'User',
+                  email: u.email,
+                  avatarUrl: u.avatarUrl || undefined,
+                  plan: u.plan || 'Free',
+                  role: u.role || 'user',
+                };
+                setUser(verifiedUser);
+                localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(verifiedUser));
+                if (!localStorage.getItem(SESSION_START_KEY)) {
+                  localStorage.setItem(SESSION_START_KEY, Date.now().toString());
+                }
+                localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+              } else {
+                // Server says unauthenticated or account is stale/expired -> wipe state
+                setUser(null);
+                purgeLocalStorage();
+              }
+            } else {
+              setUser((prev) => {
+                if (isStaleOrTestAccount(prev)) {
+                  purgeLocalStorage();
+                  return null;
+                }
+                return prev;
+              });
+            }
+          } catch (meErr) {
+            console.debug('Failed to fetch /api/auth/me', meErr);
+          }
+
+          // 2. Also sync with Better Auth client session
+          try {
+            const sessionRes = await authClient.getSession();
+            if (sessionRes?.data?.user) {
+              if (isStaleOrTestAccount(sessionRes.data.user) || isExpired) {
+                await authClient.signOut().catch(() => {});
+                setUser(null);
+                purgeLocalStorage();
+              } else {
+                const u = sessionRes.data.user;
+                const serverRole = (u as any).role || 'user';
+                const realUser: UserProfile = {
+                  id: u.id,
+                  name: u.name || u.email?.split('@')[0] || 'User',
+                  email: u.email,
+                  avatarUrl: u.image || undefined,
+                  plan: (u as any).plan || 'Free',
+                  role: serverRole,
+                };
+                setUser(realUser);
+                localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(realUser));
+              }
+            }
+          } catch (sessErr) {
+            console.debug('No active Better Auth session', sessErr);
+          }
+        };
+
+        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+          (window as any).requestIdleCallback(() => {
+            verifyServerSession();
+          }, { timeout: 2500 });
+        } else {
+          setTimeout(verifyServerSession, 150);
         }
       } catch (e) {
         console.warn('Failed to parse local auth state', e);
-      } finally {
         setIsLoading(false);
       }
     };

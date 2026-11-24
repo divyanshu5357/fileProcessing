@@ -59,7 +59,6 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { ExportPreviewModal } from '@/components/common/ExportPreviewModal';
 import { GyanvatsalaLogo } from '@/components/common/GyanvatsalaLogo';
-import { pdfToDocx, compressPdfDocument } from '@/lib/pdfEngine';
 import { compressImage } from '@/lib/imageProcessing';
 
 export default function AuthenticatedWorkspace() {
@@ -202,6 +201,7 @@ export default function AuthenticatedWorkspace() {
 
       if (toolId === 'pdf-to-word') {
         setProcessingStatusText('Converting PDF document into editable Word DOCX...');
+        const { pdfToDocx } = await import('@/lib/pdfEngine');
         const docxRes = await pdfToDocx(
           activeFile,
           { format: 'docx', extractImages: true, ocrFallback: true },
@@ -229,6 +229,7 @@ export default function AuthenticatedWorkspace() {
         setIsExportModalOpen(true);
       } else if (toolId === 'compress-pdf') {
         setProcessingStatusText('Compressing PDF stream objects and embedded media...');
+        const { compressPdfDocument } = await import('@/lib/pdfEngine');
         const compRes = await compressPdfDocument(activeFile, { compressionLevel: 'recommended' });
 
         const baseName = activeFile.name.replace(/\.[^/.]+$/, '');

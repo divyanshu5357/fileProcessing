@@ -44,10 +44,17 @@ export function Header({
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Detect scroll to add slight elevation and border
+  // Detect scroll to add slight elevation and border (throttled via requestAnimationFrame)
   useEffect(() => {
+    let ticking = false;
     const handleScroll = () => {
-      setIsScrolled(window.scrollY > 15);
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          setIsScrolled(window.scrollY > 15);
+          ticking = false;
+        });
+        ticking = true;
+      }
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);

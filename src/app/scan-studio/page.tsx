@@ -57,7 +57,7 @@ import {
 import { loadFilesToScanPages } from '@/lib/scanPageLoader';
 import { renderFullScannedPage } from '@/lib/scanEngine';
 import { exportScannedPdf, exportScannedZip, exportSinglePageImage } from '@/lib/scanPdfExporter';
-import { parsePageRangeString } from '@/lib/pdfEngine';
+import { parsePageRangeString } from '@/lib/pageRangeUtils';
 import { ExportPreviewModal } from '@/components/common/ExportPreviewModal';
 import { fileTransferService } from '@/lib/fileTransferService';
 

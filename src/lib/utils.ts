@@ -1,7 +1,5 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import JSZip from 'jszip';
-import { PDFDocument } from 'pdf-lib';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -117,6 +115,8 @@ export async function copyBlobToClipboard(blob: Blob): Promise<boolean> {
 }
 
 export async function createZip(items: { name: string; blob: Blob }[]): Promise<Blob> {
+  const JSZipModule = await import('jszip');
+  const JSZip = JSZipModule.default || JSZipModule;
   const zip = new JSZip();
   const folder = zip.folder('gyanvatsala_processed') || zip;
 
@@ -152,6 +152,7 @@ export async function exportImagesToPdf(
   images: { blob: Blob; width: number; height: number; name?: string }[],
   pageSize: 'fit' | 'a4' | 'letter' = 'fit'
 ): Promise<Blob> {
+  const { PDFDocument } = await import('pdf-lib');
   const pdfDoc = await PDFDocument.create();
 
   for (const imgData of images) {

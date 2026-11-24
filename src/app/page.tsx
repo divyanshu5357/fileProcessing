@@ -1,9 +1,6 @@
-'use client';
-
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -37,46 +34,13 @@ const TrustSection = dynamic(
   }
 );
 
-const PrivacyBanner = dynamic(
-  () => import('@/components/PrivacyBanner').then((mod) => mod.PrivacyBanner),
-  { ssr: false }
-);
-
-const KeyboardShortcutsModal = dynamic(
-  () => import('@/components/KeyboardShortcutsModal').then((mod) => mod.KeyboardShortcutsModal),
-  { ssr: false }
-);
+import { LandingClientModals } from '@/components/landing/LandingClientModals';
 
 export default function GyanvatsalaHomepage() {
-  const router = useRouter();
-  const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
-  const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
-
-  // Backwards compatibility for query params (?tab=..., ?tool=...)
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const tab = params.get('tab');
-      const tool = params.get('tool');
-      if (tab === 'pdf-tools' || tool) {
-        router.push(tool ? `/pdf/${tool}` : '/pdf');
-      } else if (tab === 'scan-studio') {
-        router.push('/scan-studio');
-      } else if (tab === 'image-converter') {
-        router.push('/image-converter');
-      } else if (tab === 'image-tools') {
-        router.push('/image-tools');
-      }
-    }
-  }, [router]);
-
   return (
     <div className="min-h-screen flex flex-col bg-white dark:bg-[#0D1017] text-[#20232B] dark:text-[#F8FAFC] selection:bg-[#536BCE] selection:text-white transition-colors duration-150">
       {/* 1. CLEAN SINGLE NAVIGATION HEADER */}
-      <Header
-        onOpenPrivacyInfo={() => setPrivacyModalOpen(true)}
-        onOpenShortcuts={() => setShortcutsModalOpen(true)}
-      />
+      <Header />
 
       <main className="flex-1 flex flex-col">
         {/* ======================================================== */}
@@ -189,17 +153,10 @@ export default function GyanvatsalaHomepage() {
       </main>
 
       {/* 8. CLEAN PROFESSIONAL FOOTER */}
-      <Footer onOpenPrivacyInfo={() => setPrivacyModalOpen(true)} />
+      <Footer />
 
-      {/* Modals */}
-      <PrivacyBanner
-        isOpen={privacyModalOpen}
-        onClose={() => setPrivacyModalOpen(false)}
-      />
-      <KeyboardShortcutsModal
-        isOpen={shortcutsModalOpen}
-        onClose={() => setShortcutsModalOpen(false)}
-      />
+      {/* Deferred Modals & Client-side Redirects */}
+      <LandingClientModals />
     </div>
   );
 }
