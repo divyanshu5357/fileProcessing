@@ -33,7 +33,8 @@ export type PdfToolId =
   | 'flatten-pdf'
   | 'grayscale-pdf'
   | 'pdf-editor'
-  | 'pdf-assembler';
+  | 'pdf-assembler'
+  | 'compress-image';
 
 export interface ToolDefinition {
   id: PdfToolId;

@@ -25,7 +25,11 @@ import { compressImage } from '@/lib/imageProcessing';
 import { requestDownloadAllowance, DownloadAllowanceResult } from '@/lib/downloadQuotaClient';
 import { DownloadLimitModal } from '@/components/common/DownloadLimitModal';
 import { calculateSavings, createZip, downloadBlob, formatBytes } from '@/lib/utils';
-import { CompressSettings } from '@/types';
+import {
+  ImageCompressControls,
+  ImageCompressControlState,
+  normalizeImageCompressSettings,
+} from './ImageCompressControls';
 import { MainCategory } from '@/types/document';
 
 interface ReducedImageEntry {
@@ -42,20 +46,24 @@ interface ReducedImageEntry {
   error: string | null;
 }
 
-const KB_PRESETS = [20, 50, 100, 200, 500];
-
 export function ImageSizeReducerClient({ children }: { children?: React.ReactNode }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const quota = useGuestProductQuota('compress-image');
 
   const [entries, setEntries] = useState<ReducedImageEntry[]>([]);
-  const [settings, setSettings] = useState<CompressSettings>({
-    quality: 80,
-    targetSizeKb: 100,
-    maxDimension: 1920,
-    format: 'image/jpeg',
-  });
+  const [settings, setSettings] = useState<ImageCompressControlState>(() =>
+    normalizeImageCompressSettings({
+      compressionMode: 'target_size',
+      desiredSizeValue: 100,
+      desiredSizeUnit: 'KB',
+      percentage: 80,
+      quality: 80,
+      targetSizeKb: 100,
+      maxDimension: 1920,
+      format: 'image/jpeg',
+    })
+  );
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
@@ -215,109 +223,8 @@ export function ImageSizeReducerClient({ children }: { children?: React.ReactNod
           </div>
 
           {/* Controls Card */}
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#111827] border border-[#CBD5E1] dark:border-[#334155] shadow-xs grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              <label className="text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] block">
-                Target Size (KB)
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {KB_PRESETS.map((kb) => (
-                  <button
-                    key={kb}
-                    type="button"
-                    onClick={() => setSettings((s) => ({ ...s, targetSizeKb: kb }))}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                      settings.targetSizeKb === kb
-                        ? 'bg-[#2563EB] text-white border-[#2563EB]'
-                        : 'bg-[#F8FAFC] dark:bg-[#1E293B] border-[#CBD5E1] dark:border-[#334155] hover:border-[#2563EB]'
-                    }`}
-                  >
-                    {kb} KB
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setSettings((s) => ({ ...s, targetSizeKb: 0 }))}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                    settings.targetSizeKb === 0
-                      ? 'bg-[#2563EB] text-white border-[#2563EB]'
-                      : 'bg-[#F8FAFC] dark:bg-[#1E293B] border-[#CBD5E1] dark:border-[#334155]'
-                  }`}
-                >
-                  Quality Only
-                </button>
-              </div>
-              <div className="flex items-center gap-3 pt-1">
-                <span className="text-xs font-medium text-[#475569] dark:text-[#94A3B8]">Custom KB:</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={10240}
-                  value={settings.targetSizeKb}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      targetSizeKb: Math.max(0, Number(e.target.value) || 0),
-                    }))
-                  }
-                  className="w-28 px-3 py-1.5 rounded-lg border border-[#CBD5E1] dark:border-[#334155] bg-[#F8FAFC] dark:bg-[#0F172A] text-xs font-semibold"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8]">
-                  Output Format
-                </label>
-                <select
-                  value={settings.format}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      format: e.target.value as CompressSettings['format'],
-                    }))
-                  }
-                  className="px-3 py-1.5 rounded-lg border border-[#CBD5E1] dark:border-[#334155] bg-[#F8FAFC] dark:bg-[#0F172A] text-xs font-semibold"
-                >
-                  <option value="image/jpeg">JPEG (.jpg — smallest KB)</option>
-                  <option value="image/webp">WebP (.webp — sharpest web)</option>
-                  <option value="image/png">PNG (.png — lossless)</option>
-                  <option value="original">Keep Original Format</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs font-semibold">
-                  <span>Initial Quality ({settings.quality}%)</span>
-                  <span className="text-[#475569] dark:text-[#94A3B8]">Max Side: {settings.maxDimension || 'Original'}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min={15}
-                    max={98}
-                    value={settings.quality}
-                    onChange={(e) =>
-                      setSettings((s) => ({ ...s, quality: Number(e.target.value) }))
-                    }
-                    className="flex-1 accent-[#2563EB]"
-                  />
-                  <select
-                    value={settings.maxDimension}
-                    onChange={(e) =>
-                      setSettings((s) => ({ ...s, maxDimension: Number(e.target.value) }))
-                    }
-                    className="px-2.5 py-1 rounded-lg border border-[#CBD5E1] dark:border-[#334155] bg-[#F8FAFC] dark:bg-[#0F172A] text-xs font-semibold"
-                  >
-                    <option value={0}>Original px</option>
-                    <option value={1920}>Max 1920px</option>
-                    <option value={1200}>Max 1200px</option>
-                    <option value={800}>Max 800px</option>
-                  </select>
-                </div>
-              </div>
-            </div>
+          <div className="p-6 rounded-2xl bg-white dark:bg-[#111827] border border-[#CBD5E1] dark:border-[#334155] shadow-xs">
+            <ImageCompressControls settings={settings} onChange={setSettings} />
           </div>
 
           {errorBanner && (

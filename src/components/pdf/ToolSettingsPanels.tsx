@@ -5,6 +5,7 @@ import { PdfToolId } from '@/types/document';
 import { Slider } from '../ui/Slider';
 import { Switch } from '../ui/Switch';
 import { Info, ShieldAlert, Sparkles, Sliders } from 'lucide-react';
+import { ImageCompressControls } from '../images/ImageCompressControls';
 
 interface ToolSettingsPanelsProps {
   toolId: PdfToolId;
@@ -877,6 +878,11 @@ export function ToolSettingsPanels({
             />
           </div>
         </div>
+      )}
+
+      {/* 20. IMAGE SIZE REDUCER (KB / MB & PERCENTAGE) */}
+      {toolId === 'compress-image' && (
+        <ImageCompressControls settings={settings} onChange={onChange} />
       )}
     </div>
   );

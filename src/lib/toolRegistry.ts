@@ -510,14 +510,37 @@ export const ALL_PDF_TOOLS: ToolDefinition[] = CENTRAL_TOOL_REGISTRY.filter(
   fromFormat: t.supportedInputs.join(', ').replace(/\./g, '').toUpperCase(),
   toFormat: t.supportedOutputs.join(', ').replace(/\./g, '').toUpperCase(),
   iconName: t.iconName,
-  accentColor: t.accentColor as any,
+  accentColor: t.accentColor,
   accept: t.supportedInputs,
   badge: t.badge,
   isClientSideOnly: true,
 }));
 
 export function getToolById(id: PdfToolId): ToolDefinition | undefined {
-  return ALL_PDF_TOOLS.find((t) => t.id === id);
+  const fromPdf = ALL_PDF_TOOLS.find((t) => t.id === id);
+  if (fromPdf) return fromPdf;
+
+  const t = CENTRAL_TOOL_REGISTRY.find((item) => item.id === id);
+  if (!t) return undefined;
+
+  return {
+    id: t.id as PdfToolId,
+    name: t.name,
+    shortDesc: t.description,
+    category:
+      t.category === 'conversion' && t.supportedInputs.includes('.pdf')
+        ? 'from-pdf'
+        : t.category === 'conversion'
+          ? 'to-pdf'
+          : 'pdf-utility',
+    fromFormat: t.supportedInputs.join(', ').replace(/\./g, '').toUpperCase(),
+    toFormat: t.supportedOutputs.join(', ').replace(/\./g, '').toUpperCase(),
+    iconName: t.iconName,
+    accentColor: t.accentColor,
+    accept: t.supportedInputs,
+    badge: t.badge,
+    isClientSideOnly: true,
+  };
 }
 
 export function getToolsByCategory(category: ToolDefinition['category']): ToolDefinition[] {

@@ -37,6 +37,8 @@ import {
   grayscalePdfDocument,
 } from '@/lib/pdfEngine';
 import { docxToPdf, excelToPdf, pptxToPdf, htmlToPdf } from '@/lib/documentEngine';
+import { compressImage } from '@/lib/imageProcessing';
+import { normalizeImageCompressSettings } from '../images/ImageCompressControls';
 import { createZip, downloadBlob } from '@/lib/utils';
 import { useGuestProductQuota } from '@/hooks/useGuestProductQuota';
 import { GuestQuotaBanner } from '@/components/common/GuestQuotaBanner';
@@ -210,6 +212,13 @@ function StandardPdfToolWorkspace({
         dpi: quota.memoryProfile.tier === 'guest' ? 100 : 150,
         contrastBoost: 1.05,
         quality: 85,
+      };
+    }
+
+    if (currentToolId === 'compress-image') {
+      return {
+        ...baseSettings,
+        ...normalizeImageCompressSettings({}),
       };
     }
 
@@ -892,6 +901,46 @@ function StandardPdfToolWorkspace({
             size: grayBlob.size,
             format: 'application/pdf',
           });
+        }
+      }
+
+      // 24. IMAGE SIZE REDUCER (DESIRED KB/MB OR STANDALONE PERCENTAGE)
+      else if (tool.id === 'compress-image') {
+        const normalized = normalizeImageCompressSettings(settings);
+        for (let i = 0; i < files.length; i++) {
+          const fileItem = files[i];
+          setStatusMessage(
+            normalized.compressionMode === 'percentage'
+              ? `Compressing ${fileItem.name} at ${normalized.percentage}%...`
+              : `Reducing ${fileItem.name} to ~${normalized.desiredSizeValue} ${normalized.desiredSizeUnit}...`
+          );
+          setProgressPercent(Math.round(((i + 0.3) / files.length) * 100));
+
+          const compRes = await compressImage(fileItem.file, normalized);
+          const url = URL.createObjectURL(compRes.blob);
+          const chosenType =
+            normalized.format === 'original' ? fileItem.file.type : normalized.format;
+          const outExt = chosenType.includes('webp')
+            ? 'webp'
+            : chosenType.includes('png')
+              ? 'png'
+              : 'jpg';
+          const outMime = chosenType.includes('webp')
+            ? 'image/webp'
+            : chosenType.includes('png')
+              ? 'image/png'
+              : 'image/jpeg';
+
+          generatedResults.push({
+            id: `res_${Date.now()}_${i}`,
+            name: `${fileItem.name.replace(/\.[^/.]+$/, '')}_reduced.${outExt}`,
+            originalName: fileItem.name,
+            blob: compRes.blob,
+            url,
+            size: compRes.size,
+            format: outMime,
+          });
+          setProgressPercent(Math.round(((i + 1) / files.length) * 100));
         }
       }
 

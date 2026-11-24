@@ -23,15 +23,33 @@ export async function compressImage(
   file: File,
   settings: CompressSettings
 ): Promise<ProcessResult> {
+  const mode =
+    settings.compressionMode || (settings.targetSizeKb > 0 ? 'target_size' : 'percentage');
+  const clampedPct = Math.max(
+    1,
+    Math.min(99, Math.round(settings.percentage ?? settings.quality ?? 80))
+  );
+
+  // Percentage mode works standalone: sets quality to pct% and bounds output size strictly <= pct% of original
+  const effectiveQualityPct = mode === 'percentage' ? clampedPct : Math.max(15, settings.quality || 85);
+  const targetBytes =
+    mode === 'target_size' && settings.targetSizeKb > 0
+      ? Math.max(1024, Math.round(settings.targetSizeKb * 1024))
+      : mode === 'percentage'
+        ? Math.max(2048, Math.round(file.size * (clampedPct / 100)))
+        : 0;
+
+  const targetMb = targetBytes > 0 ? Math.max(0.004, targetBytes / (1024 * 1024)) : 0;
+
   try {
-    const options: any = {
-      maxIteration: 15,
+    const options: Record<string, unknown> = {
+      maxIteration: 18,
       useWebWorker: true,
-      initialQuality: Math.max(0.05, settings.quality / 100),
+      initialQuality: Math.max(0.05, Math.min(0.99, effectiveQualityPct / 100)),
     };
 
-    if (settings.targetSizeKb > 0) {
-      options.maxSizeMB = settings.targetSizeKb / 1024;
+    if (targetMb > 0) {
+      options.maxSizeMB = targetMb;
     }
 
     if (settings.maxDimension > 0) {
@@ -43,47 +61,90 @@ export async function compressImage(
     }
 
     const compressedFile = await imageCompression(file, options);
-    const img = await loadImage(URL.createObjectURL(compressedFile));
 
-    return {
-      blob: compressedFile,
-      width: img.naturalWidth,
-      height: img.naturalHeight,
-      size: compressedFile.size,
-    };
-  } catch (err) {
-    console.warn('browser-image-compression failed, falling back to Canvas:', err);
-    // Fallback using Canvas
-    const img = await loadImage(URL.createObjectURL(file));
-    const canvas = document.createElement('canvas');
-
-    let w = img.naturalWidth;
-    let h = img.naturalHeight;
-    if (settings.maxDimension > 0 && (w > settings.maxDimension || h > settings.maxDimension)) {
-      if (w > h) {
-        h = Math.round((h * settings.maxDimension) / w);
-        w = settings.maxDimension;
-      } else {
-        w = Math.round((w * settings.maxDimension) / h);
-        h = settings.maxDimension;
-      }
+    // If lossless PNG with original format exceeded targetBytes in percentage/size mode, refine via canvas scale
+    if (targetBytes > 0 && compressedFile.size > targetBytes * 1.05) {
+      throw new Error('Refine pass via Canvas needed to satisfy strict target budget');
     }
 
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(img, 0, 0, w, h);
+    const previewUrl = URL.createObjectURL(compressedFile);
+    try {
+      const img = await loadImage(previewUrl);
+      return {
+        blob: compressedFile,
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        size: compressedFile.size,
+      };
+    } finally {
+      URL.revokeObjectURL(previewUrl);
+    }
+  } catch (err) {
+    console.warn('Primary compression pass refining via Canvas:', err);
+    const srcUrl = URL.createObjectURL(file);
+    try {
+      const img = await loadImage(srcUrl);
+      const mime = settings.format === 'original' ? file.type || 'image/jpeg' : settings.format;
 
-    const mime = settings.format === 'original' ? (file.type || 'image/jpeg') : settings.format;
-    const blob = await canvasToBlob(canvas, mime, settings.quality / 100);
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+      if (settings.maxDimension > 0 && (w > settings.maxDimension || h > settings.maxDimension)) {
+        if (w > h) {
+          h = Math.round((h * settings.maxDimension) / w);
+          w = settings.maxDimension;
+        } else {
+          w = Math.round((w * settings.maxDimension) / h);
+          h = settings.maxDimension;
+        }
+      }
 
-    return {
-      blob,
-      width: w,
-      height: h,
-      size: blob.size,
-    };
+      let bestBlob: Blob | null = null;
+      let bestW = w;
+      let bestH = h;
+      let scale = 1.0;
+      let q = Math.max(0.1, Math.min(0.98, effectiveQualityPct / 100));
+
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const curW = Math.max(64, Math.round(w * scale));
+        const curH = Math.max(64, Math.round(h * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = curW;
+        canvas.height = curH;
+        const ctx = canvas.getContext('2d')!;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        if (mime === 'image/jpeg') {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, curW, curH);
+        }
+        ctx.drawImage(img, 0, 0, curW, curH);
+
+        const blob = await canvasToBlob(canvas, mime, q);
+        bestBlob = blob;
+        bestW = curW;
+        bestH = curH;
+
+        if (targetBytes <= 0 || blob.size <= targetBytes) {
+          break;
+        }
+
+        if (mime !== 'image/png' && q > 0.25) {
+          q = Math.max(0.15, q * 0.72);
+        } else {
+          scale = scale * 0.78;
+        }
+      }
+
+      const finalBlob = bestBlob as Blob;
+      return {
+        blob: finalBlob,
+        width: bestW,
+        height: bestH,
+        size: finalBlob.size,
+      };
+    } finally {
+      URL.revokeObjectURL(srcUrl);
+    }
   }
 }
 

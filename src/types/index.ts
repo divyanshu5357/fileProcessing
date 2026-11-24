@@ -63,6 +63,8 @@ export interface CompressSettings {
   targetSizeKb: number; // 0 = no target, or specific KB
   maxDimension: number; // 0 = original
   format: 'original' | 'image/jpeg' | 'image/webp' | 'image/png';
+  compressionMode?: 'target_size' | 'percentage';
+  percentage?: number; // 1 to 99 (standalone percentage compression)
 }
 
 export interface ResizeSettings {

@@ -1,14 +1,15 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { notFound, permanentRedirect } from 'next/navigation';
-import { ALL_PDF_TOOLS } from '@/lib/toolRegistry';
+import { ALL_PDF_TOOLS, getToolById } from '@/lib/toolRegistry';
 import { PdfToolId } from '@/types/document';
 import { getToolSeoProfile, resolveCanonicalToolSlug } from '@/lib/seoData';
 import { ToolSeoSection } from '@/components/seo/ToolSeoSection';
 import ToolClientView from './ToolClientView';
 
 export function generateStaticParams() {
-  return ALL_PDF_TOOLS.map((t) => ({ tool: t.id }));
+  const ids = Array.from(new Set([...ALL_PDF_TOOLS.map((t) => t.id), 'compress-image']));
+  return ids.map((tool) => ({ tool }));
 }
 
 export async function generateMetadata({
@@ -18,7 +19,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { tool } = await params;
   const resolved = resolveCanonicalToolSlug(tool) || tool;
-  const toolDef = ALL_PDF_TOOLS.find((t) => t.id === resolved);
+  const toolDef = getToolById(resolved as PdfToolId);
   if (!toolDef) {
     return {
       title: 'PDF Tool | Gyanvatsala',

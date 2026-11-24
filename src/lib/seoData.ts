@@ -869,6 +869,9 @@ function levenshtein(a: string, b: string): number {
  */
 export function resolveCanonicalToolSlug(slug: string): string | null {
   const normalized = slug.trim().toLowerCase().replace(/_/g, '-');
+  if (normalized === 'compress-image') {
+    return 'compress-image';
+  }
   if (ALL_PDF_TOOLS.some((t) => t.id === normalized)) {
     return normalized;
   }
@@ -940,5 +943,8 @@ export function matchesSeoQuery(toolId: string, textFields: string[], rawQuery: 
 }
 
 export function getToolSeoProfile(id: string): ToolSeoProfile {
+  if (id === 'compress-image') {
+    return TOOL_SEO_PROFILES['image-size-reducer'];
+  }
   return TOOL_SEO_PROFILES[id] || TOOL_SEO_PROFILES['pdf-editor'];
 }
