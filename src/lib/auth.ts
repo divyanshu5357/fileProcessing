@@ -75,7 +75,7 @@ export const auth = betterAuth({
       adminRole: 'admin',
     }),
     emailOTP({
-      otpLength: 8,
+      otpLength: 4,
       expiresIn: 300, // 5 minutes
       allowedAttempts: 5,
       storeOTP: 'hashed',

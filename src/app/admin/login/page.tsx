@@ -17,6 +17,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { OtpCodeInput, OTP_LENGTH, createEmptyOtp } from '@/components/auth/OtpCodeInput';
 
 export default function AdminLoginPage() {
   const {
@@ -32,7 +33,7 @@ export default function AdminLoginPage() {
 
   const [step, setStep] = useState<'options' | 'otp'>('options');
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '', '', '']);
+  const [otp, setOtp] = useState<string[]>(() => createEmptyOtp());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
@@ -83,6 +84,7 @@ export default function AdminLoginPage() {
     try {
       const res = await sendEmailOtp(cleanEmail);
       if (res.success) {
+        setOtp(createEmptyOtp());
         setStep('otp');
         setCooldown(60);
       } else {
@@ -105,6 +107,7 @@ export default function AdminLoginPage() {
     try {
       const res = await sendEmailOtp(email.toLowerCase().trim());
       if (res.success) {
+        setOtp(createEmptyOtp());
         setCooldown(60);
       } else {
         if (res.retryAfter) {
@@ -123,8 +126,8 @@ export default function AdminLoginPage() {
     e.preventDefault();
     if (isLoading) return;
     const fullCode = otp.join('').trim();
-    if (fullCode.length !== 8) {
-      setError('Please enter the complete 8-digit verification code.');
+    if (fullCode.length !== OTP_LENGTH) {
+      setError(`Please enter the complete ${OTP_LENGTH}-digit verification code.`);
       return;
     }
     setError(null);
@@ -140,37 +143,6 @@ export default function AdminLoginPage() {
       setError(err?.message || 'Verification error. Please retry.');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleOtpChange = (index: number, val: string) => {
-    if (val.length > 1) val = val[val.length - 1];
-    const next = [...otp];
-    next[index] = val;
-    setOtp(next);
-    if (val && index < 7) {
-      document.getElementById(`admin-otp-${index + 1}`)?.focus();
-    }
-  };
-
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      const prevInput = document.getElementById(`admin-otp-${index - 1}`);
-      prevInput?.focus();
-    }
-  };
-
-  const handlePaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text').trim().replace(/\D/g, '').slice(0, 8);
-    if (pasted.length > 0) {
-      const nextOtp = ['', '', '', '', '', '', '', ''];
-      for (let i = 0; i < 8; i++) {
-        nextOtp[i] = pasted[i] || '';
-      }
-      setOtp(nextOtp);
-      const targetIdx = Math.min(pasted.length, 7);
-      document.getElementById(`admin-otp-${targetIdx}`)?.focus();
     }
   };
 
@@ -324,39 +296,27 @@ export default function AdminLoginPage() {
             </form>
           </div>
         ) : (
-          /* Step 2: 8-Digit OTP */
+          /* Step 2: 4-Digit OTP */
           <form onSubmit={handleVerifyOtp} className="space-y-5">
             <div className="space-y-2">
               <label className="text-xs font-semibold text-[#CBD5E1] block text-center">
-                Enter 8-Digit Admin Passcode
+                Enter {OTP_LENGTH}-Digit Admin Passcode
               </label>
               <p className="text-[11px] text-[#9DA3AE] text-center">
                 Dispatched to <span className="text-white font-mono">{email}</span> (expires in 5 min)
               </p>
-              <div className="flex items-center justify-center gap-1.5 pt-1">
-                {otp.map((d, idx) => (
-                  <React.Fragment key={idx}>
-                    {idx === 4 && <div className="w-1.5 h-0.5 bg-[#28314A] mx-0.5" />}
-                    <input
-                      id={`admin-otp-${idx}`}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={d}
-                      onChange={(e) => handleOtpChange(idx, e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(idx, e)}
-                      onPaste={handlePaste}
-                      className="w-9 h-11 sm:w-10 sm:h-12 text-center text-lg sm:text-xl font-mono font-bold rounded-xl border border-[#28314A] bg-[#0D1017] text-[#93A5F5] focus:outline-none focus:ring-2 focus:ring-[#536BCE] transition"
-                    />
-                  </React.Fragment>
-                ))}
-              </div>
+              <OtpCodeInput
+                value={otp}
+                onChange={setOtp}
+                idPrefix="admin-otp"
+                inputClassName="w-12 h-12 sm:w-14 sm:h-14 text-center text-xl sm:text-2xl font-mono font-bold rounded-xl border border-[#28314A] bg-[#0D1017] text-[#93A5F5] focus:outline-none focus:ring-2 focus:ring-[#536BCE] transition"
+              />
             </div>
 
             <Button
               type="submit"
               variant="primary"
-              disabled={isLoading || otp.join('').trim().length !== 8}
+              disabled={isLoading || otp.join('').trim().length !== OTP_LENGTH}
               className="w-full py-2.5 text-xs font-bold bg-[#536BCE] hover:bg-[#4157B5] text-white flex items-center justify-center gap-2"
             >
               {isLoading ? (
@@ -374,7 +334,7 @@ export default function AdminLoginPage() {
                 type="button"
                 onClick={() => {
                   setStep('options');
-                  setOtp(['', '', '', '', '', '', '', '']);
+                  setOtp(createEmptyOtp());
                   setError(null);
                 }}
                 className="text-[#9DA3AE] hover:text-white transition"

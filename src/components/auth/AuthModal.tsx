@@ -15,6 +15,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { GyanvatsalaLogo } from '@/components/common/GyanvatsalaLogo';
+import { OtpCodeInput, OTP_LENGTH, createEmptyOtp } from '@/components/auth/OtpCodeInput';
 
 export function AuthModal() {
   const {
@@ -28,7 +29,7 @@ export function AuthModal() {
 
   const [step, setStep] = useState<'options' | 'otp'>('options');
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '', '', '']);
+  const [otp, setOtp] = useState<string[]>(() => createEmptyOtp());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -76,9 +77,10 @@ export function AuthModal() {
     try {
       const res = await sendEmailOtp(cleanEmail);
       if (res.success) {
+        setOtp(createEmptyOtp());
         setStep('otp');
         setCooldown(60);
-        setSuccessMsg(`We sent an 8-digit verification code to ${cleanEmail}`);
+        setSuccessMsg(`We sent a ${OTP_LENGTH}-digit verification code to ${cleanEmail}`);
       } else {
         if (res.retryAfter) {
           setCooldown(res.retryAfter);
@@ -92,48 +94,12 @@ export function AuthModal() {
     }
   };
 
-  const handleOtpChange = (index: number, val: string) => {
-    if (val.length > 1) {
-      val = val[val.length - 1];
-    }
-    const nextOtp = [...otp];
-    nextOtp[index] = val;
-    setOtp(nextOtp);
-
-    // Auto-focus next input
-    if (val && index < 7) {
-      const nextInput = document.getElementById(`otp-input-${index + 1}`);
-      nextInput?.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      const prevInput = document.getElementById(`otp-input-${index - 1}`);
-      prevInput?.focus();
-    }
-  };
-
-  const handlePaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text').trim().replace(/\D/g, '').slice(0, 8);
-    if (pasted.length > 0) {
-      const nextOtp = ['', '', '', '', '', '', '', ''];
-      for (let i = 0; i < 8; i++) {
-        nextOtp[i] = pasted[i] || '';
-      }
-      setOtp(nextOtp);
-      const targetIdx = Math.min(pasted.length, 7);
-      document.getElementById(`otp-input-${targetIdx}`)?.focus();
-    }
-  };
-
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
     const fullCode = otp.join('').trim();
-    if (fullCode.length !== 8) {
-      setError('Please enter the complete 8-digit verification code.');
+    if (fullCode.length !== OTP_LENGTH) {
+      setError(`Please enter the complete ${OTP_LENGTH}-digit verification code.`);
       return;
     }
     setError(null);
@@ -158,8 +124,9 @@ export function AuthModal() {
     try {
       const res = await sendEmailOtp(email.toLowerCase().trim());
       if (res.success) {
+        setOtp(createEmptyOtp());
         setCooldown(60);
-        setSuccessMsg('A new 8-digit verification code has been dispatched to your email.');
+        setSuccessMsg(`A new ${OTP_LENGTH}-digit verification code has been dispatched to your email.`);
       } else {
         if (res.retryAfter) {
           setCooldown(res.retryAfter);
@@ -198,7 +165,7 @@ export function AuthModal() {
           <p className="text-xs sm:text-sm text-[#475569] dark:text-[#94A3B8] mt-1">
             {step === 'options'
               ? 'Your Digital Document Workspace — Access cloud storage & persistent workspaces.'
-              : `Enter the 8-digit code sent to ${email} (expires in 5 min)`}
+              : `Enter the ${OTP_LENGTH}-digit code sent to ${email} (expires in 5 min)`}
           </p>
         </div>
 
@@ -300,36 +267,24 @@ export function AuthModal() {
             </form>
           </div>
         ) : (
-          /* Step 2: 8-Digit OTP Verification */
+          /* Step 2: 4-Digit OTP Verification */
           <form onSubmit={handleVerifyOtp} className="space-y-5">
             <div className="space-y-2">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block text-center">
-                8-Digit Security Code
+                {OTP_LENGTH}-Digit Security Code
               </label>
-              <div className="flex items-center justify-center gap-1 sm:gap-1.5 pt-1">
-                {otp.map((digit, idx) => (
-                  <React.Fragment key={idx}>
-                    {idx === 4 && <div className="w-1.5 h-0.5 bg-slate-300 dark:bg-slate-700 mx-0.5" />}
-                    <input
-                      id={`otp-input-${idx}`}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handleOtpChange(idx, e.target.value)}
-                      onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                      onPaste={handlePaste}
-                      className="w-8 h-11 sm:w-10 sm:h-12 text-center text-lg sm:text-xl font-mono font-bold rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-blue-600 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    />
-                  </React.Fragment>
-                ))}
-              </div>
+              <OtpCodeInput
+                value={otp}
+                onChange={setOtp}
+                idPrefix="otp-input"
+                inputClassName="w-12 h-12 sm:w-14 sm:h-14 text-center text-xl sm:text-2xl font-mono font-bold rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-blue-600 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+              />
             </div>
 
             <Button
               type="submit"
               variant="primary"
-              disabled={isLoading || otp.join('').trim().length !== 8}
+              disabled={isLoading || otp.join('').trim().length !== OTP_LENGTH}
               className="w-full py-3 text-sm font-bold flex items-center justify-center gap-2"
             >
               {isLoading ? (
@@ -351,7 +306,7 @@ export function AuthModal() {
                 type="button"
                 onClick={() => {
                   setStep('options');
-                  setOtp(['', '', '', '', '', '', '', '']);
+                  setOtp(createEmptyOtp());
                   setError(null);
                   setSuccessMsg(null);
                 }}

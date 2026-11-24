@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
     clearDeliveryStatus(cleanEmail);
 
     // 5. Delegate to Better Auth official emailOTP plugin
-    // Generates 8-digit OTP, stores securely in database, and triggers delivery
+    // Generates 4-digit OTP, stores securely in database, and triggers delivery
     const headers = new Headers(req.headers);
     try {
       await auth.api.sendVerificationOTP({

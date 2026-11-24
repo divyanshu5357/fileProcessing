@@ -63,7 +63,7 @@ export async function sendOtpEmail(
   const subject = 'Your Gyanvatsala verification code';
   const formattedOtp = otp.length === 8 ? `${otp.slice(0, 4)} ${otp.slice(4)}` : otp;
 
-  const plainText = `Gyanvatsala - Your Digital Document Workspace\n\nYour Verification Code: ${otp}\n\nUse this 8-digit code to complete authentication for your Gyanvatsala account. This code expires in 5 minutes.\n\nSecurity Notice: If you did not request this verification code, please ignore this email. Never share this code with anyone.\n\nNeed assistance? Contact our support team at fileprocess@gyanvatsala.in\n\n(c) ${new Date().getFullYear()} Gyanvatsala. All rights reserved.`;
+  const plainText = `Gyanvatsala - Your Digital Document Workspace\n\nYour Verification Code: ${otp}\n\nUse this 4-digit code to complete authentication for your Gyanvatsala account. This code expires in 5 minutes.\n\nSecurity Notice: If you did not request this verification code, please ignore this email. Never share this code with anyone.\n\nNeed assistance? Contact our support team at fileprocess@gyanvatsala.in\n\n(c) ${new Date().getFullYear()} Gyanvatsala. All rights reserved.`;
 
   const html = `
     <!DOCTYPE html>
@@ -82,8 +82,8 @@ export async function sendOtpEmail(
         .content { padding: 36px 32px; text-align: center; }
         .title { font-size: 18px; font-weight: 700; color: #FFFFFF; margin: 0 0 8px 0; }
         .description { font-size: 13px; line-height: 1.6; color: #94A3B8; margin: 0 0 28px 0; }
-        .otp-container { background: #0A0D14; border: 2px dashed #0D5C58; border-radius: 14px; padding: 20px 16px; margin: 0 auto 28px; max-width: 380px; }
-        .otp-code { font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 36px; font-weight: 800; letter-spacing: 6px; color: #5EEAD4; margin: 0; }
+        .otp-container { background: #0A0D14; border: 2px dashed #0D5C58; border-radius: 14px; padding: 20px 16px; margin: 0 auto 28px; max-width: 340px; }
+        .otp-code { font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 36px; font-weight: 800; letter-spacing: 10px; padding-left: 10px; color: #5EEAD4; margin: 0; }
         .expiry-note { font-size: 12px; color: #F59E0B; margin-top: 8px; font-weight: 600; }
         .security-warning { background-color: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 10px; padding: 12px 16px; font-size: 11px; color: #FCA5A5; line-height: 1.5; margin: 0 auto 24px; text-align: left; }
         .footer { padding: 24px 32px; background-color: #0B0E16; border-top: 1px solid #1E2536; text-align: center; font-size: 11px; color: #64748B; line-height: 1.6; }
@@ -100,7 +100,7 @@ export async function sendOtpEmail(
         <div class="content">
           <h1 class="title">Verification One-Time Passcode</h1>
           <p class="description">
-            Use the 8-digit verification code below to complete your authentication. This security code is valid for <strong>5 minutes</strong>.
+            Use the 4-digit verification code below to complete your authentication. This security code is valid for <strong>5 minutes</strong>.
           </p>
           <div class="otp-container">
             <div class="otp-code">${formattedOtp}</div>
