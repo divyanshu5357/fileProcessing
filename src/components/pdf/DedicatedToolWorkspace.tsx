@@ -8,6 +8,7 @@ import {
   PdfToolId,
 } from '@/types/document';
 import { ALL_PDF_TOOLS, getToolById } from '@/lib/toolRegistry';
+import { getToolSeoProfile } from '@/lib/seoData';
 import { DocumentUploader } from './DocumentUploader';
 import { ToolSettingsPanels } from './ToolSettingsPanels';
 import { ProcessingStatus } from './ProcessingStatus';
@@ -86,6 +87,7 @@ function StandardPdfToolWorkspace({
   onBack,
 }: DedicatedToolWorkspaceProps) {
   const tool = getToolById(toolId) || ALL_PDF_TOOLS[0];
+  const seoProfile = getToolSeoProfile(tool.id);
   const quota = useGuestProductQuota(tool.id);
 
   // Files in workspace
@@ -247,7 +249,7 @@ function StandardPdfToolWorkspace({
     for (const file of newFiles) {
       if (file.size > maxBytes) {
         setErrorMessage(
-          `"${file.name}" exceeds the ${quota.memoryProfile.maxFileSizeMb} MB ${quota.memoryProfile.label} limit.`
+          `"${file.name}" exceeds the ${quota.memoryProfile.maxFileSizeMb} MB standard file limit. Upgrade to Premium for files up to 100 MB.`
         );
         continue;
       }
@@ -257,7 +259,7 @@ function StandardPdfToolWorkspace({
     const availableSlots = Math.max(0, quota.memoryProfile.maxBatchFiles - files.length);
     if (validFiles.length > availableSlots) {
       setErrorMessage(
-        `${quota.memoryProfile.label} allows up to ${quota.memoryProfile.maxBatchFiles} files per batch to save memory.`
+        `Up to ${quota.memoryProfile.maxBatchFiles} files can be processed per batch.`
       );
     }
 
@@ -316,14 +318,6 @@ function StandardPdfToolWorkspace({
   const handleExecuteConversion = async () => {
     if (files.length === 0 && !(tool.id === 'html-to-pdf' && settings.sourceType === 'html' && settings.pastedHtml)) {
       setErrorMessage('Please select or upload at least one file to convert.');
-      return;
-    }
-
-    const allowed = await quota.consumeUse();
-    if (!allowed) {
-      setErrorMessage(
-        `Guest IP trial limit reached (${quota.limit}/${quota.limit} uses) for ${tool.name}. Sign in free for unlimited runs.`
-      );
       return;
     }
 
@@ -968,9 +962,9 @@ function StandardPdfToolWorkspace({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xl sm:text-2xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">
-                {tool.name}
-              </h2>
+              <h1 className="text-xl sm:text-2xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">
+                {seoProfile.h1}
+              </h1>
               {tool.badge && (
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                   {tool.badge}
@@ -1003,6 +997,8 @@ function StandardPdfToolWorkspace({
       {results.length > 0 ? (
         <DownloadResults
           results={results}
+          productId={tool.id}
+          sourceTotalBytes={files.reduce((sum, f) => sum + (f.size || 0), 0)}
           onReset={() => {
             setResults([]);
             setValidationReport(null);

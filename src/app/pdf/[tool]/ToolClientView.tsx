@@ -9,7 +9,13 @@ import { PdfToolId, MainCategory } from '@/types/document';
 import { PrivacyBanner } from '@/components/PrivacyBanner';
 import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal';
 
-export default function ToolClientView({ toolId }: { toolId: PdfToolId }) {
+export default function ToolClientView({
+  toolId,
+  children,
+}: {
+  toolId: PdfToolId;
+  children?: React.ReactNode;
+}) {
   const router = useRouter();
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
@@ -44,6 +50,7 @@ export default function ToolClientView({ toolId }: { toolId: PdfToolId }) {
           onBack={() => router.push('/pdf')}
           onSelectOtherTool={(newId) => router.push(`/pdf/${newId}`)}
         />
+        {children}
       </main>
 
       <Footer />

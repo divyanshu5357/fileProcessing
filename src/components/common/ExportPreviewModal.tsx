@@ -16,12 +16,16 @@ import {
 import { Button } from '@/components/ui/Button';
 import { formatBytes, downloadBlob } from '@/lib/utils';
 import { PdfPreviewer } from '@/components/common/PdfPreviewer';
+import { requestDownloadAllowance, DownloadAllowanceResult } from '@/lib/downloadQuotaClient';
+import { DownloadLimitModal } from '@/components/common/DownloadLimitModal';
 
 export interface ExportPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   blob: Blob | null;
   defaultFilename: string;
+  productId?: string;
+  quotaBytes?: number;
   title?: string;
   fileType?: 'pdf' | 'image' | 'generic';
   previewImageUrl?: string | null;
@@ -38,6 +42,8 @@ export function ExportPreviewModal({
   onClose,
   blob,
   defaultFilename,
+  productId = 'document-export',
+  quotaBytes = 0,
   title = 'Export & Download Preview',
   fileType = 'pdf',
   previewImageUrl = null,
@@ -49,6 +55,8 @@ export function ExportPreviewModal({
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [limitInfo, setLimitInfo] = useState<DownloadAllowanceResult | null>(null);
+  const [pendingAction, setPendingAction] = useState<'folder' | 'standard' | null>(null);
 
   // Word (.docx) HTML preview state
   const [docxHtml, setDocxHtml] = useState<string | null>(null);
@@ -131,7 +139,7 @@ export function ExportPreviewModal({
   };
 
   // 1. Native File System Access API: lets user choose the EXACT local folder and filename
-  const handleSaveToLocalFolder = async () => {
+  const performSaveToLocalFolder = async () => {
     setIsSaving(true);
     setErrorMessage(null);
     const targetFilename = getSanitizedFilename();
@@ -201,7 +209,7 @@ export function ExportPreviewModal({
   };
 
   // 2. Standard Download to Downloads folder
-  const handleStandardDownload = () => {
+  const performStandardDownload = () => {
     const targetFilename = getSanitizedFilename();
     downloadBlob(blob, targetFilename);
     setSaveSuccess(`File downloaded as "${targetFilename}"`);
@@ -209,6 +217,34 @@ export function ExportPreviewModal({
     setTimeout(() => {
       onClose();
     }, 1500);
+  };
+
+  const handleSaveToLocalFolder = async () => {
+    setIsSaving(true);
+    setErrorMessage(null);
+    const effectiveBytes = Math.max(blob.size, quotaBytes || 0);
+    const allowance = await requestDownloadAllowance(productId, effectiveBytes);
+    if (!allowance.allowed) {
+      setIsSaving(false);
+      setPendingAction('folder');
+      setLimitInfo(allowance);
+      return;
+    }
+    await performSaveToLocalFolder();
+  };
+
+  const handleStandardDownload = async () => {
+    setIsSaving(true);
+    setErrorMessage(null);
+    const effectiveBytes = Math.max(blob.size, quotaBytes || 0);
+    const allowance = await requestDownloadAllowance(productId, effectiveBytes);
+    setIsSaving(false);
+    if (!allowance.allowed) {
+      setPendingAction('standard');
+      setLimitInfo(allowance);
+      return;
+    }
+    performStandardDownload();
   };
 
   return (
@@ -385,6 +421,25 @@ export function ExportPreviewModal({
           </div>
         </div>
       </div>
+
+      <DownloadLimitModal
+        isOpen={Boolean(limitInfo)}
+        onClose={() => {
+          setLimitInfo(null);
+          setPendingAction(null);
+        }}
+        limitInfo={limitInfo}
+        onUpgradeSuccess={() => {
+          const action = pendingAction;
+          setLimitInfo(null);
+          setPendingAction(null);
+          if (action === 'folder') {
+            void performSaveToLocalFolder();
+          } else {
+            performStandardDownload();
+          }
+        }}
+      />
     </div>
   );
 }

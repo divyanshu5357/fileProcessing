@@ -50,6 +50,7 @@ import {
   getToolsForFileExtension,
   getFileCategory,
 } from '@/lib/toolRegistry';
+import { matchesSeoQuery } from '@/lib/seoData';
 import { activityService, UserActivityItem } from '@/lib/activityService';
 import { fileTransferService } from '@/lib/fileTransferService';
 import { fileManagerService } from '@/lib/fileManagerService';
@@ -97,10 +98,14 @@ export default function AuthenticatedWorkspace() {
   const [activitySearch, setActivitySearch] = useState('');
   const [activityTypeFilter, setActivityTypeFilter] = useState<string>('all');
 
-  // Load activities on mount
+  // Load activities and optional ?q= search term (from Google SearchAction or direct links) on mount
   useEffect(() => {
     activityService.clearMockActivities();
     setActivities(activityService.getActivities());
+    if (typeof window !== 'undefined') {
+      const q = new URLSearchParams(window.location.search).get('q');
+      if (q) setSearchQuery(q);
+    }
   }, []);
 
   // Cleanup object preview URL
@@ -298,12 +303,13 @@ export default function AuthenticatedWorkspace() {
     );
   };
 
-  // Filter tools for Explore section
+  // Filter tools for Explore section with typo-tolerant SEO matching
   const filteredTools = CENTRAL_TOOL_REGISTRY.filter((tool) => {
-    const matchesSearch =
-      tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tool.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tool.categoryLabel.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = matchesSeoQuery(
+      tool.id,
+      [tool.name, tool.description, tool.categoryLabel],
+      searchQuery
+    );
 
     const matchesCategory =
       selectedCategory === 'all' || tool.category === selectedCategory;
@@ -931,6 +937,7 @@ export default function AuthenticatedWorkspace() {
         onClose={() => setIsExportModalOpen(false)}
         blob={exportPreviewBlob}
         defaultFilename={exportPreviewFilename}
+        productId="workspace"
         title="Conversion Ready"
         fileType={
           exportPreviewFilename.endsWith('.docx')

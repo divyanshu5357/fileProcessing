@@ -12,7 +12,7 @@ export interface MemoryProfile {
 
 /**
  * Returns tiered browser RAM & canvas resolution budgets.
- * Guests (unsigned) and Free-tier users receive low-memory bounds to keep RAM minimal.
+ * Guests and Free-tier users stay within 15 MB low-memory bounds cleanly without exposing badges on UI.
  */
 export function getMemoryProfile(
   plan?: string | null,
@@ -21,22 +21,22 @@ export function getMemoryProfile(
   if (!isAuthenticated) {
     return {
       tier: 'guest',
-      label: 'Guest Eco Memory',
+      label: 'Standard Mode',
       maxCanvasDpr: 1.25,
       scanRenderScale: 1.25,
       assemblerThumbScale: 0.22,
       maxUndoHistory: 8,
       maxFileSizeMb: 15,
-      maxBatchFiles: 3,
+      maxBatchFiles: 4,
       exportDpi: 120,
     };
   }
 
-  const normalized = (plan || 'Free').toLowerCase();
+  const normalized = (plan || 'Free').toLowerCase().replace(/\s+/g, '');
   if (normalized === 'free') {
     return {
       tier: 'free',
-      label: 'Free Eco Memory',
+      label: 'Standard Mode',
       maxCanvasDpr: 1.5,
       scanRenderScale: 1.5,
       assemblerThumbScale: 0.28,
@@ -49,7 +49,7 @@ export function getMemoryProfile(
 
   return {
     tier: 'paid',
-    label: 'Pro High-Memory',
+    label: 'Premium Workspace',
     maxCanvasDpr: 2.0,
     scanRenderScale: 2.0,
     assemblerThumbScale: 0.35,

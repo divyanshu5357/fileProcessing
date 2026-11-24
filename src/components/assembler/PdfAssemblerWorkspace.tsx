@@ -124,19 +124,12 @@ export function PdfAssemblerWorkspace({
   // Add Files (PDFs or Images)
   const handleAddFiles = async (files: File[]) => {
     if (files.length === 0) return;
-    if (!quota.allowed) {
-      openAuthModal(
-        undefined,
-        `Free guest IP limit reached (${quota.limit}/${quota.limit} edits) for PDF Assembler. Sign in free for unlimited access.`
-      );
-      return;
-    }
 
     const maxBytes = quota.memoryProfile.maxFileSizeMb * 1024 * 1024;
     const validFiles = files.filter((file) => {
       if (file.size > maxBytes) {
         alert(
-          `"${file.name}" exceeds the ${quota.memoryProfile.maxFileSizeMb} MB ${quota.memoryProfile.label} limit.`
+          `"${file.name}" exceeds the ${quota.memoryProfile.maxFileSizeMb} MB limit. Upgrade to Premium to process larger files.`
         );
         return false;
       }
@@ -148,7 +141,7 @@ export function PdfAssemblerWorkspace({
     if (accepted.length === 0) {
       if (validFiles.length > 0) {
         alert(
-          `${quota.memoryProfile.label} allows up to ${quota.memoryProfile.maxBatchFiles} documents simultaneously to keep memory usage low.`
+          `Up to ${quota.memoryProfile.maxBatchFiles} documents can be combined simultaneously.`
         );
       }
       return;
@@ -641,7 +634,6 @@ export function PdfAssemblerWorkspace({
         isOpen={isSaveModalOpen}
         onClose={() => setIsSaveModalOpen(false)}
         documents={documents}
-        onBeforeExport={() => quota.consumeUse()}
       />
     </div>
   );

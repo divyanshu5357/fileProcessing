@@ -21,24 +21,24 @@ export function CapabilitiesSection() {
   const groups = [
     {
       category: 'PDF and Documents',
-      description: 'Convert, merge, split, and organize standard documents with full layout preservation.',
+      description: 'Edit, convert, merge, split, and compress standard documents with full layout preservation.',
       icon: FileText,
       tools: [
         { name: 'PDF to Word Converter', href: '/pdf/pdf-to-word', note: 'Native DOCX' },
+        { name: 'Compress PDF File Size', href: '/pdf/compress-pdf', note: 'Up to 80% smaller' },
         { name: 'Merge PDF Pages', href: '/pdf/merge-pdf', note: 'Sequence control' },
         { name: 'Split & Extract Pages', href: '/pdf/split-pdf', note: 'Page ranges' },
-        { name: 'Add Page Numbers', href: '/pdf/page-numbers', note: 'Page X of Y' },
       ],
     },
     {
-      category: 'Images and Media',
-      description: 'Prepare, convert, compress and crop digital imagery without server latency.',
+      category: 'Images, IMG to PDF & Size Reducer',
+      description: 'Convert images to PDF, reduce photo size in exact KB or MB, crop, and strip EXIF metadata.',
       icon: ImageIcon,
       tools: [
-        { name: 'Image Format Converter', href: '/image-converter', note: 'PNG, JPG, SVG' },
-        { name: 'Lossless WebP & AVIF', href: '/image-tools', note: 'Up to 85% smaller' },
-        { name: 'EXIF Metadata Stripper', href: '/image-tools', note: 'Privacy sanitization' },
-        { name: 'Passport Photo Framing', href: '/image-tools', note: 'Standard biometric' },
+        { name: 'Image to PDF (JPG / PNG)', href: '/pdf/jpg-to-pdf', note: 'IMG to PDF' },
+        { name: 'Image Size Reducer (KB / MB)', href: '/tools/image-size-reducer', note: '20KB–500KB' },
+        { name: 'Image Format Converter', href: '/image-converter', note: 'WebP, PNG, JPG' },
+        { name: 'EXIF Strip & Passport Photo', href: '/image-tools', note: 'Full Studio' },
       ],
     },
     {
@@ -75,7 +75,7 @@ export function CapabilitiesSection() {
               Capabilities
             </span>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#20232B] dark:text-[#F8FAFC] tracking-tight leading-tight">
-              Everything you need. Nothing you don't.
+              Everything you need. Nothing you don&apos;t.
             </h2>
             <p className="text-base sm:text-lg text-[#4E5360] dark:text-[#9DA3AE] mt-3 leading-relaxed">
               Carefully engineered document tools organized by task. Direct access to every working feature.

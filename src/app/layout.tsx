@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic';
 import './globals.css';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
+import { GLOBAL_SEARCH_KEYWORDS } from '@/lib/seoData';
 
 const AuthModal = dynamic(
   () => import('@/components/auth/AuthModal').then((mod) => mod.AuthModal)
@@ -11,70 +12,38 @@ const AuthModal = dynamic(
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.gyanvatsala.in'),
   title: {
-    default: 'Gyanvatsala — Free Online File & PDF Processing Workspace',
+    default: 'Gyanvatsala — Free Online PDF Editor, Image to PDF & Image Size Reducer',
     template: '%s | Gyanvatsala',
   },
   description:
-    'All-in-one private online file and document processing platform. Convert PDF to Word, edit PDFs, simulate photocopier scan effects with Scan Studio, convert and compress images (WebP, PNG, JPG), merge, split, and organize documents with 100% in-browser client-side privacy (Zero Uploads).',
-  keywords: [
-    'Gyanvatsala',
-    'file processing suite',
-    'online file converter',
-    'PDF to Word converter',
-    'free online PDF editor',
-    'PDF converter',
-    'scan effect generator',
-    'look scanned',
-    'Scan Studio',
-    'merge PDF',
-    'split PDF',
-    'compress PDF',
-    'compress image WebP',
-    'HEIC to JPG converter',
-    'WebP converter',
-    'PNG to PDF',
-    'Word to PDF',
-    'Excel to PDF',
-    'PDF to Excel',
-    'watermark PDF',
-    'add page numbers PDF',
-    'document workspace',
-    'privacy first document processing',
-    'zero upload PDF converter',
-    'client-side document tools',
-    'online document editor',
-    'batch file processing',
-  ],
+    'Free online PDF editor, Image to PDF (IMG/JPG/PNG to PDF) converter, and Image Size Reducer in KB & MB. Edit PDF text, merge, split, compress PDFs, convert PDF to Word, and simulate scans privately in your browser with Zero Uploads.',
+  keywords: GLOBAL_SEARCH_KEYWORDS,
   authors: [{ name: 'Gyanvatsala', url: 'https://www.gyanvatsala.in' }],
   creator: 'Gyanvatsala',
   publisher: 'Gyanvatsala',
   category: 'technology',
-  alternates: {
-    canonical: 'https://www.gyanvatsala.in',
-  },
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: 'https://www.gyanvatsala.in',
-    title: 'Gyanvatsala — Free Online File & PDF Processing Workspace',
+    url: 'https://www.gyanvatsala.in/',
+    title: 'Gyanvatsala — Free Online PDF Editor, Image to PDF & Image Size Reducer',
     description:
-      'All-in-one private online file and document processing suite. Convert PDF to Word, edit PDFs, simulate photocopier scan effects, convert and compress images with 100% client-side privacy (Zero Uploads).',
+      'Edit PDFs in-place, convert IMG/JPG/PNG to PDF, reduce image size to 20KB–500KB, convert PDF to Word, and simulate photocopier scans cleanly with 100% client-side privacy.',
     siteName: 'Gyanvatsala',
     images: [
       {
-        url: 'https://www.gyanvatsala.in/icon.svg',
-        width: 512,
-        height: 512,
-        alt: 'Gyanvatsala — Digital Document Workspace & File Processing Suite',
+        url: 'https://www.gyanvatsala.in/opengraph-image',
+        width: 1200,
+        height: 630,
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Gyanvatsala — Free Online File & PDF Processing Workspace',
+    title: 'Gyanvatsala — Free Online PDF Editor, Image to PDF & Image Size Reducer',
     description:
-      'Everything you need to process, convert, and edit documents and images. 100% client-side privacy with Zero Uploads.',
-    images: ['https://www.gyanvatsala.in/icon.svg'],
+      'Edit PDFs, convert images to PDF, and compress photos to exact KB sizes privately in your browser with zero uploads.',
+    images: ['https://www.gyanvatsala.in/twitter-image'],
   },
   robots: {
     index: true,
@@ -113,28 +82,38 @@ export default function RootLayout({
         name: 'Gyanvatsala',
         alternateName: [
           'Gyanvatsala Document Workspace',
-          'Gyanvatsala File Processing',
+          'Gyanvatsala Online PDF Editor',
+          'Gyanvatsala Image to PDF Converter',
+          'Gyanvatsala Image Size Reducer',
           'Gyanvatsala PDF Suite',
         ],
-        url: 'https://www.gyanvatsala.in',
+        url: 'https://www.gyanvatsala.in/',
         description:
-          'Free online file processing and digital document workspace providing PDF editing, high-fidelity PDF to Word conversion, scan effects, and image tools.',
+          'Free online PDF editor, IMG/JPG/PNG to PDF converter, Image Size Reducer in KB/MB, PDF to Word converter, and Scan Studio running privately in-browser.',
         publisher: {
           '@id': 'https://www.gyanvatsala.in/#organization',
+        },
+        potentialAction: {
+          '@type': 'SearchAction',
+          target: {
+            '@type': 'EntryPoint',
+            urlTemplate: 'https://www.gyanvatsala.in/workspace?q={search_term_string}',
+          },
+          'query-input': 'required name=search_term_string',
         },
       },
       {
         '@type': 'Organization',
         '@id': 'https://www.gyanvatsala.in/#organization',
         name: 'Gyanvatsala',
-        url: 'https://www.gyanvatsala.in',
+        url: 'https://www.gyanvatsala.in/',
         logo: {
           '@type': 'ImageObject',
           url: 'https://www.gyanvatsala.in/icon.svg',
           caption: 'Gyanvatsala Logo',
         },
         description:
-          'Gyanvatsala is a modern, privacy-focused digital document workspace and online file processing platform that operates without uploading confidential files to third-party servers.',
+          'Gyanvatsala is a modern, privacy-focused digital document workspace and online file processing platform that processes PDFs and images locally without server uploads.',
         founder: {
           '@type': 'Person',
           name: 'Divyanshu Pratap Singh',
@@ -150,68 +129,24 @@ export default function RootLayout({
       {
         '@type': 'SoftwareApplication',
         '@id': 'https://www.gyanvatsala.in/#software',
-        name: 'Gyanvatsala',
+        name: 'Gyanvatsala PDF Editor, Image to PDF & Image Size Reducer',
         applicationCategory: 'UtilitiesApplication',
         operatingSystem: 'All (Web Browser, Windows, macOS, Linux, Android, iOS)',
-        url: 'https://www.gyanvatsala.in',
+        url: 'https://www.gyanvatsala.in/',
         description:
-          'Comprehensive in-browser file processing suite: PDF to Word conversion, Acrobat-grade PDF canvas editor, realistic photocopier scanner effects (Scan Studio), and multi-format batch image conversion.',
+          'Complete client-side document and media suite: free online PDF editor, JPG/PNG/IMG to PDF converter, Image Size Reducer (20KB, 50KB, 100KB, custom KB), PDF compressor, Merge/Split PDF, PDF to Word, and Photocopier Scan Studio.',
         offers: {
           '@type': 'Offer',
           price: '0.00',
           priceCurrency: 'INR',
         },
-        aggregateRating: {
-          '@type': 'AggregateRating',
-          ratingValue: '4.9',
-          reviewCount: '1280',
-          bestRating: '5',
-          worstRating: '1',
-        },
         featureList: [
-          'High-Fidelity PDF to Word Conversion with Vector Font & Table Preservation',
-          'Analog Photocopier Scan Studio with Rotational Skew & Noise Shader',
-          'Interactive Acrobat-Grade PDF Canvas Editor (Text, Annotations, Whiteout, Signatures)',
-          'Lossless WebP, AVIF, HEIC, PNG, and Batch Image Conversion',
-          'Zero Server Uploads Client-Side WebAssembly Processing for 100% Privacy',
-        ],
-      },
-      {
-        '@type': 'FAQPage',
-        '@id': 'https://www.gyanvatsala.in/#faq',
-        mainEntity: [
-          {
-            '@type': 'Question',
-            name: 'What is Gyanvatsala?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'Gyanvatsala is an all-in-one private online file and document processing suite. It provides tools for PDF editing, PDF to Word conversion, realistic scanner simulation (Scan Studio), and batch image conversion and compression directly in your browser.',
-            },
-          },
-          {
-            '@type': 'Question',
-            name: 'Are my files uploaded to any servers during processing?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'No. Gyanvatsala prioritizes 100% privacy using client-side WebAssembly, Canvas, and vector processing. Your files are transformed directly on your device without being uploaded to remote servers.',
-            },
-          },
-          {
-            '@type': 'Question',
-            name: 'Is Gyanvatsala free to use?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'Yes! The core tools and Free Starter plan are completely free with unlimited in-browser private processing and 15 MB optional cloud storage.',
-            },
-          },
-          {
-            '@type': 'Question',
-            name: 'What file formats does Gyanvatsala support?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'Gyanvatsala supports PDF, Microsoft Word (DOCX), Excel (XLSX), PowerPoint (PPTX), JPG, PNG, WebP, HEIC, SVG, BMP, and plain text files.',
-            },
-          },
+          'Free Online PDF Editor with direct text editing, alignment snap guides, whiteout, and signatures',
+          'Image to PDF (IMG, JPG, JPEG, PNG, WebP, BMP to PDF) converter with A4 & Letter layout options',
+          'Image Size Reducer in KB & MB (20KB, 50KB, 100KB, 200KB presets for forms and uploads)',
+          'Compress PDF, Merge PDF, Split PDF, Sign PDF, Protect PDF, and PDF to Word conversion',
+          'Analog Photocopier Scan Studio with rotational skew, noise shaders, and paper grain',
+          'Zero Server Uploads client-side WebAssembly processing for complete privacy',
         ],
       },
     ],

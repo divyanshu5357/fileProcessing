@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { ToolDefinition, PdfToolId } from '@/types/document';
 import { ALL_PDF_TOOLS, getToolsByCategory } from '@/lib/toolRegistry';
+import { matchesSeoQuery } from '@/lib/seoData';
 import { ConversionCard } from './ConversionCard';
 import {
   Search,
@@ -31,14 +32,14 @@ export function PdfToolsHub({ onSelectTool }: PdfToolsHubProps) {
   const fromPdfTools = getToolsByCategory('from-pdf');
   const utilityTools = getToolsByCategory('pdf-utility');
 
-  // Filter tools if searching
+  // Filter tools with typo-tolerant SEO alias matching
   const filteredTools = searchQuery.trim()
-    ? ALL_PDF_TOOLS.filter(
-        (t) =>
-          t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          t.shortDesc.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          t.fromFormat.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          t.toFormat.toLowerCase().includes(searchQuery.toLowerCase())
+    ? ALL_PDF_TOOLS.filter((t) =>
+        matchesSeoQuery(
+          t.id,
+          [t.name, t.shortDesc, t.fromFormat, t.toFormat],
+          searchQuery
+        )
       )
     : null;
 
@@ -52,11 +53,11 @@ export function PdfToolsHub({ onSelectTool }: PdfToolsHubProps) {
         </div>
 
         <h1 className="text-3xl sm:text-5xl font-black text-[#0F172A] dark:text-[#F8FAFC] tracking-tight leading-tight">
-          Convert your files with ease
+          Edit, convert &amp; compress PDFs with ease
         </h1>
 
         <p className="text-sm sm:text-base text-[#334155] dark:text-[#CBD5E1] mt-3 font-normal max-w-2xl leading-relaxed">
-          Convert images, documents and PDFs into the formats you need. 100% processed in your browser with zero server uploads.
+          Free online PDF editor, IMG/JPG to PDF converter, merge, split, compress, and Word/Excel tools. 100% processed in your browser with zero server uploads.
         </p>
 
         {/* Search Bar */}
@@ -64,7 +65,7 @@ export function PdfToolsHub({ onSelectTool }: PdfToolsHubProps) {
           <Search className="w-4 h-4 text-[#64748B] dark:text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search tools (e.g. Word to PDF, Merge, Excel...)"
+            placeholder="Search tools (e.g. PDF editor, IMG to PDF, Compress, Merge...)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#111827] text-xs text-[#0F172A] dark:text-[#F8FAFC] placeholder-[#64748B] dark:placeholder-[#94A3B8] shadow-xs focus:outline-none focus:ring-2 focus:ring-[#2563EB] dark:focus:ring-[#3B82F6] transition-all"

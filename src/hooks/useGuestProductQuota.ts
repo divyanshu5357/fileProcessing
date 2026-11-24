@@ -1,46 +1,53 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { getMemoryProfile, MemoryProfile } from '@/lib/memoryProfile';
-import { GUEST_MAX_USES_PER_PRODUCT } from '@/lib/guestQuota';
+import { GUEST_LIMIT_6_HOURS, isUnlimitedSimpleProduct } from '@/lib/guestQuota';
+import { requestDownloadAllowance, DownloadAllowanceResult } from '@/lib/downloadQuotaClient';
 
 export interface GuestQuotaState {
   isGuest: boolean;
   unlimited: boolean;
-  used: number;
   limit: number;
-  remaining: number;
   allowed: boolean;
-  ipMasked: string | null;
   memoryProfile: MemoryProfile;
   loading: boolean;
+  consumeDownloadQuota: (fileSizeBytes?: number) => Promise<DownloadAllowanceResult>;
   consumeUse: () => Promise<boolean>;
   refreshQuota: () => Promise<void>;
 }
 
+const PAID_TIERS = new Set(['prime', 'primeplus', 'prime_plus', 'primeultra', 'prime_ultra']);
+
 /**
- * Tracks per-product IP usage when user is not signed in (max 4 edits/uses),
- * and exposes tiered browser memory budgets for Guest and Free users.
+ * Provides tiered file-size/RAM defaults without rendering any limit or IP details in the UI.
+ * Backend enforces 4 downloads per 6 hours (files under 15 MB) and 9 downloads per day silently.
  */
 export function useGuestProductQuota(productId: string): GuestQuotaState {
-  const { user, isAuthenticated, openAuthModal } = useAuth();
-  const isGuest = !isAuthenticated;
-  const fallbackMemory = getMemoryProfile(user?.plan, isAuthenticated);
+  const { user, isAuthenticated } = useAuth();
+  const isSimpleTool = isUnlimitedSimpleProduct(productId);
+  const isPaidOrAdmin =
+    isSimpleTool ||
+    (Boolean(isAuthenticated) &&
+      (user?.role === 'admin' ||
+        PAID_TIERS.has((user?.plan || '').toLowerCase().replace(/\s+/g, ''))));
 
-  const [used, setUsed] = useState(0);
-  const [limit, setLimit] = useState(GUEST_MAX_USES_PER_PRODUCT);
-  const [remaining, setRemaining] = useState(GUEST_MAX_USES_PER_PRODUCT);
+  const isGuest = !isPaidOrAdmin;
+  const fallbackMemory = useMemo(
+    () =>
+      isSimpleTool
+        ? getMemoryProfile('PrimePlus', true)
+        : getMemoryProfile(user?.plan, isAuthenticated),
+    [isSimpleTool, user?.plan, isAuthenticated]
+  );
+
   const [allowed, setAllowed] = useState(true);
-  const [ipMasked, setIpMasked] = useState<string | null>(null);
-  const [memoryProfile, setMemoryProfile] = useState<MemoryProfile>(fallbackMemory);
-  const [loading, setLoading] = useState(true);
+  const [serverProfile, setServerProfile] = useState<MemoryProfile | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const refreshQuota = useCallback(async () => {
-    setMemoryProfile(getMemoryProfile(user?.plan, isAuthenticated));
-    if (isAuthenticated) {
-      setUsed(0);
-      setRemaining(GUEST_MAX_USES_PER_PRODUCT);
+    if (isPaidOrAdmin) {
       setAllowed(true);
       setLoading(false);
       return;
@@ -52,93 +59,41 @@ export function useGuestProductQuota(productId: string): GuestQuotaState {
       });
       if (res.ok) {
         const data = await res.json();
-        setUsed(data.used ?? 0);
-        setLimit(data.limit ?? GUEST_MAX_USES_PER_PRODUCT);
-        setRemaining(data.remaining ?? GUEST_MAX_USES_PER_PRODUCT);
         setAllowed(Boolean(data.allowed));
-        setIpMasked(data.ipMasked || null);
-        if (data.memoryProfile) setMemoryProfile(data.memoryProfile);
+        if (data.memoryProfile) setServerProfile(data.memoryProfile);
       }
     } catch {
-      // keep safe defaults
+      // keep silent defaults
     } finally {
       setLoading(false);
     }
-  }, [productId, isAuthenticated, user?.plan]);
+  }, [productId, isPaidOrAdmin]);
 
-  useEffect(() => {
-    if (isAuthenticated) return;
-    let cancelled = false;
-
-    fetch(`/api/usage/guest?productId=${encodeURIComponent(productId)}`, {
-      cache: 'no-store',
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return;
-        setUsed(data.used ?? 0);
-        setLimit(data.limit ?? GUEST_MAX_USES_PER_PRODUCT);
-        setRemaining(data.remaining ?? GUEST_MAX_USES_PER_PRODUCT);
-        setAllowed(Boolean(data.allowed));
-        setIpMasked(data.ipMasked || null);
-        if (data.memoryProfile) setMemoryProfile(data.memoryProfile);
-      })
-      .catch(() => {
-        // keep safe defaults
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [productId, isAuthenticated]);
+  const consumeDownloadQuota = useCallback(
+    async (fileSizeBytes: number = 0): Promise<DownloadAllowanceResult> => {
+      if (isPaidOrAdmin) {
+        return { allowed: true, unlimited: true };
+      }
+      const res = await requestDownloadAllowance(productId, fileSizeBytes);
+      setAllowed(res.allowed);
+      return res;
+    },
+    [isPaidOrAdmin, productId]
+  );
 
   const consumeUse = useCallback(async (): Promise<boolean> => {
-    if (isAuthenticated) return true;
-
-    try {
-      const res = await fetch('/api/usage/guest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId }),
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (typeof data.used === 'number') setUsed(data.used);
-      if (typeof data.limit === 'number') setLimit(data.limit);
-      if (typeof data.remaining === 'number') setRemaining(data.remaining);
-      if (data.ipMasked) setIpMasked(data.ipMasked);
-
-      if (!res.ok || data.allowed === false) {
-        setAllowed(false);
-        setRemaining(0);
-        openAuthModal(
-          undefined,
-          data.message ||
-            `Guest IP trial limit reached (${limit}/${limit} edits). Sign in free for unlimited access.`
-        );
-        return false;
-      }
-
-      setAllowed(data.remaining > 0 || Boolean(data.unlimited));
-      return true;
-    } catch {
-      return true;
-    }
-  }, [isAuthenticated, productId, limit, openAuthModal]);
+    const res = await consumeDownloadQuota(0);
+    return res.allowed;
+  }, [consumeDownloadQuota]);
 
   return {
     isGuest,
-    unlimited: isAuthenticated,
-    used: isAuthenticated ? 0 : used,
-    limit,
-    remaining: isAuthenticated ? limit : remaining,
-    allowed: isAuthenticated ? true : allowed,
-    ipMasked,
-    memoryProfile: isAuthenticated ? fallbackMemory : memoryProfile,
-    loading: isAuthenticated ? false : loading,
+    unlimited: isPaidOrAdmin,
+    limit: GUEST_LIMIT_6_HOURS,
+    allowed: isPaidOrAdmin ? true : allowed,
+    memoryProfile: isPaidOrAdmin ? fallbackMemory : serverProfile || fallbackMemory,
+    loading,
+    consumeDownloadQuota,
     consumeUse,
     refreshQuota,
   };

@@ -202,6 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             (curLast > 0 && curNow - curLast > SESSION_IDLE_TIMEOUT_MS);
 
           // 1. Authoritative server-verified session sync via /api/auth/me
+          let meHandled = false;
           try {
             const meRes = await fetch('/api/auth/me');
             if (meRes.ok) {
@@ -230,38 +231,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   await authClient.signOut().catch(() => {});
                 }
               }
+              meHandled = true;
             }
           } catch (meErr) {
             console.debug('Failed to fetch /api/auth/me', meErr);
           }
 
-          // 2. Sync Better Auth client session if needed
-          try {
-            const sessionRes = await authClient.getSession();
-            if (sessionRes?.data?.user) {
-              if (isStaleOrTestAccount(sessionRes.data.user) || curExpired) {
-                await authClient.signOut().catch(() => {});
-                setUser(null);
-                purgeLocalStorage();
-              } else {
-                const u = sessionRes.data.user;
-                setUser((prev) => {
-                  const realUser: UserProfile = {
-                    id: u.id,
-                    name: u.name || u.email?.split('@')[0] || 'User',
-                    email: u.email,
-                    avatarUrl: u.image || undefined,
-                    plan: prev?.plan || (u as any).plan || 'Free',
-                    role: prev?.role || (u as any).role || 'user',
-                    hasPassword: prev?.hasPassword,
-                  };
-                  localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(realUser));
-                  return realUser;
-                });
+          // 2. Sync Better Auth client session only as fallback if /api/auth/me did not respond cleanly
+          if (!meHandled) {
+            try {
+              const sessionRes = await authClient.getSession();
+              if (sessionRes?.data?.user) {
+                if (isStaleOrTestAccount(sessionRes.data.user) || curExpired) {
+                  await authClient.signOut().catch(() => {});
+                  setUser(null);
+                  purgeLocalStorage();
+                } else {
+                  const u = sessionRes.data.user;
+                  setUser((prev) => {
+                    const realUser: UserProfile = {
+                      id: u.id,
+                      name: u.name || u.email?.split('@')[0] || 'User',
+                      email: u.email,
+                      avatarUrl: u.image || undefined,
+                      plan: prev?.plan || (u as any).plan || 'Free',
+                      role: prev?.role || (u as any).role || 'user',
+                      hasPassword: prev?.hasPassword,
+                    };
+                    localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(realUser));
+                    return realUser;
+                  });
+                }
               }
+            } catch (sessErr) {
+              console.debug('No active Better Auth session', sessErr);
             }
-          } catch (sessErr) {
-            console.debug('No active Better Auth session', sessErr);
           }
         };
 

@@ -6,7 +6,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   const staticRoutes: MetadataRoute.Sitemap = [
     {
-      url: `${baseUrl}`,
+      url: `${baseUrl}/`,
       lastModified: new Date(),
       changeFrequency: 'daily',
       priority: 1.0,
@@ -74,14 +74,26 @@ export default function sitemap(): MetadataRoute.Sitemap {
     {
       url: `${baseUrl}/tools/pdf-editor`,
       lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.8,
+      changeFrequency: 'daily',
+      priority: 0.95,
+    },
+    {
+      url: `${baseUrl}/tools/image-size-reducer`,
+      lastModified: new Date(),
+      changeFrequency: 'daily',
+      priority: 0.95,
     },
     {
       url: `${baseUrl}/tools/pdf-assembler`,
       lastModified: new Date(),
       changeFrequency: 'weekly',
-      priority: 0.75,
+      priority: 0.85,
+    },
+    {
+      url: `${baseUrl}/tools/canvas-editor`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.85,
     },
   ];
 
@@ -97,13 +109,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
     'protect-pdf',
     'watermark-pdf',
     'pdf-to-excel',
+    'sign-pdf',
   ]);
 
   const toolRoutes: MetadataRoute.Sitemap = ALL_PDF_TOOLS.map((tool) => ({
     url: `${baseUrl}/pdf/${tool.id}`,
     lastModified: new Date(),
     changeFrequency: highPriorityTools.has(tool.id) ? 'daily' : 'weekly',
-    priority: highPriorityTools.has(tool.id) ? 0.9 : 0.8,
+    priority: highPriorityTools.has(tool.id) ? 0.95 : 0.8,
   }));
 
   return [...staticRoutes, ...toolRoutes];

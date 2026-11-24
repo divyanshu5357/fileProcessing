@@ -411,19 +411,11 @@ export default function ScanStudioPage() {
   const handleUploadFiles = async (files: File[]) => {
     if (!files || files.length === 0) return;
 
-    if (!quota.allowed) {
-      openAuthModal(
-        undefined,
-        `Free guest IP limit reached (${quota.limit}/${quota.limit} scans). Sign in free for unlimited scanning.`
-      );
-      return;
-    }
-
     const maxBytes = quota.memoryProfile.maxFileSizeMb * 1024 * 1024;
     const validFiles = files.filter((f) => {
       if (f.size > maxBytes) {
         alert(
-          `"${f.name}" exceeds the ${quota.memoryProfile.maxFileSizeMb} MB ${quota.memoryProfile.label} limit.`
+          `"${f.name}" exceeds the ${quota.memoryProfile.maxFileSizeMb} MB limit. Upgrade to Premium for files up to 100 MB.`
         );
         return false;
       }
@@ -433,7 +425,7 @@ export default function ScanStudioPage() {
     const accepted = validFiles.slice(0, quota.memoryProfile.maxBatchFiles);
     if (accepted.length < validFiles.length) {
       alert(
-        `${quota.memoryProfile.label} processes up to ${quota.memoryProfile.maxBatchFiles} files per upload batch to keep RAM low.`
+        `Up to ${quota.memoryProfile.maxBatchFiles} files can be processed per upload batch.`
       );
     }
     if (accepted.length === 0) return;
@@ -592,7 +584,6 @@ export default function ScanStudioPage() {
   // Generate and open preview modal before download
   const handleGenerateScannedPdf = async () => {
     if (pages.length === 0) return;
-    if (!(await quota.consumeUse())) return;
 
     // Filter pages if a custom range was supplied
     let pagesToExport = pages;
@@ -697,7 +688,6 @@ export default function ScanStudioPage() {
   // Single page JPEG export preview
   const handleExportSinglePageJpeg = async () => {
     if (!currentPage) return;
-    if (!(await quota.consumeUse())) return;
     try {
       const blob = await exportSinglePageImage(
         currentPage,
@@ -1994,6 +1984,7 @@ export default function ScanStudioPage() {
         onClose={() => setIsExportModalOpen(false)}
         blob={exportModalBlob}
         defaultFilename={exportModalFilename}
+        productId="scan-studio"
         title={exportModalType === 'pdf' ? 'Scanned PDF: Preview & Save' : 'Scanned Archive: Preview & Save'}
         fileType={exportModalType}
         metadata={{

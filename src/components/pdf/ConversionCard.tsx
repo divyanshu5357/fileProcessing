@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { ToolDefinition } from '@/types/document';
 import {
   Image,
@@ -165,14 +166,18 @@ const ACCENT_STYLES: Record<string, { bg: string; text: string; border: string; 
 export function ConversionCard({ tool, onClick }: ConversionCardProps) {
   const IconComponent = ICON_MAP[tool.iconName] || FileText;
   const accent = ACCENT_STYLES[tool.accentColor] || ACCENT_STYLES.blue;
+  const href =
+    tool.id === 'pdf-editor'
+      ? '/tools/pdf-editor'
+      : tool.id === 'pdf-assembler'
+      ? '/tools/pdf-assembler'
+      : `/pdf/${tool.id}`;
 
   return (
-    <div
-      onClick={() => onClick(tool)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
+    <Link
+      href={href}
+      onClick={(e) => {
+        if (onClick) {
           e.preventDefault();
           onClick(tool);
         }
@@ -228,6 +233,6 @@ export function ConversionCard({ tool, onClick }: ConversionCardProps) {
           <ArrowRight className="w-3 h-3" />
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

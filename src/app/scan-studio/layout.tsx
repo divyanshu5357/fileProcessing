@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Scan Studio — Make PDF Look Scanned Online (Free & Private) | Gyanvatsala',
+  title: 'Scan Studio — Make PDF Look Scanned Online (Free & Private)',
   description:
     'Generate realistic analog photocopier and scanner effects for PDF documents online. Add rotational skew, photocopier noise textures, paper grain, and contrast directly in your browser with 100% privacy.',
   keywords: [
@@ -23,13 +23,20 @@ export const metadata: Metadata = {
       'Turn clean digital PDFs into realistic scanned documents with authentic photocopier textures, rotational jitter, and paper grain. 100% private in-browser processing.',
     url: 'https://www.gyanvatsala.in/scan-studio',
     siteName: 'Gyanvatsala',
-    images: [{ url: 'https://www.gyanvatsala.in/icon.svg', width: 512, height: 512 }],
+    images: [
+      {
+        url: 'https://www.gyanvatsala.in/opengraph-image',
+        width: 1200,
+        height: 630,
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Scan Studio — Make PDF Look Scanned Online',
     description:
       'Transform clean PDFs into realistic scanned documents with customizable noise, skew, and contrast.',
+    images: ['https://www.gyanvatsala.in/twitter-image'],
   },
 };
 

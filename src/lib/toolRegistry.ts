@@ -164,13 +164,13 @@ export const CENTRAL_TOOL_REGISTRY: CentralToolItem[] = [
   // 4. Image Conversions & Processing
   {
     id: 'compress-image',
-    name: 'Compress Image',
+    name: 'Image Size Reducer (KB / MB)',
     category: 'compression',
     categoryLabel: 'Compression Tools',
     supportedInputs: ['.jpg', '.jpeg', '.png', '.webp', '.bmp'],
     supportedOutputs: ['.jpg', '.png', '.webp'],
-    description: 'Compress JPG, PNG, and WebP images with custom visual quality controls and real-time size savings.',
-    route: '/image-converter',
+    description: 'Reduce JPG, PNG, and WebP image size to 20KB, 50KB, 100KB, or custom KB limits privately.',
+    route: '/tools/image-size-reducer',
     iconName: 'Minimize2',
     accentColor: 'emerald',
     badge: 'Savings',

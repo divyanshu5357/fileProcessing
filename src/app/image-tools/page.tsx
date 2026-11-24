@@ -217,20 +217,12 @@ export default function ImageToolsPage() {
     async (files: File[]) => {
       if (!files || files.length === 0) return;
 
-      if (!quota.allowed) {
-        openAuthModal(
-          undefined,
-          `Free guest IP limit reached (${quota.limit}/${quota.limit} edits) for Image Studio. Sign in free for unlimited editing.`
-        );
-        return;
-      }
-
       const maxBytes = quota.memoryProfile.maxFileSizeMb * 1024 * 1024;
       const validFiles = files.filter((f) => {
         if (f.size > maxBytes) {
           addToast(
-            'File Too Large for Current Plan',
-            `${f.name} exceeds ${quota.memoryProfile.maxFileSizeMb} MB (${quota.memoryProfile.label}).`,
+            'File Exceeds 15 MB Limit',
+            `${f.name} exceeds ${quota.memoryProfile.maxFileSizeMb} MB. Upgrade to Premium for larger files.`,
             'error'
           );
           return false;
@@ -243,7 +235,7 @@ export default function ImageToolsPage() {
       if (validFiles.length > remainingSlots) {
         addToast(
           'Batch Limit Reached',
-          `${quota.memoryProfile.label} limits queues to ${quota.memoryProfile.maxBatchFiles} images to conserve memory.`,
+          `You can queue up to ${quota.memoryProfile.maxBatchFiles} images at a time.`,
           'error'
         );
       }
@@ -333,7 +325,6 @@ export default function ImageToolsPage() {
   // Single Process Handlers
   const handleApplyCompress = async () => {
     if (!activeImage) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await compressImage(activeImage.file, compressSettings);
@@ -358,7 +349,6 @@ export default function ImageToolsPage() {
 
   const handleApplyResize = async () => {
     if (!activeImage) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await resizeImage(activeImage.file, resizeSettings);
@@ -383,7 +373,6 @@ export default function ImageToolsPage() {
 
   const handleApplyConvert = async () => {
     if (!activeImage) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await convertImage(activeImage.file, convertSettings);
@@ -408,7 +397,6 @@ export default function ImageToolsPage() {
 
   const handleApplyCrop = async () => {
     if (!activeImage) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await cropImage(activeImage.file, cropSettings);
@@ -430,7 +418,6 @@ export default function ImageToolsPage() {
 
   const handleApplyRotate = async () => {
     if (!activeImage) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await rotateFlipImage(activeImage.file, rotateSettings);
@@ -452,7 +439,6 @@ export default function ImageToolsPage() {
 
   const handleStripMetadata = async () => {
     if (!activeImage) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const img = await loadImage(activeImage.url);
@@ -475,7 +461,6 @@ export default function ImageToolsPage() {
 
   const handleApplyBeautify = async () => {
     if (!activeImage) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await beautifyScreenshot(activeImage.file, beautifySettings);
@@ -497,7 +482,6 @@ export default function ImageToolsPage() {
 
   const handleApplyPassport = async () => {
     if (!activeImage) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await generatePassportPhoto(activeImage.file, passportSettings);
@@ -524,7 +508,6 @@ export default function ImageToolsPage() {
   // Batch actions
   const handleBatchCompress = async (quality: number) => {
     if (queue.length === 0) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     let count = 0;
     try {
@@ -555,7 +538,6 @@ export default function ImageToolsPage() {
 
   const handleBatchConvert = async (format: string) => {
     if (queue.length === 0) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     let count = 0;
     try {
@@ -585,7 +567,6 @@ export default function ImageToolsPage() {
 
   const handleBatchResize = async (maxWidth: number) => {
     if (queue.length === 0) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     let count = 0;
     try {
@@ -626,7 +607,6 @@ export default function ImageToolsPage() {
 
   const handleBatchStripMetadata = async () => {
     if (queue.length === 0) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     let count = 0;
     try {
@@ -709,7 +689,6 @@ export default function ImageToolsPage() {
 
   const handleExportPdf = async () => {
     if (!activeImage) return;
-    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const blob = activeImage.processedBlob || activeImage.file;
@@ -1085,6 +1064,7 @@ export default function ImageToolsPage() {
         onClose={() => setIsExportModalOpen(false)}
         blob={exportModalBlob}
         defaultFilename={exportModalFilename}
+        productId="image-tools"
         title="Export & Download Preview"
         fileType={exportModalType === 'pdf' ? 'pdf' : exportModalType === 'image' ? 'image' : 'generic'}
       />

@@ -671,17 +671,9 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
     saveSnapshot();
   };
 
-  const ensureEditorQuota = async (): Promise<boolean> => {
-    if (docSessionConsumedRef.current) return true;
-    const ok = await quota.consumeUse();
-    if (ok) docSessionConsumedRef.current = true;
-    return ok;
-  };
-
   // Apply Changes & Export
   const handleApplyChanges = async () => {
     if (!pdfBuffer || !file) return;
-    if (!(await ensureEditorQuota())) return;
 
     setIsSaving(true);
     try {
@@ -718,21 +710,11 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
     const maxBytes = quota.memoryProfile.maxFileSizeMb * 1024 * 1024;
     if (uploadedFile.size > maxBytes) {
       alert(
-        `"${uploadedFile.name}" exceeds the ${quota.memoryProfile.maxFileSizeMb} MB ${quota.memoryProfile.label} limit. Sign in or upgrade for larger files.`
+        `"${uploadedFile.name}" exceeds the ${quota.memoryProfile.maxFileSizeMb} MB limit. Upgrade to Premium to process files up to 100 MB.`
       );
       return;
     }
 
-    if (!quota.allowed) {
-      openAuthModal(
-        undefined,
-        `Free guest IP limit reached (${quota.limit}/${quota.limit} edits) for PDF Editor. Sign in free for unlimited editing.`
-      );
-      return;
-    }
-
-    const ok = await quota.consumeUse();
-    if (!ok) return;
     docSessionConsumedRef.current = true;
 
     try {
@@ -906,7 +888,7 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
               <span>Professional Interactive PDF Editor Engine</span>
             </div>
             <h1 className="text-3xl sm:text-5xl font-black text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">
-              PDF Editor – Precision Editing & Layout
+              Free Online PDF Editor — Edit Text &amp; Layout
             </h1>
             <p className="text-sm text-[#334155] dark:text-[#CBD5E1] mt-2 max-w-xl mx-auto">
               Place images at exact clicked locations, edit text directly, drag to resize with 8 handles, and manage objects with layers.
@@ -1207,6 +1189,8 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
         onClose={() => setIsExportModalOpen(false)}
         blob={exportPreviewBlob}
         defaultFilename={exportPreviewFilename}
+        productId="pdf-editor"
+        quotaBytes={file?.size || 0}
         title="PDF Editor: Preview & Save"
         fileType="pdf"
         metadata={{

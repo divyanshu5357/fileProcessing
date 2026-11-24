@@ -5,6 +5,8 @@ import { ConversionResultItem } from '@/types/document';
 import { formatBytes, downloadBlob } from '@/lib/utils';
 import { ExportPreviewModal } from '@/components/common/ExportPreviewModal';
 import { PdfPreviewer } from '@/components/common/PdfPreviewer';
+import { requestDownloadAllowance, DownloadAllowanceResult } from '@/lib/downloadQuotaClient';
+import { DownloadLimitModal } from '@/components/common/DownloadLimitModal';
 import {
   CheckCircle2,
   Download,
@@ -25,6 +27,8 @@ interface DownloadResultsProps {
   results: ConversionResultItem[];
   onReset: () => void;
   onDownloadZip?: () => void;
+  productId?: string;
+  sourceTotalBytes?: number;
   validationReport?: {
     standard: string;
     conformancePassed: boolean;
@@ -37,6 +41,8 @@ export function DownloadResults({
   results,
   onReset,
   onDownloadZip,
+  productId = 'pdf-tool',
+  sourceTotalBytes = 0,
   validationReport,
   excelPreviewRows,
 }: DownloadResultsProps) {
@@ -44,11 +50,26 @@ export function DownloadResults({
     results.length > 0 ? results[0] : null
   );
   const [modalItem, setModalItem] = useState<ConversionResultItem | null>(null);
+  const [zipLimitInfo, setZipLimitInfo] = useState<DownloadAllowanceResult | null>(null);
 
   if (results.length === 0) return null;
 
   const handleDownloadItem = (item: ConversionResultItem) => {
     setModalItem(item);
+  };
+
+  const handleZipClick = async () => {
+    if (!onDownloadZip) return;
+    const outputSize = results.reduce((sum, r) => sum + (r.size || 0), 0);
+    const allowance = await requestDownloadAllowance(
+      productId,
+      Math.max(outputSize, sourceTotalBytes || 0)
+    );
+    if (!allowance.allowed) {
+      setZipLimitInfo(allowance);
+      return;
+    }
+    onDownloadZip();
   };
 
   const isPdf = selectedPreview?.format === 'application/pdf' || selectedPreview?.name.endsWith('.pdf');
@@ -74,7 +95,7 @@ export function DownloadResults({
 
         <div className="flex items-center gap-2">
           {results.length > 1 && onDownloadZip && (
-            <Button variant="primary" size="sm" onClick={onDownloadZip} className="gap-1.5 font-bold">
+            <Button variant="primary" size="sm" onClick={handleZipClick} className="gap-1.5 font-bold">
               <Archive className="w-4 h-4" />
               Download All (ZIP)
             </Button>
@@ -259,7 +280,19 @@ export function DownloadResults({
         onClose={() => setModalItem(null)}
         blob={modalItem ? modalItem.blob : null}
         defaultFilename={modalItem ? modalItem.name : ''}
+        productId={productId}
+        quotaBytes={sourceTotalBytes}
         fileType={modalItem?.format === 'application/pdf' ? 'pdf' : 'generic'}
+      />
+
+      <DownloadLimitModal
+        isOpen={Boolean(zipLimitInfo)}
+        onClose={() => setZipLimitInfo(null)}
+        limitInfo={zipLimitInfo}
+        onUpgradeSuccess={() => {
+          setZipLimitInfo(null);
+          onDownloadZip?.();
+        }}
       />
     </div>
   );

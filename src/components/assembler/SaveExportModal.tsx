@@ -30,6 +30,8 @@ import {
   mergeDocumentsAlternately,
 } from '@/lib/pdfAssemblerEngine';
 import { createZip, downloadBlob } from '@/lib/utils';
+import { requestDownloadAllowance, DownloadAllowanceResult } from '@/lib/downloadQuotaClient';
+import { DownloadLimitModal } from '@/components/common/DownloadLimitModal';
 
 interface SaveExportModalProps {
   isOpen: boolean;
@@ -42,7 +44,6 @@ export function SaveExportModal({
   isOpen,
   onClose,
   documents,
-  onBeforeExport,
 }: SaveExportModalProps) {
   const { isAuthenticated, user, openAuthModal } = useAuth();
 
@@ -57,21 +58,47 @@ export function SaveExportModal({
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [limitInfo, setLimitInfo] = useState<DownloadAllowanceResult | null>(null);
+  const [pendingLocalDownload, setPendingLocalDownload] = useState<{ blob: Blob; name: string } | null>(null);
 
   if (!isOpen) return null;
+
+  const saveBlobLocally = async (finalBlob: Blob, finalName: string) => {
+    let savedLocally = false;
+    if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
+      try {
+        const ext = finalName.endsWith('.zip') ? 'zip' : 'pdf';
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: finalName,
+          types: [
+            {
+              description: `${ext.toUpperCase()} Document`,
+              accept: { [finalBlob.type || 'application/octet-stream']: [`.${ext}`] },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(finalBlob);
+        await writable.close();
+        savedLocally = true;
+      } catch (e: any) {
+        if (e.name === 'AbortError') {
+          setIsProcessing(false);
+          return;
+        }
+      }
+    }
+    if (!savedLocally) {
+      downloadBlob(finalBlob, finalName);
+    }
+    setProgress(100);
+    setSuccessMsg(`Document exported successfully: ${finalName}`);
+  };
 
   const handleExport = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
-
-    if (onBeforeExport) {
-      const ok = await onBeforeExport();
-      if (!ok) {
-        setErrorMsg('Guest IP trial limit reached (4/4 edits). Sign in free for unlimited access.');
-        return;
-      }
-    }
 
     setIsProcessing(true);
     setProgress(20);
@@ -145,36 +172,13 @@ export function SaveExportModal({
         setProgress(100);
         setSuccessMsg(`Document saved to your private S3 storage: ${finalName}`);
       } else {
-        // Local saving: use native local folder picker if available
-        let savedLocally = false;
-        if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
-          try {
-            const ext = finalName.endsWith('.zip') ? 'zip' : 'pdf';
-            const handle = await (window as any).showSaveFilePicker({
-              suggestedName: finalName,
-              types: [
-                {
-                  description: `${ext.toUpperCase()} Document`,
-                  accept: { [finalBlob.type || 'application/octet-stream']: [`.${ext}`] },
-                },
-              ],
-            });
-            const writable = await handle.createWritable();
-            await writable.write(finalBlob);
-            await writable.close();
-            savedLocally = true;
-          } catch (e: any) {
-            if (e.name === 'AbortError') {
-              setIsProcessing(false);
-              return;
-            }
-          }
+        const allowance = await requestDownloadAllowance('pdf-assembler', finalBlob.size);
+        if (!allowance.allowed) {
+          setPendingLocalDownload({ blob: finalBlob, name: finalName });
+          setLimitInfo(allowance);
+          return;
         }
-        if (!savedLocally) {
-          downloadBlob(finalBlob, finalName);
-        }
-        setProgress(100);
-        setSuccessMsg(`Document exported successfully: ${finalName}`);
+        await saveBlobLocally(finalBlob, finalName);
       }
     } catch (err: any) {
       console.error('Export error:', err);
@@ -442,6 +446,23 @@ export function SaveExportModal({
           </div>
         </form>
       </div>
+
+      <DownloadLimitModal
+        isOpen={Boolean(limitInfo)}
+        onClose={() => {
+          setLimitInfo(null);
+          setPendingLocalDownload(null);
+        }}
+        limitInfo={limitInfo}
+        onUpgradeSuccess={() => {
+          const pending = pendingLocalDownload;
+          setLimitInfo(null);
+          setPendingLocalDownload(null);
+          if (pending) {
+            void saveBlobLocally(pending.blob, pending.name);
+          }
+        }}
+      />
     </div>
   );
 }
