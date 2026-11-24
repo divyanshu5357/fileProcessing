@@ -2,17 +2,50 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { ProductHeroVisual } from '@/components/landing/ProductHeroVisual';
-import { ProductShowcase } from '@/components/landing/ProductShowcase';
-import { VisualWorkflow } from '@/components/landing/VisualWorkflow';
-import { CapabilitiesSection } from '@/components/landing/CapabilitiesSection';
-import { TrustSection } from '@/components/landing/TrustSection';
-import { PrivacyBanner } from '@/components/PrivacyBanner';
-import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal';
+
+const ProductShowcase = dynamic(
+  () => import('@/components/landing/ProductShowcase').then((mod) => mod.ProductShowcase),
+  {
+    loading: () => <div className="w-full min-h-[450px]" />,
+  }
+);
+
+const VisualWorkflow = dynamic(
+  () => import('@/components/landing/VisualWorkflow').then((mod) => mod.VisualWorkflow),
+  {
+    loading: () => <div className="w-full min-h-[350px]" />,
+  }
+);
+
+const CapabilitiesSection = dynamic(
+  () => import('@/components/landing/CapabilitiesSection').then((mod) => mod.CapabilitiesSection),
+  {
+    loading: () => <div className="w-full min-h-[300px]" />,
+  }
+);
+
+const TrustSection = dynamic(
+  () => import('@/components/landing/TrustSection').then((mod) => mod.TrustSection),
+  {
+    loading: () => <div className="w-full min-h-[300px]" />,
+  }
+);
+
+const PrivacyBanner = dynamic(
+  () => import('@/components/PrivacyBanner').then((mod) => mod.PrivacyBanner),
+  { ssr: false }
+);
+
+const KeyboardShortcutsModal = dynamic(
+  () => import('@/components/KeyboardShortcutsModal').then((mod) => mod.KeyboardShortcutsModal),
+  { ssr: false }
+);
 
 export default function GyanvatsalaHomepage() {
   const router = useRouter();
@@ -55,8 +88,8 @@ export default function GyanvatsalaHomepage() {
 
           <div className="max-w-7xl mx-auto flex flex-col items-center text-center gap-8 relative z-10">
             {/* Small Introductory Label */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#F7F8FA] dark:bg-[#151926] border border-[#E9EBF0] dark:border-[#28314A] text-xs font-semibold text-[#536BCE] tracking-wider uppercase shadow-2xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#536BCE]" />
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#F7F8FA] dark:bg-[#151926] border border-[#E9EBF0] dark:border-[#28314A] text-xs font-semibold text-[#3B50B2] dark:text-[#93A5F5] tracking-wider uppercase shadow-2xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#3B50B2] dark:bg-[#93A5F5]" />
               <span>Free Online File Processing & Document Suite</span>
             </div>
 
@@ -66,7 +99,7 @@ export default function GyanvatsalaHomepage() {
             </h1>
 
             {/* Supporting Paragraph */}
-            <p className="text-base sm:text-xl text-[#727783] dark:text-[#9DA3AE] max-w-2xl leading-relaxed font-normal">
+            <p className="text-base sm:text-xl text-[#4E5360] dark:text-[#9DA3AE] max-w-2xl leading-relaxed font-normal">
               Convert PDF to Word, edit PDFs in-place, simulate analog photocopier scan effects with Scan Studio, and convert or compress images. 100% private with in-browser Zero Upload processing.
             </p>
 
@@ -82,7 +115,7 @@ export default function GyanvatsalaHomepage() {
 
               <a
                 href="#showcase"
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#536BCE] dark:text-[#93A5F5] hover:underline px-4 py-3.5 transition"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#3B50B2] dark:text-[#93A5F5] hover:underline px-4 py-3.5 transition"
               >
                 <span>See what you can do</span>
                 <span>→</span>
@@ -90,7 +123,7 @@ export default function GyanvatsalaHomepage() {
             </div>
 
             {/* Subtle Supporting Statement */}
-            <span className="text-xs sm:text-sm text-[#727783] dark:text-[#9DA3AE] tracking-wide pt-1">
+            <span className="text-xs sm:text-sm text-[#4E5360] dark:text-[#9DA3AE] tracking-wide pt-1">
               Documents. Images. Scanning. Creativity.
             </span>
 
@@ -126,7 +159,7 @@ export default function GyanvatsalaHomepage() {
         {/* ======================================================== */}
         <section className="w-full py-28 px-4 sm:px-6 lg:px-8 bg-white dark:bg-[#0D1017] border-t border-[#E9EBF0] dark:border-[#222632] transition-colors">
           <div className="max-w-4xl mx-auto rounded-3xl bg-[#F7F8FA] dark:bg-[#121622] border border-[#E9EBF0] dark:border-[#242B3E] p-10 sm:p-16 text-center flex flex-col items-center gap-6 shadow-sm">
-            <span className="text-xs font-semibold text-[#536BCE] uppercase tracking-wider">
+            <span className="text-xs font-semibold text-[#3B50B2] dark:text-[#93A5F5] uppercase tracking-wider">
               Get Started
             </span>
 
@@ -134,7 +167,7 @@ export default function GyanvatsalaHomepage() {
               Make your next file task feel effortless.
             </h2>
 
-            <p className="text-base sm:text-lg text-[#727783] dark:text-[#9DA3AE] max-w-lg leading-relaxed">
+            <p className="text-base sm:text-lg text-[#4E5360] dark:text-[#9DA3AE] max-w-lg leading-relaxed">
               Discover a simpler way to work with your digital documents.
             </p>
 
@@ -148,7 +181,7 @@ export default function GyanvatsalaHomepage() {
               </Link>
             </div>
 
-            <span className="text-xs text-[#727783] dark:text-[#9DA3AE]">
+            <span className="text-xs text-[#4E5360] dark:text-[#9DA3AE]">
               No registration required to begin • 100% client-side available
             </span>
           </div>

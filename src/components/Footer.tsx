@@ -26,48 +26,48 @@ export function Footer({ onOpenPrivacyInfo }: FooterProps) {
               <GyanvatsalaLogo size={32} showWordmark={true} descriptor="Your Digital Document Workspace" />
             </Link>
 
-            <p className="text-xs sm:text-sm text-[#727783] dark:text-[#9DA3AE] leading-relaxed">
+            <p className="text-xs sm:text-sm text-[#4E5360] dark:text-[#9DA3AE] leading-relaxed">
               A thoughtfully designed workspace for documents, images and digital files. Everything you need to edit, convert, transform and create with confidence.
             </p>
 
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#159B75]">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#0D7A5B] dark:text-[#4ADE80]">
               <ShieldCheck className="w-4 h-4 shrink-0" />
               <span>Client-Side Processing Available</span>
             </div>
 
-            <div className="text-xs text-[#727783] font-mono">
+            <div className="text-xs text-[#4E5360] dark:text-[#9DA3AE] font-mono">
               <span>https://www.gyanvatsala.in</span>
             </div>
           </div>
 
           {/* Product Column */}
           <div className="flex flex-col gap-3">
-            <h4 className="text-xs font-semibold text-[#20232B] dark:text-[#F8FAFC] uppercase tracking-wider">
+            <p className="text-xs font-semibold text-[#20232B] dark:text-[#F8FAFC] uppercase tracking-wider">
               Product
-            </h4>
-            <ul className="text-xs sm:text-sm text-[#727783] dark:text-[#9DA3AE] flex flex-col gap-2.5">
+            </p>
+            <ul className="text-xs sm:text-sm text-[#4E5360] dark:text-[#9DA3AE] flex flex-col gap-2.5">
               <li>
-                <Link href="/workspace" className="hover:text-[#536BCE] transition font-medium">
+                <Link href="/workspace" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition font-medium">
                   Workspace
                 </Link>
               </li>
               <li>
-                <Link href="/pdf" className="hover:text-[#536BCE] transition">
+                <Link href="/pdf" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition">
                   Document Studio
                 </Link>
               </li>
               <li>
-                <Link href="/scan-studio" className="hover:text-[#536BCE] transition">
+                <Link href="/scan-studio" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition">
                   Scan Studio
                 </Link>
               </li>
               <li>
-                <Link href="/image-converter" className="hover:text-[#536BCE] transition">
+                <Link href="/image-converter" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition">
                   Media Studio
                 </Link>
               </li>
               <li>
-                <Link href="/tools/pdf-editor" className="hover:text-[#536BCE] transition">
+                <Link href="/tools/pdf-editor" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition">
                   Canvas Editor
                 </Link>
               </li>
@@ -76,22 +76,22 @@ export function Footer({ onOpenPrivacyInfo }: FooterProps) {
 
           {/* Resources Column */}
           <div className="flex flex-col gap-3">
-            <h4 className="text-xs font-semibold text-[#20232B] dark:text-[#F8FAFC] uppercase tracking-wider">
+            <p className="text-xs font-semibold text-[#20232B] dark:text-[#F8FAFC] uppercase tracking-wider">
               Resources
-            </h4>
-            <ul className="text-xs sm:text-sm text-[#727783] dark:text-[#9DA3AE] flex flex-col gap-2.5">
+            </p>
+            <ul className="text-xs sm:text-sm text-[#4E5360] dark:text-[#9DA3AE] flex flex-col gap-2.5">
               <li>
-                <Link href="/pdf" className="hover:text-[#536BCE] transition">
+                <Link href="/pdf" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition">
                   Explore Tools
                 </Link>
               </li>
               <li>
-                <Link href="/pricing" className="hover:text-[#536BCE] transition">
+                <Link href="/pricing" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition">
                   Help Center & Plans
                 </Link>
               </li>
               <li>
-                <Link href="/#how-it-works" className="hover:text-[#536BCE] transition">
+                <Link href="/#how-it-works" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition">
                   How It Works
                 </Link>
               </li>
@@ -100,14 +100,14 @@ export function Footer({ onOpenPrivacyInfo }: FooterProps) {
                   <button
                     type="button"
                     onClick={onOpenPrivacyInfo}
-                    className="hover:text-[#536BCE] text-left transition cursor-pointer"
+                    className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] text-left transition cursor-pointer"
                   >
                     Privacy Architecture
                   </button>
                 </li>
               ) : (
                 <li>
-                  <Link href="/privacy" className="hover:text-[#536BCE] transition">
+                  <Link href="/privacy" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition">
                     Privacy Architecture
                   </Link>
                 </li>
@@ -117,27 +117,27 @@ export function Footer({ onOpenPrivacyInfo }: FooterProps) {
 
           {/* Company Column */}
           <div className="flex flex-col gap-3">
-            <h4 className="text-xs font-semibold text-[#20232B] dark:text-[#F8FAFC] uppercase tracking-wider">
+            <p className="text-xs font-semibold text-[#20232B] dark:text-[#F8FAFC] uppercase tracking-wider">
               Company
-            </h4>
-            <ul className="text-xs sm:text-sm text-[#727783] dark:text-[#9DA3AE] flex flex-col gap-2.5">
+            </p>
+            <ul className="text-xs sm:text-sm text-[#4E5360] dark:text-[#9DA3AE] flex flex-col gap-2.5">
               <li>
-                <Link href="/about" className="hover:text-[#536BCE] transition">
+                <Link href="/about" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition">
                   About
                 </Link>
               </li>
               <li>
-                <Link href="/contact" className="hover:text-[#536BCE] transition">
+                <Link href="/contact" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition">
                   Contact & Support
                 </Link>
               </li>
               <li>
-                <Link href="/privacy" className="hover:text-[#536BCE] transition">
+                <Link href="/privacy" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition">
                   Privacy Policy
                 </Link>
               </li>
               <li>
-                <Link href="/terms" className="hover:text-[#536BCE] transition">
+                <Link href="/terms" className="hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition">
                   Terms and Conditions
                 </Link>
               </li>
@@ -146,7 +146,7 @@ export function Footer({ onOpenPrivacyInfo }: FooterProps) {
         </div>
 
         {/* Bottom Sub-Footer Bar */}
-        <div className="pt-8 border-t border-[#E9EBF0] dark:border-[#222632] flex flex-col sm:flex-row items-center justify-between text-xs text-[#727783] dark:text-[#9DA3AE] gap-4">
+        <div className="pt-8 border-t border-[#E9EBF0] dark:border-[#222632] flex flex-col sm:flex-row items-center justify-between text-xs text-[#4E5360] dark:text-[#9DA3AE] gap-4">
           <div className="flex items-center gap-2">
             <span>© {currentYear} Gyanvatsala. All rights reserved.</span>
             <span>•</span>
@@ -154,7 +154,7 @@ export function Footer({ onOpenPrivacyInfo }: FooterProps) {
           </div>
 
           <div className="flex items-center gap-2 text-xs">
-            <Lock className="w-3.5 h-3.5 text-[#159B75]" />
+            <Lock className="w-3.5 h-3.5 text-[#0D7A5B] dark:text-[#4ADE80]" />
             <span>Built for speed, privacy and document precision</span>
           </div>
         </div>

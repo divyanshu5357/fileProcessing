@@ -7,6 +7,10 @@ export default function (phase: string): NextConfig {
   }
 
   return {
+    compress: true,
+    experimental: {
+      optimizePackageImports: ['lucide-react'],
+    },
     turbopack: {
       rules: {
         "*.css": {

@@ -71,20 +71,20 @@ export function CapabilitiesSection() {
         {/* Section Heading */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="max-w-2xl">
-            <span className="text-xs font-semibold text-[#536BCE] uppercase tracking-wider block mb-2">
+            <span className="text-xs font-semibold text-[#3B50B2] dark:text-[#93A5F5] uppercase tracking-wider block mb-2">
               Capabilities
             </span>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#20232B] dark:text-[#F8FAFC] tracking-tight leading-tight">
               Everything you need. Nothing you don't.
             </h2>
-            <p className="text-base sm:text-lg text-[#727783] dark:text-[#9DA3AE] mt-3 leading-relaxed">
+            <p className="text-base sm:text-lg text-[#4E5360] dark:text-[#9DA3AE] mt-3 leading-relaxed">
               Carefully engineered document tools organized by task. Direct access to every working feature.
             </p>
           </div>
 
           <Link
             href="/pdf"
-            className="inline-flex items-center gap-2 text-sm font-bold text-[#536BCE] dark:text-[#93A5F5] hover:underline shrink-0 group"
+            className="inline-flex items-center gap-2 text-sm font-bold text-[#3B50B2] dark:text-[#93A5F5] hover:underline shrink-0 group"
           >
             <span>View all 24 tools</span>
             <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -102,7 +102,7 @@ export function CapabilitiesSection() {
               >
                 <div>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-[#EDF0FF] dark:bg-[#536BCE]/20 flex items-center justify-center text-[#536BCE] dark:text-[#93A5F5]">
+                    <div className="w-10 h-10 rounded-xl bg-[#EDF0FF] dark:bg-[#536BCE]/20 flex items-center justify-center text-[#3B50B2] dark:text-[#93A5F5]">
                       <Icon className="w-5 h-5" />
                     </div>
                     <h3 className="text-xl font-bold text-[#20232B] dark:text-[#F8FAFC]">
@@ -110,7 +110,7 @@ export function CapabilitiesSection() {
                     </h3>
                   </div>
 
-                  <p className="text-xs sm:text-sm text-[#727783] dark:text-[#9DA3AE] leading-relaxed mb-6">
+                  <p className="text-xs sm:text-sm text-[#4E5360] dark:text-[#9DA3AE] leading-relaxed mb-6">
                     {group.description}
                   </p>
 
@@ -119,16 +119,16 @@ export function CapabilitiesSection() {
                       <Link
                         key={tool.name}
                         href={tool.href}
-                        className="py-3 flex items-center justify-between text-sm group hover:text-[#536BCE] transition"
+                        className="py-3 flex items-center justify-between text-sm group hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition"
                       >
-                        <span className="font-medium text-[#20232B] dark:text-[#F8FAFC] group-hover:text-[#536BCE] transition">
+                        <span className="font-medium text-[#20232B] dark:text-[#F8FAFC] group-hover:text-[#3B50B2] dark:group-hover:text-[#93A5F5] transition">
                           {tool.name}
                         </span>
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-mono text-[#727783] dark:text-[#9DA3AE]">
+                          <span className="text-[11px] font-mono text-[#4E5360] dark:text-[#9DA3AE]">
                             {tool.note}
                           </span>
-                          <ArrowRight className="w-3.5 h-3.5 text-[#727783] group-hover:text-[#536BCE] transition-transform group-hover:translate-x-1" />
+                          <ArrowRight className="w-3.5 h-3.5 text-[#4E5360] dark:text-[#9DA3AE] group-hover:text-[#3B50B2] dark:group-hover:text-[#93A5F5] transition-transform group-hover:translate-x-1" />
                         </div>
                       </Link>
                     ))}

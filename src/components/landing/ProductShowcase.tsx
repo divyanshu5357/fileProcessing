@@ -86,7 +86,7 @@ export function ProductShowcase() {
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#20232B] dark:text-[#F8FAFC] tracking-tight leading-tight">
             One workspace. More ways to get things done.
           </h2>
-          <p className="text-base sm:text-lg text-[#727783] dark:text-[#9DA3AE] mt-3 leading-relaxed">
+          <p className="text-base sm:text-lg text-[#4E5360] dark:text-[#9DA3AE] mt-3 leading-relaxed">
             From everyday document tasks to creative file workflows, everything works together.
           </p>
         </div>
@@ -103,17 +103,17 @@ export function ProductShowcase() {
                 onClick={() => setActiveTab(p.id)}
                 className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all shrink-0 cursor-pointer ${
                   isActive
-                    ? 'bg-white dark:bg-[#1E2538] text-[#536BCE] dark:text-[#93A5F5] font-bold shadow-sm border border-[#E9EBF0] dark:border-[#2B354F]'
-                    : 'text-[#727783] dark:text-[#9DA3AE] hover:text-[#20232B] dark:hover:text-[#F8FAFC] hover:bg-white/60 dark:hover:bg-slate-800/60'
+                    ? 'bg-white dark:bg-[#1E2538] text-[#3B50B2] dark:text-[#93A5F5] font-bold shadow-sm border border-[#E9EBF0] dark:border-[#2B354F]'
+                    : 'text-[#4E5360] dark:text-[#9DA3AE] hover:text-[#20232B] dark:hover:text-[#F8FAFC] hover:bg-white/60 dark:hover:bg-slate-800/60'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-[#536BCE]' : 'text-[#727783]'}`} />
+                <Icon className={`w-4 h-4 ${isActive ? 'text-[#3B50B2] dark:text-[#93A5F5]' : 'text-[#4E5360] dark:text-[#9DA3AE]'}`} />
                 <span>{p.title}</span>
                 <span
                   className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
                     isActive
-                      ? 'bg-[#EDF0FF] dark:bg-[#536BCE]/20 text-[#536BCE] dark:text-[#93A5F5] font-semibold'
-                      : 'bg-slate-200/60 dark:bg-slate-700/60 text-[#727783]'
+                      ? 'bg-[#EDF0FF] dark:bg-[#536BCE]/20 text-[#3B50B2] dark:text-[#93A5F5] font-semibold'
+                      : 'bg-slate-200/60 dark:bg-slate-700/60 text-[#4E5360] dark:text-[#9DA3AE]'
                   }`}
                 >
                   {p.badge}
@@ -137,21 +137,21 @@ export function ProductShowcase() {
                 <h3 className="text-2xl sm:text-3xl font-bold text-[#20232B] dark:text-[#F8FAFC] tracking-tight">
                   Edit, convert, compress and organize your documents.
                 </h3>
-                <p className="text-sm text-[#727783] dark:text-[#9DA3AE] leading-relaxed">
+                <p className="text-sm text-[#4E5360] dark:text-[#9DA3AE] leading-relaxed">
                   Turn locked PDFs into cleanly formatted Word documents, combine pages into clean presentation books, or compress heavy scans without text fuzziness.
                 </p>
 
                 <div className="flex flex-col gap-2.5 text-xs text-[#20232B] dark:text-[#F8FAFC] pt-1">
                   <div className="flex items-center gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-[#159B75] shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-[#0D7A5B] dark:text-emerald-400 shrink-0" />
                     <span>Native Word layout with preserved tables and headers</span>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-[#159B75] shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-[#0D7A5B] dark:text-emerald-400 shrink-0" />
                     <span>Multi-file merge, burst split, and page rotation</span>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-[#159B75] shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-[#0D7A5B] dark:text-emerald-400 shrink-0" />
                     <span>Instant export preview with folder destination picker</span>
                   </div>
                 </div>
@@ -198,7 +198,7 @@ export function ProductShowcase() {
                         <div className="w-full aspect-[1/1.2] bg-slate-100 dark:bg-slate-800 rounded-xs mb-1 flex items-center justify-center text-[10px] text-slate-400">
                           P.{page}
                         </div>
-                        <span className="text-[9px] font-mono text-[#727783]">Page {page}</span>
+                        <span className="text-[9px] font-mono text-[#4E5360] dark:text-[#9DA3AE]">Page {page}</span>
                       </div>
                     ))}
                   </div>
@@ -210,7 +210,7 @@ export function ProductShowcase() {
                         <span className="text-xs font-bold text-[#20232B] dark:text-[#F8FAFC]">
                           Enterprise Operations — Q3 Performance Report
                         </span>
-                        <span className="block text-[10px] text-[#727783]">
+                        <span className="block text-[10px] text-[#4E5360] dark:text-[#9DA3AE]">
                           Doc ID: CORP-2026-X9 • Applied Systems & Analytics
                         </span>
                       </div>
@@ -218,30 +218,30 @@ export function ProductShowcase() {
                       {/* Reconstructed Table */}
                       <table className="w-full text-[10px] text-left border-collapse">
                         <thead>
-                          <tr className="bg-[#EDF0FF] dark:bg-[#1E2538] text-[#536BCE] font-bold">
+                          <tr className="bg-[#EDF0FF] dark:bg-[#1E2538] text-[#3B50B2] dark:text-[#93A5F5] font-bold">
                             <th className="p-1.5 rounded-l">Metric</th>
                             <th className="p-1.5">Target</th>
                             <th className="p-1.5 rounded-r">Status</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-[#727783] dark:text-[#9DA3AE]">
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-[#4E5360] dark:text-[#9DA3AE]">
                           <tr>
                             <td className="p-1.5 font-medium text-[#20232B] dark:text-[#F8FAFC]">Layout Preservation</td>
                             <td className="p-1.5">100% Vector</td>
-                            <td className="p-1.5 text-[#159B75] font-semibold">Matched</td>
+                            <td className="p-1.5 text-[#0D7A5B] dark:text-emerald-400 font-semibold">Matched</td>
                           </tr>
                           <tr>
                             <td className="p-1.5 font-medium text-[#20232B] dark:text-[#F8FAFC]">Embedded Figures</td>
                             <td className="p-1.5">High DPI PNG</td>
-                            <td className="p-1.5 text-[#159B75] font-semibold">Extracted</td>
+                            <td className="p-1.5 text-[#0D7A5B] dark:text-emerald-400 font-semibold">Extracted</td>
                           </tr>
                         </tbody>
                       </table>
                     </div>
 
-                    <div className="mt-3 pt-2 border-t border-[#E9EBF0] dark:border-[#28314A] flex items-center justify-between text-[10px] text-[#727783]">
+                    <div className="mt-3 pt-2 border-t border-[#E9EBF0] dark:border-[#28314A] flex items-center justify-between text-[10px] text-[#4E5360] dark:text-[#9DA3AE]">
                       <span>Processed in browser (0 uploads)</span>
-                      <span className="font-semibold text-[#536BCE]">Export to Word (.docx)</span>
+                      <span className="font-semibold text-[#3B50B2] dark:text-[#93A5F5]">Export to Word (.docx)</span>
                     </div>
                   </div>
                 </div>
@@ -259,7 +259,7 @@ export function ProductShowcase() {
                 <h3 className="text-2xl sm:text-3xl font-bold text-[#20232B] dark:text-[#F8FAFC] tracking-tight">
                   Give digital documents the look and feel of a physical scan.
                 </h3>
-                <p className="text-sm text-[#727783] dark:text-[#9DA3AE] leading-relaxed">
+                <p className="text-sm text-[#4E5360] dark:text-[#9DA3AE] leading-relaxed">
                   Turn pristine digital PDFs and files into authentic scanned paperwork for formal administrative submissions, notarizations, and official records.
                 </p>
 
@@ -291,10 +291,11 @@ export function ProductShowcase() {
                           key={mode}
                           type="button"
                           onClick={() => setScanFilter(mode)}
+                          aria-label={`Select ${mode === 'bw' ? 'black and white' : mode} colorspace`}
                           className={`px-2.5 py-1 rounded text-xs font-medium capitalize transition cursor-pointer ${
                             scanFilter === mode
                               ? 'bg-[#536BCE] text-white shadow-xs font-semibold'
-                              : 'text-[#727783] hover:text-[#20232B]'
+                              : 'text-[#4E5360] dark:text-[#9DA3AE] hover:text-[#20232B] dark:hover:text-[#F8FAFC]'
                           }`}
                         >
                           {mode === 'bw' ? 'B&W' : mode}
@@ -370,7 +371,7 @@ export function ProductShowcase() {
                 <h3 className="text-2xl sm:text-3xl font-bold text-[#20232B] dark:text-[#F8FAFC] tracking-tight">
                   Prepare images for sharing, publishing and everyday work.
                 </h3>
-                <p className="text-sm text-[#727783] dark:text-[#9DA3AE] leading-relaxed">
+                <p className="text-sm text-[#4E5360] dark:text-[#9DA3AE] leading-relaxed">
                   Batch convert and optimize photos between WebP, AVIF, PNG, and JPG. Strip sensitive EXIF location tags and format biometric passport sheets with zero compression artifacts.
                 </p>
 
@@ -378,7 +379,7 @@ export function ProductShowcase() {
                 <div className="flex flex-col gap-3 p-4 rounded-xl border border-[#E9EBF0] dark:border-[#28314A] bg-[#F7F8FA] dark:bg-[#121624]">
                   <div className="flex justify-between text-xs font-medium text-[#20232B] dark:text-[#F8FAFC]">
                     <span>WebP Compression Quality</span>
-                    <span className="font-mono text-[#536BCE]">{mediaQuality}%</span>
+                    <span className="font-mono text-[#3B50B2] dark:text-[#93A5F5]">{mediaQuality}%</span>
                   </div>
                   <input
                     type="range"
@@ -388,7 +389,7 @@ export function ProductShowcase() {
                     onChange={(e) => setMediaQuality(parseInt(e.target.value))}
                     className="w-full accent-[#536BCE]"
                   />
-                  <div className="flex justify-between text-[11px] text-[#727783] pt-1">
+                  <div className="flex justify-between text-[11px] text-[#4E5360] dark:text-[#9DA3AE] pt-1">
                     <span>Raw PNG: 3.4 MB</span>
                     <span className="font-semibold text-emerald-600 dark:text-emerald-400">
                       Output: {Math.round(3400 * (mediaQuality / 100) * 0.2)} KB (-{Math.round(100 - (mediaQuality * 0.2))}%)
@@ -410,7 +411,7 @@ export function ProductShowcase() {
               {/* Media Studio Preview */}
               <div className="lg:col-span-7 grid grid-cols-2 gap-4">
                 <div className="p-4 rounded-2xl bg-[#F7F8FA] dark:bg-[#121624] border border-[#E9EBF0] dark:border-[#28314A] flex flex-col gap-2">
-                  <span className="text-[11px] font-semibold text-[#727783]">BEFORE (RAW PNG)</span>
+                  <span className="text-[11px] font-semibold text-[#4E5360] dark:text-[#9DA3AE]">BEFORE (RAW PNG)</span>
                   <div className="w-full aspect-[4/3] rounded-xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center relative overflow-hidden">
                     <ImageIcon className="w-10 h-10 text-slate-400" />
                     <span className="absolute bottom-2 left-2 text-[10px] font-mono px-2 py-0.5 rounded bg-black/60 text-white font-bold">
@@ -444,21 +445,21 @@ export function ProductShowcase() {
                 <h3 className="text-2xl sm:text-3xl font-bold text-[#20232B] dark:text-[#F8FAFC] tracking-tight">
                   Make changes to your documents with precision and flexibility.
                 </h3>
-                <p className="text-sm text-[#727783] dark:text-[#9DA3AE] leading-relaxed">
+                <p className="text-sm text-[#4E5360] dark:text-[#9DA3AE] leading-relaxed">
                   Direct Acrobat-grade document editing. Click anywhere to type, place images at exact coordinates, draw shapes, and add signatures without damaging original typography.
                 </p>
 
                 <div className="flex flex-col gap-2.5 text-xs text-[#20232B] dark:text-[#F8FAFC]">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[#159B75]" />
+                    <CheckCircle2 className="w-4 h-4 text-[#0D7A5B] dark:text-emerald-400" />
                     <span>Page-relative coordinates independent of zoom</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[#159B75]" />
+                    <CheckCircle2 className="w-4 h-4 text-[#0D7A5B] dark:text-emerald-400" />
                     <span>Auto-detection of font families and sizes</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[#159B75]" />
+                    <CheckCircle2 className="w-4 h-4 text-[#0D7A5B] dark:text-emerald-400" />
                     <span>Layered PDF.js canvas with interactive bounding boxes</span>
                   </div>
                 </div>
@@ -493,11 +494,11 @@ export function ProductShowcase() {
                     <span className="text-xs font-bold text-[#20232B] dark:text-[#F8FAFC]">
                       Section 3. Non-Disclosure & IP Assignment
                     </span>
-                    <p className="text-xs text-[#727783] dark:text-[#9DA3AE] mt-1.5">
+                    <p className="text-xs text-[#4E5360] dark:text-[#9DA3AE] mt-1.5">
                       All intellectual work created under this schedule shall remain proprietary. Click and drag to resize selection bounding boxes.
                     </p>
                   </div>
-                  <div className="flex justify-between items-center text-[10px] text-[#727783] font-mono">
+                  <div className="flex justify-between items-center text-[10px] text-[#4E5360] dark:text-[#9DA3AE] font-mono">
                     <span>X: 120.0pt, Y: 410.5pt</span>
                     <span className="text-emerald-600 font-semibold">Ready to Save</span>
                   </div>

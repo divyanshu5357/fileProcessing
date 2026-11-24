@@ -16,6 +16,7 @@ export function PrivacyBanner({ isOpen, onClose }: PrivacyBannerProps) {
         <button
           type="button"
           onClick={onClose}
+          aria-label="Close privacy information modal"
           className="absolute top-5 right-5 p-1 rounded-lg text-[#64748B] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] transition-colors cursor-pointer"
         >
           <X className="w-5 h-5" />

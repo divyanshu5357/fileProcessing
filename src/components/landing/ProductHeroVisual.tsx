@@ -61,7 +61,7 @@ export function ProductHeroVisual() {
             <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]/80" />
             <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]/80" />
             <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]/80" />
-            <span className="ml-2 font-mono text-[11px] font-medium text-[#727783] dark:text-[#9DA3AE]">
+            <span className="ml-2 font-mono text-[11px] font-medium text-[#4E5360] dark:text-[#9DA3AE]">
               Master_Services_Agreement_2026.pdf
             </span>
           </div>
@@ -78,19 +78,21 @@ export function ProductHeroVisual() {
         {/* Workspace Toolbar */}
         <div className="px-4 py-2 border-b border-[#E9EBF0] dark:border-[#28314A] bg-white dark:bg-[#151926] flex items-center justify-between text-xs">
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <span className="text-[11px] font-medium text-[#727783] dark:text-[#9DA3AE]">Page 1 / 4</span>
-            <span className="text-[#E9EBF0] dark:text-[#28314A]">|</span>
+            <span className="text-[11px] font-medium text-[#4E5360] dark:text-[#9DA3AE]">Page 1 / 4</span>
+            <span className="text-[#E9EBF0] dark:border-[#28314A]">|</span>
             <button
               type="button"
-              className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-[#727783]"
+              className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-[#4E5360] dark:text-[#9DA3AE]"
+              aria-label="Zoom in document preview"
               title="Zoom In"
             >
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
-            <span className="text-[11px] font-mono text-[#727783]">100%</span>
+            <span className="text-[11px] font-mono text-[#4E5360] dark:text-[#9DA3AE]">100%</span>
             <button
               type="button"
-              className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-[#727783]"
+              className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-[#4E5360] dark:text-[#9DA3AE]"
+              aria-label="Zoom out document preview"
               title="Zoom Out"
             >
               <ZoomOut className="w-3.5 h-3.5" />
@@ -100,21 +102,24 @@ export function ProductHeroVisual() {
           <div className="flex items-center gap-1">
             <button
               type="button"
-              className="px-2 py-1 rounded-md bg-[#EDF0FF] dark:bg-[#536BCE]/20 text-[#536BCE] font-semibold flex items-center gap-1 text-[11px]"
+              aria-label="Text editing tool"
+              className="px-2 py-1 rounded-md bg-[#EDF0FF] dark:bg-[#536BCE]/20 text-[#3B50B2] dark:text-[#93A5F5] font-semibold flex items-center gap-1 text-[11px]"
             >
               <Type className="w-3 h-3" />
               <span>Text</span>
             </button>
             <button
               type="button"
-              className="px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-[#727783] flex items-center gap-1 text-[11px]"
+              aria-label="Highlight tool"
+              className="px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-[#4E5360] dark:text-[#9DA3AE] flex items-center gap-1 text-[11px]"
             >
               <Highlighter className="w-3 h-3" />
               <span className="hidden sm:inline">Highlight</span>
             </button>
             <button
               type="button"
-              className="px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-[#727783] flex items-center gap-1 text-[11px]"
+              aria-label="Signature tool"
+              className="px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-[#4E5360] dark:text-[#9DA3AE] flex items-center gap-1 text-[11px]"
             >
               <PenTool className="w-3 h-3" />
               <span className="hidden sm:inline">Sign</span>
@@ -130,21 +135,21 @@ export function ProductHeroVisual() {
               {/* Document Letterhead */}
               <div className="flex items-center justify-between border-b border-[#E9EBF0] dark:border-[#28314A] pb-3 mb-4">
                 <div>
-                  <h4 className="text-sm font-bold text-[#20232B] dark:text-[#F8FAFC] tracking-tight">
+                  <p className="text-sm font-bold text-[#20232B] dark:text-[#F8FAFC] tracking-tight">
                     MASTER SERVICES AGREEMENT
-                  </h4>
-                  <span className="text-[10px] font-mono text-[#727783] dark:text-[#9DA3AE]">
+                  </p>
+                  <span className="text-[10px] font-mono text-[#4E5360] dark:text-[#9DA3AE]">
                     REF: GYANVATSALA-CORP-2026-X8
                   </span>
                 </div>
-                <div className="w-6 h-6 rounded-lg bg-[#536BCE]/15 flex items-center justify-center text-[#536BCE]">
+                <div className="w-6 h-6 rounded-lg bg-[#536BCE]/15 flex items-center justify-center text-[#3B50B2] dark:text-[#93A5F5]">
                   <FileText className="w-3.5 h-3.5" />
                 </div>
               </div>
 
               {/* Document Text Paragraphs with Selection Box */}
               <div className="flex flex-col gap-2.5 text-xs text-[#20232B] dark:text-[#CBD5E1]">
-                <p className="leading-relaxed text-[11px] text-[#727783] dark:text-[#9DA3AE]">
+                <p className="leading-relaxed text-[11px] text-[#4E5360] dark:text-[#9DA3AE]">
                   This Agreement is entered into by and between the Client and the Provider. Both parties agree that all project deliverables, electronic documents, and confidential intellectual assets shall remain strictly managed.
                 </p>
 
@@ -158,7 +163,7 @@ export function ProductHeroVisual() {
                   </p>
                 </div>
 
-                <p className="leading-relaxed text-[11px] text-[#727783] dark:text-[#9DA3AE]">
+                <p className="leading-relaxed text-[11px] text-[#4E5360] dark:text-[#9DA3AE]">
                   IN WITNESS WHEREOF, the parties hereto have executed this Agreement as of the effective date set forth above.
                 </p>
               </div>
@@ -167,8 +172,8 @@ export function ProductHeroVisual() {
             {/* Bottom Signature Line */}
             <div className="mt-4 pt-3 border-t border-[#E9EBF0] dark:border-[#28314A] flex items-center justify-between">
               <div>
-                <span className="block text-[9px] font-mono text-[#727783]">AUTHORIZED SIGNATURE</span>
-                <span className="font-serif italic text-xs text-[#536BCE] font-bold">
+                <span className="block text-[9px] font-mono text-[#4E5360] dark:text-[#9DA3AE]">AUTHORIZED SIGNATURE</span>
+                <span className="font-serif italic text-xs text-[#3B50B2] dark:text-[#93A5F5] font-bold">
                   Authorized Executive
                 </span>
               </div>
@@ -183,21 +188,21 @@ export function ProductHeroVisual() {
           <div className="w-full md:w-48 flex flex-col gap-3 shrink-0">
             {/* Inspector Panel */}
             <div className="p-3.5 rounded-xl bg-white dark:bg-[#1A2030] border border-[#E9EBF0] dark:border-[#28314A] shadow-xs">
-              <span className="text-[10px] font-mono uppercase text-[#727783] dark:text-[#9DA3AE] font-semibold block mb-2">
+              <span className="text-[10px] font-mono uppercase text-[#4E5360] dark:text-[#9DA3AE] font-semibold block mb-2">
                 Document Details
               </span>
               <div className="flex flex-col gap-1.5 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-[#727783]">Pages:</span>
+                  <span className="text-[#4E5360] dark:text-[#9DA3AE]">Pages:</span>
                   <span className="font-semibold text-[#20232B] dark:text-[#F8FAFC]">4 pages</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#727783]">Size:</span>
+                  <span className="text-[#4E5360] dark:text-[#9DA3AE]">Size:</span>
                   <span className="font-semibold text-[#20232B] dark:text-[#F8FAFC]">1.4 MB</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#727783]">Encoding:</span>
-                  <span className="font-semibold text-[#536BCE]">Word Ready</span>
+                  <span className="text-[#4E5360] dark:text-[#9DA3AE]">Encoding:</span>
+                  <span className="font-semibold text-[#3B50B2] dark:text-[#93A5F5]">Word Ready</span>
                 </div>
               </div>
             </div>

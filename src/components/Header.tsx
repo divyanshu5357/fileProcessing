@@ -142,16 +142,18 @@ export function Header({
               type="button"
               onClick={() => setProductsOpen((prev) => !prev)}
               aria-expanded={productsOpen}
+              aria-haspopup="true"
+              aria-label="Toggle products menu"
               className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
                 productsOpen
-                  ? 'text-[#536BCE] bg-[#EDF0FF] dark:bg-[#536BCE]/15'
-                  : 'text-[#20232B] dark:text-[#F8FAFC] hover:text-[#536BCE] dark:hover:text-[#93A5F5] hover:bg-[#F7F8FA] dark:hover:bg-[#1A2030]'
+                  ? 'text-[#3B50B2] dark:text-[#93A5F5] bg-[#EDF0FF] dark:bg-[#536BCE]/15'
+                  : 'text-[#20232B] dark:text-[#F8FAFC] hover:text-[#3B50B2] dark:hover:text-[#93A5F5] hover:bg-[#F7F8FA] dark:hover:bg-[#1A2030]'
               }`}
             >
               <span>Products</span>
               <ChevronDown
                 className={`w-4 h-4 transition-transform duration-200 ${
-                  productsOpen ? 'rotate-180 text-[#536BCE]' : 'text-[#727783]'
+                  productsOpen ? 'rotate-180 text-[#3B50B2] dark:text-[#93A5F5]' : 'text-[#4E5360] dark:text-[#9DA3AE]'
                 }`}
               />
             </button>
@@ -178,7 +180,7 @@ export function Header({
                           <span className="text-sm font-semibold text-[#20232B] dark:text-[#F8FAFC] group-hover:text-[#536BCE] transition">
                             {item.title}
                           </span>
-                          <span className="text-xs text-[#727783] dark:text-[#9DA3AE] line-clamp-1 mt-0.5">
+                          <span className="text-xs text-[#4E5360] dark:text-[#9DA3AE] line-clamp-1 mt-0.5">
                             {item.description}
                           </span>
                         </div>
@@ -187,12 +189,12 @@ export function Header({
                   })}
                 </div>
 
-                <div className="mt-2 pt-2 border-t border-[#E9EBF0] dark:border-[#28314A] px-2 py-1 flex items-center justify-between text-xs text-[#727783]">
+                <div className="mt-2 pt-2 border-t border-[#E9EBF0] dark:border-[#28314A] px-2 py-1 flex items-center justify-between text-xs text-[#4E5360] dark:text-[#9DA3AE]">
                   <span>All tools run locally</span>
                   <Link
                     href="/workspace"
                     onClick={() => setProductsOpen(false)}
-                    className="font-semibold text-[#536BCE] hover:underline"
+                    className="font-semibold text-[#3B50B2] dark:text-[#93A5F5] hover:underline"
                   >
                     Open Workspace →
                   </Link>
@@ -284,7 +286,7 @@ export function Header({
       {mobileMenuOpen && (
         <div className="sm:hidden border-t border-[#E9EBF0] dark:border-[#222632] bg-white dark:bg-[#0D1017] px-4 pt-3 pb-6 flex flex-col gap-4 shadow-lg animate-in slide-in-from-top-2 duration-150">
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-semibold text-[#727783] uppercase tracking-wider px-2 pt-2">
+            <span className="text-[11px] font-semibold text-[#4E5360] dark:text-[#9DA3AE] uppercase tracking-wider px-2 pt-2">
               Products
             </span>
             {productItems.map((item) => {

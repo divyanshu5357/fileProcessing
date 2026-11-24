@@ -1,8 +1,12 @@
 import type { Metadata } from 'next';
+import dynamic from 'next/dynamic';
 import './globals.css';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
-import { AuthModal } from '@/components/auth/AuthModal';
+
+const AuthModal = dynamic(
+  () => import('@/components/auth/AuthModal').then((mod) => mod.AuthModal)
+);
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.gyanvatsala.in'),
@@ -216,6 +220,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className="h-full antialiased">
       <head suppressHydrationWarning>
+        <link rel="preconnect" href="https://www.gyanvatsala.in" />
+        <link rel="dns-prefetch" href="https://www.gyanvatsala.in" />
         <script
           id="theme-initializer"
           suppressHydrationWarning
