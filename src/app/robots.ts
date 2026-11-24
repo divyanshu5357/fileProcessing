@@ -7,17 +7,25 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: '*',
-        allow: ['/', '/_next/static/', '/_next/image/'],
+        allow: ['/', '/_next/static/', '/_next/image/', '/llms.txt'],
         disallow: ['/api/', '/dashboard/settings', '/admin/'],
       },
       {
-        userAgent: 'Googlebot',
-        allow: ['/', '/_next/static/', '/_next/image/'],
-        disallow: ['/api/', '/admin/'],
-      },
-      {
-        userAgent: 'Bingbot',
-        allow: ['/', '/_next/static/', '/_next/image/'],
+        userAgent: [
+          'Googlebot',
+          'Googlebot-Image',
+          'Google-InspectionTool',
+          'GoogleOther',
+          'Google-Extended',
+          'Bingbot',
+          'OAI-SearchBot',
+          'ChatGPT-User',
+          'GPTBot',
+          'PerplexityBot',
+          'ClaudeBot',
+          'Applebot',
+        ],
+        allow: ['/', '/_next/static/', '/_next/image/', '/llms.txt'],
         disallow: ['/api/', '/admin/'],
       },
     ],

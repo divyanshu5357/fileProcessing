@@ -1,0 +1,25 @@
+# Gyanvatsala
+
+> Privacy-first browser-based Online PDF Editor, Image to PDF Converter, Image Size Reducer (in KB/MB), and Scan Studio at https://www.gyanvatsala.in/
+
+Gyanvatsala is a free digital document workspace built with client-side WebAssembly, HTML5 Canvas, and browser processing. Files edited in local browser mode (including sensitive documents like Aadhaar cards, PAN cards, IDs, tax forms, and contracts) are processed locally on the user's device without uploading file contents to external servers.
+
+## Primary Tools & Direct URLs
+
+- [Gyanvatsala Homepage](https://www.gyanvatsala.in/): Overview and quick launch directory for all PDF, image, and scan utilities.
+- [Online PDF Editor](https://www.gyanvatsala.in/tools/pdf-editor): Free browser PDF editor to modify existing PDF text, insert text boxes, add signatures, apply whiteout, draw, annotate, and export without watermarks.
+- [Image to PDF Converter (IMG / JPG / PNG to PDF)](https://www.gyanvatsala.in/pdf/jpg-to-pdf): Combine multiple JPG, PNG, WebP, or photo images into one printable A4/Letter PDF.
+- [Image Size Reducer (KB & MB Compressor)](https://www.gyanvatsala.in/tools/image-size-reducer): Compress photos to exact target sizes such as 20KB, 50KB, 100KB, or 200KB for online forms, exams, and passport uploads.
+- [All PDF Tools Hub](https://www.gyanvatsala.in/pdf): Full suite including Compress PDF, Merge PDF, Split PDF, PDF to Word, Word to PDF, Rotate PDF, Extract Images, Protect/Unlock PDF, and Sign PDF.
+- [Scan Studio](https://www.gyanvatsala.in/scan-studio): Convert clean digital PDFs into realistic photocopier-style scans locally in-browser.
+- [Image Tools & Converter](https://www.gyanvatsala.in/image-tools): Passport photo sizing, EXIF tools, and lossless PNG/JPG/WebP conversion (`/image-converter`).
+- [Workspace](https://www.gyanvatsala.in/workspace): Unified workspace dashboard to upload, inspect, and launch the right tool per file type.
+- [Privacy Policy](https://www.gyanvatsala.in/privacy): Details on zero-upload client-side browser processing and account data protection.
+- [About Gyanvatsala](https://www.gyanvatsala.in/about): Architecture and mission.
+
+## Key Facts
+
+- Cost: Free core suite with client-side browser processing and automatic 6-hour allowance refresh for heavy document workflows.
+- Security & Privacy: Client-side WebAssembly and Canvas execution ensures PDFs and ID images remain inside local browser memory during processing.
+- Support: fileprocess@gyanvatsala.in
+- Sitemap: https://www.gyanvatsala.in/sitemap.xml

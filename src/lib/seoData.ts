@@ -32,6 +32,15 @@ export interface ToolSeoProfile {
 export const SITE_BASE_URL = 'https://www.gyanvatsala.in';
 
 export const GLOBAL_SEARCH_KEYWORDS: string[] = [
+  // Exact Brand & Brand + Intent cluster
+  'Gyanvatsala',
+  'Gyanvatsala PDF editor',
+  'pdf editor online gyanvatsala',
+  'gyanvatsala.in',
+  'Gyanvatsala image to PDF',
+  'Gyanvatsala image size reducer',
+  'Gyanvatsala Scan Studio',
+  'gyanvatsala document workspace',
   // PDF Editing cluster
   'PDF editor',
   'free online PDF editor',

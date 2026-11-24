@@ -1,26 +1,29 @@
 import React from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import { ArrowRight } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { ProductHeroVisual } from '@/components/landing/ProductHeroVisual';
+import { ProductShowcase } from '@/components/landing/ProductShowcase';
+import { VisualWorkflow } from '@/components/landing/VisualWorkflow';
+import { CapabilitiesSection } from '@/components/landing/CapabilitiesSection';
+import { TrustSection } from '@/components/landing/TrustSection';
 import { ALL_PDF_TOOLS } from '@/lib/toolRegistry';
 import { GLOBAL_SEARCH_KEYWORDS, SITE_BASE_URL } from '@/lib/seoData';
 
 export const metadata: Metadata = {
-  title: 'Free Online PDF Editor, Image to PDF & Image Size Reducer | Gyanvatsala',
+  title: 'Gyanvatsala — Free Online PDF Editor, Image to PDF & Image Size Reducer',
   description:
-    'Edit PDF text online, convert JPG/PNG/IMG to PDF, and reduce image size to 20KB, 50KB, or 100KB for free. Merge, split & compress PDFs, convert PDF to Word, and create realistic scans with 100% browser privacy.',
+    'Gyanvatsala is a free privacy-first online PDF editor, Image to PDF (IMG/JPG/PNG to PDF) converter, and Image Size Reducer in KB & MB. Edit PDF text, merge, split, compress, and scan documents privately in your browser with Zero Server Uploads.',
   keywords: GLOBAL_SEARCH_KEYWORDS,
   alternates: {
     canonical: 'https://www.gyanvatsala.in/',
   },
   openGraph: {
-    title: 'Free Online PDF Editor, Image to PDF & Image Size Reducer | Gyanvatsala',
+    title: 'Gyanvatsala — Free Online PDF Editor, Image to PDF & Image Size Reducer',
     description:
-      'All-in-one client-side workspace for PDF editing, IMG/JPG/PNG to PDF conversion, Image Size Reduction in KB/MB, PDF compression, Merge/Split, and Scan Studio.',
+      'Gyanvatsala: Edit PDFs in-place, convert IMG/JPG/PNG to PDF, reduce image size to 20KB–500KB, convert PDF to Word, and simulate scans cleanly with 100% client-side privacy.',
     url: 'https://www.gyanvatsala.in/',
     siteName: 'Gyanvatsala',
     images: [
@@ -33,34 +36,6 @@ export const metadata: Metadata = {
     ],
   },
 };
-
-const ProductShowcase = dynamic(
-  () => import('@/components/landing/ProductShowcase').then((mod) => mod.ProductShowcase),
-  {
-    loading: () => <div className="w-full min-h-[450px]" />,
-  }
-);
-
-const VisualWorkflow = dynamic(
-  () => import('@/components/landing/VisualWorkflow').then((mod) => mod.VisualWorkflow),
-  {
-    loading: () => <div className="w-full min-h-[350px]" />,
-  }
-);
-
-const CapabilitiesSection = dynamic(
-  () => import('@/components/landing/CapabilitiesSection').then((mod) => mod.CapabilitiesSection),
-  {
-    loading: () => <div className="w-full min-h-[300px]" />,
-  }
-);
-
-const TrustSection = dynamic(
-  () => import('@/components/landing/TrustSection').then((mod) => mod.TrustSection),
-  {
-    loading: () => <div className="w-full min-h-[300px]" />,
-  }
-);
 
 import { LandingClientModals } from '@/components/landing/LandingClientModals';
 
@@ -82,17 +57,17 @@ export default function GyanvatsalaHomepage() {
             {/* Small Introductory Label */}
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#F7F8FA] dark:bg-[#151926] border border-[#E9EBF0] dark:border-[#28314A] text-xs font-semibold text-[#3B50B2] dark:text-[#93A5F5] tracking-wider uppercase shadow-2xs">
               <span className="w-1.5 h-1.5 rounded-full bg-[#3B50B2] dark:bg-[#93A5F5]" />
-              <span>Free Online File Processing & Document Suite</span>
+              <span>Gyanvatsala • Free Online PDF &amp; Image Workspace</span>
             </div>
 
             {/* Main Bold Headline */}
             <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black text-[#20232B] dark:text-[#F8FAFC] tracking-tight max-w-5xl leading-[1.08]">
-              Edit PDFs, convert images to PDF &amp; reduce image size privately.
+              Gyanvatsala: Edit PDFs, convert images to PDF &amp; reduce image size privately.
             </h1>
 
             {/* Supporting Paragraph */}
             <p className="text-base sm:text-xl text-[#4E5360] dark:text-[#9DA3AE] max-w-3xl leading-relaxed font-normal">
-              Free online PDF editor, IMG &amp; JPG to PDF converter, and KB/MB image size reducer (20KB, 50KB, 100KB). Merge, split &amp; compress PDFs, convert PDF to Word, and run Scan Studio — 100% in-browser with Zero Uploads.
+              Gyanvatsala (www.gyanvatsala.in) is a free online PDF editor, IMG &amp; JPG to PDF converter, and KB/MB image size reducer (20KB, 50KB, 100KB). Process Aadhaar cards, PAN PDFs, forms &amp; photos 100% locally in your browser with Zero Server Uploads.
             </p>
 
             {/* Primary Button & Secondary Link */}
@@ -210,24 +185,24 @@ export default function GyanvatsalaHomepage() {
         {(() => {
           const homeFaqs = [
             {
+              question: 'What is Gyanvatsala (www.gyanvatsala.in)?',
+              answer:
+                'Gyanvatsala is an official online PDF and image processing platform at https://www.gyanvatsala.in/ featuring a Free Online PDF Editor, JPG/PNG/IMG to PDF Converter, Image Size Reducer in KB & MB, Merge/Split PDF, PDF to Word, and Photocopier Scan Studio.',
+            },
+            {
+              question: 'Are Aadhaar cards, PAN cards, or financial PDFs safe on Gyanvatsala?',
+              answer:
+                'Yes. Core PDF editing, IMG to PDF conversion, KB image size reduction, merging, splitting, and Scan Studio run 100% locally in your browser using client-side WebAssembly and HTML5 Canvas — zero files leave your device for external server processing.',
+            },
+            {
               question: 'How do I edit a PDF online for free without watermarks?',
               answer:
-                'Open Gyanvatsala’s Free Online PDF Editor, upload any PDF from your device, click existing text lines to edit wording or move rows with snap guides, add signatures or whiteout, and export directly in your browser without watermarks.',
+                'Open Gyanvatsala’s Free Online PDF Editor, select any PDF from your device, click existing text lines to edit wording or move rows with snap guides, add signatures or whiteout, and export cleanly in your browser without watermarks.',
             },
             {
-              question: 'How can I convert an image (IMG, JPG, PNG) into a PDF?',
+              question: 'How can I convert an image (IMG, JPG, PNG) to PDF or 20KB–100KB?',
               answer:
-                'Use our Image to PDF (JPG / PNG to PDF) converter. Select one or multiple images, pick A4, Letter, or Auto-Fit page sizing, adjust margins, and combine them into one crisp PDF in seconds.',
-            },
-            {
-              question: 'Can I reduce an image size to 20KB, 50KB, or 100KB?',
-              answer:
-                'Yes. Open Gyanvatsala’s Image Size Reducer, select a target KB preset (20KB, 50KB, 100KB, 200KB, or custom KB), choose JPEG or WebP, and shrink photos locally for exam portals, forms, and emails.',
-            },
-            {
-              question: 'Are my PDFs and photos uploaded to external servers?',
-              answer:
-                'No. Core PDF editing, IMG to PDF conversion, KB image compression, merging, splitting, and Scan Studio run locally in your browser using WebAssembly and HTML5 Canvas.',
+                'Use Gyanvatsala’s Image to PDF converter to combine JPG/PNG/WebP images into printable A4 or Letter PDFs, or use our Image Size Reducer to shrink photos to exact target sizes like 20KB, 50KB, 100KB, or 200KB for exam portals and government forms.',
             },
           ];
 

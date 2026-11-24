@@ -12,6 +12,7 @@ import {
   Sparkles,
   Power,
   Lock,
+  Globe,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
@@ -614,6 +615,52 @@ function AdminControlsForm({
             );
           })}
         </div>
+      </div>
+
+      {/* SECTION 4: Search Engine & AI Discovery Push (IndexNow) */}
+      <div className="p-6 rounded-3xl bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+        <div className="space-y-1">
+          <h2 className="text-sm font-bold text-[#20232B] dark:text-[#F8FAFC] flex items-center gap-2">
+            <Globe className="w-4 h-4 text-[#536BCE]" />
+            <span>Instant Search Indexing Ping (Bing / Copilot / ChatGPT Search)</span>
+          </h2>
+          <p className="text-xs text-[#727783] dark:text-[#9DA3AE]">
+            Push all website URLs, PDF tools, Image Size Reducer, and llms.txt to IndexNow immediately after deploying updates.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="primary"
+          disabled={savingKey === 'indexnow'}
+          onClick={async () => {
+            setSavingKey('indexnow');
+            setStatusMessage(null);
+            try {
+              const res = await fetch('/api/seo/indexnow', { method: 'POST' });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data?.error || data?.detail || 'IndexNow ping failed');
+              setStatusMessage({
+                type: 'success',
+                text: `Submitted ${data.submittedCount} URLs to IndexNow (HTTP ${data.httpStatus}).`,
+              });
+            } catch (err: unknown) {
+              setStatusMessage({
+                type: 'error',
+                text: err instanceof Error ? err.message : 'IndexNow ping failed.',
+              });
+            } finally {
+              setSavingKey(null);
+            }
+          }}
+          className="text-xs font-bold px-5 py-2.5 flex items-center gap-2 shrink-0"
+        >
+          {savingKey === 'indexnow' ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Globe className="w-3.5 h-3.5" />
+          )}
+          <span>Ping IndexNow Now</span>
+        </Button>
       </div>
     </div>
   );
