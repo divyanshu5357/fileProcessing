@@ -85,11 +85,25 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   ];
 
+  const highPriorityTools = new Set([
+    'pdf-to-word',
+    'word-to-pdf',
+    'pdf-editor',
+    'merge-pdf',
+    'compress-pdf',
+    'split-pdf',
+    'jpg-to-pdf',
+    'pdf-to-jpg',
+    'protect-pdf',
+    'watermark-pdf',
+    'pdf-to-excel',
+  ]);
+
   const toolRoutes: MetadataRoute.Sitemap = ALL_PDF_TOOLS.map((tool) => ({
     url: `${baseUrl}/pdf/${tool.id}`,
     lastModified: new Date(),
-    changeFrequency: 'weekly',
-    priority: 0.75,
+    changeFrequency: highPriorityTools.has(tool.id) ? 'daily' : 'weekly',
+    priority: highPriorityTools.has(tool.id) ? 0.9 : 0.8,
   }));
 
   return [...staticRoutes, ...toolRoutes];

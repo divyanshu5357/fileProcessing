@@ -57,17 +57,17 @@ export default function GyanvatsalaHomepage() {
             {/* Small Introductory Label */}
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#F7F8FA] dark:bg-[#151926] border border-[#E9EBF0] dark:border-[#28314A] text-xs font-semibold text-[#536BCE] tracking-wider uppercase shadow-2xs">
               <span className="w-1.5 h-1.5 rounded-full bg-[#536BCE]" />
-              <span>INTRODUCING GYANVATSALA</span>
+              <span>Free Online File Processing & Document Suite</span>
             </div>
 
             {/* Main Bold Headline */}
             <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black text-[#20232B] dark:text-[#F8FAFC] tracking-tight max-w-4xl leading-[1.1]">
-              Your documents deserve a better workspace.
+              Private file processing and document workspace.
             </h1>
 
             {/* Supporting Paragraph */}
             <p className="text-base sm:text-xl text-[#727783] dark:text-[#9DA3AE] max-w-2xl leading-relaxed font-normal">
-              Everything you need to edit, organize, transform and create with documents and digital files. Beautifully brought together in one workspace.
+              Convert PDF to Word, edit PDFs in-place, simulate analog photocopier scan effects with Scan Studio, and convert or compress images. 100% private with in-browser Zero Upload processing.
             </p>
 
             {/* Primary Button & Secondary Link */}

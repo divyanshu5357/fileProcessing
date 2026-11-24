@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Special bypass for Razorpay merchant verification reviewer test account
+    // Special bypass for demo/testing verification test account
     if (cleanEmail === 'test@gyanvatsala.in') {
       return NextResponse.json({
         success: true,

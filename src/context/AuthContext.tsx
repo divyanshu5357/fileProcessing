@@ -299,9 +299,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     const uEmail = email.toLowerCase().trim();
 
-    // Support Razorpay verification test account via OTP bypass
+    // Support test account via OTP bypass
     if (uEmail === 'test@gyanvatsala.in') {
-      const pwRes = await signInWithPassword('test@gyanvatsala.in', 'RazorpayTest@2026');
+      const pwRes = await signInWithPassword('test@gyanvatsala.in', 'TestAccount@2026');
       setIsLoading(false);
       return pwRes;
     }

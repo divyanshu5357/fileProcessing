@@ -1,6 +1,18 @@
 User-agent: *
 Allow: /
 Disallow: /api/
-Disallow: /dashboard/
+Disallow: /admin/
+Disallow: /dashboard/settings
+
+User-agent: Googlebot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+
+User-agent: Bingbot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
 
 Sitemap: https://www.gyanvatsala.in/sitemap.xml
+Host: https://www.gyanvatsala.in
