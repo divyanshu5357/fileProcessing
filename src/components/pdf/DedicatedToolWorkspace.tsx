@@ -35,7 +35,11 @@ import {
   cropPdfDocument,
   flattenPdfDocument,
   grayscalePdfDocument,
+  protectPdfDocument,
+  unlockPdfDocument,
+  parsePageRangeString,
 } from '@/lib/pdfEngine';
+import { PDFDocument } from 'pdf-lib';
 import { docxToPdf, excelToPdf, pptxToPdf, htmlToPdf } from '@/lib/documentEngine';
 import { compressImage } from '@/lib/imageProcessing';
 import { normalizeImageCompressSettings } from '../images/ImageCompressControls';
@@ -219,6 +223,38 @@ function StandardPdfToolWorkspace({
       return {
         ...baseSettings,
         ...normalizeImageCompressSettings({}),
+      };
+    }
+
+    if (currentToolId === 'delete-pdf-pages') {
+      return {
+        ...baseSettings,
+        pagesToDeleteText: '1',
+      };
+    }
+
+    if (currentToolId === 'organize-pdf') {
+      return {
+        ...baseSettings,
+        reverseOrder: true,
+        pageOrderText: '',
+      };
+    }
+
+    if (currentToolId === 'protect-pdf') {
+      return {
+        ...baseSettings,
+        userPassword: '',
+        ownerPassword: '',
+        allowPrinting: true,
+        allowCopying: false,
+      };
+    }
+
+    if (currentToolId === 'unlock-pdf') {
+      return {
+        ...baseSettings,
+        unlockPassword: '',
       };
     }
 
@@ -684,11 +720,20 @@ function StandardPdfToolWorkspace({
       else if (tool.id === 'delete-pdf-pages') {
         for (let i = 0; i < files.length; i++) {
           const fileItem = files[i];
-          const rawPages = settings.pagesToDelete || [1];
-          const pagesToDelete = (Array.isArray(rawPages) ? rawPages : [rawPages])
-            .map((p: any) => Number(p))
-            .filter((p: number) => !isNaN(p) && p >= 1);
-          const newBlob = await deletePdfPages(fileItem.file, pagesToDelete.length > 0 ? pagesToDelete : [1]);
+          const srcDoc = await PDFDocument.load(await fileItem.file.arrayBuffer(), {
+            ignoreEncryption: true,
+          });
+          const totalPages = srcDoc.getPageCount();
+          const textInput = String(settings.pagesToDeleteText || '').trim();
+          const pagesToDelete = textInput
+            ? parsePageRangeString(textInput, totalPages)
+            : (Array.isArray(settings.pagesToDelete) ? settings.pagesToDelete : [1])
+                .map((p: any) => Number(p))
+                .filter((p: number) => !isNaN(p) && p >= 1 && p <= totalPages);
+          const newBlob = await deletePdfPages(
+            fileItem.file,
+            pagesToDelete.length > 0 ? pagesToDelete : [1]
+          );
           const url = URL.createObjectURL(newBlob);
 
           generatedResults.push({
@@ -698,6 +743,93 @@ function StandardPdfToolWorkspace({
             blob: newBlob,
             url,
             size: newBlob.size,
+            format: 'application/pdf',
+          });
+        }
+      }
+
+      // 15.5 ORGANIZE PDF PAGES
+      else if (tool.id === 'organize-pdf') {
+        for (let i = 0; i < files.length; i++) {
+          const fileItem = files[i];
+          setStatusMessage(`Reordering pages in ${fileItem.name}...`);
+          const srcDoc = await PDFDocument.load(await fileItem.file.arrayBuffer(), {
+            ignoreEncryption: true,
+          });
+          const totalPages = srcDoc.getPageCount();
+          let newOrder: number[];
+          const customOrder = String(settings.pageOrderText || '').trim();
+          if (!settings.reverseOrder && customOrder) {
+            newOrder = parsePageRangeString(customOrder, totalPages);
+            if (newOrder.length === 0) {
+              throw new Error(`Invalid page order. Enter page numbers between 1 and ${totalPages}.`);
+            }
+          } else {
+            newOrder = Array.from({ length: totalPages }, (_, idx) => totalPages - idx);
+          }
+
+          const organizedBlob = await organizePdfPages(fileItem.file, newOrder);
+          const url = URL.createObjectURL(organizedBlob);
+          generatedResults.push({
+            id: `res_${Date.now()}_${i}`,
+            name: `${fileItem.name.replace(/\.[^/.]+$/, '')}_organized.pdf`,
+            originalName: fileItem.name,
+            blob: organizedBlob,
+            url,
+            size: organizedBlob.size,
+            format: 'application/pdf',
+          });
+        }
+      }
+
+      // 15.6 PROTECT PDF WITH PASSWORD
+      else if (tool.id === 'protect-pdf') {
+        const userPw = String(settings.userPassword || '');
+        if (!userPw.trim()) {
+          throw new Error('Please enter a Document Open Password in Conversion Settings.');
+        }
+        for (let i = 0; i < files.length; i++) {
+          const fileItem = files[i];
+          setStatusMessage(`Encrypting ${fileItem.name} with 128-bit password protection...`);
+          setProgressPercent(Math.round(((i + 0.4) / files.length) * 100));
+          const protectedBlob = await protectPdfDocument(fileItem.file, {
+            userPassword: userPw,
+            ownerPassword: String(settings.ownerPassword || ''),
+            allowPrinting: settings.allowPrinting !== false,
+            allowCopying: Boolean(settings.allowCopying),
+          });
+          const url = URL.createObjectURL(protectedBlob);
+          generatedResults.push({
+            id: `res_${Date.now()}_${i}`,
+            name: `${fileItem.name.replace(/\.[^/.]+$/, '')}_protected.pdf`,
+            originalName: fileItem.name,
+            blob: protectedBlob,
+            url,
+            size: protectedBlob.size,
+            format: 'application/pdf',
+          });
+        }
+      }
+
+      // 15.7 UNLOCK PDF
+      else if (tool.id === 'unlock-pdf') {
+        const unlockPw = String(settings.unlockPassword || '');
+        for (let i = 0; i < files.length; i++) {
+          const fileItem = files[i];
+          setStatusMessage(`Unlocking ${fileItem.name}...`);
+          const unlockedBlob = await unlockPdfDocument(
+            fileItem.file,
+            unlockPw,
+            (pct) => setProgressPercent(pct)
+          );
+          const url = URL.createObjectURL(unlockedBlob);
+          generatedResults.push({
+            id: `res_${Date.now()}_${i}`,
+            name: `${fileItem.name.replace(/\.[^/.]+$/, '')}_unlocked.pdf`,
+            originalName: fileItem.name,
+            blob: unlockedBlob,
+            url,
+            size: unlockedBlob.size,
             format: 'application/pdf',
           });
         }

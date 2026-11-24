@@ -47,6 +47,7 @@ import * as pako from 'pako';
 
 // Lightweight page range parser
 import { parsePageRangeString } from './pageRangeUtils';
+import { protectPdfWithPassword } from './pdfCrypto';
 export { parsePageRangeString };
 
 // 1. JPG TO PDF
@@ -2370,6 +2371,102 @@ export async function grayscalePdfDocument(
         page.cleanup?.();
       }
 
+      onProgress?.(Math.round((pageNum / srcDoc.numPages) * 90));
+    }
+
+    const outBytes = await outDoc.save({ useObjectStreams: true });
+    onProgress?.(100);
+    return new Blob([outBytes as BlobPart], { type: 'application/pdf' });
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+    await srcDoc.destroy?.();
+  }
+}
+
+// 21. PROTECT PDF WITH PASSWORD
+export async function protectPdfDocument(
+  pdfBlob: Blob,
+  options: {
+    userPassword: string;
+    ownerPassword?: string;
+    allowPrinting?: boolean;
+    allowCopying?: boolean;
+  }
+): Promise<Blob> {
+  const bytes = await protectPdfWithPassword(pdfBlob, options);
+  return new Blob([bytes as BlobPart], { type: 'application/pdf' });
+}
+
+// 22. UNLOCK PASSWORD-PROTECTED PDF
+export async function unlockPdfDocument(
+  pdfBlob: Blob,
+  password: string,
+  onProgress?: (percent: number) => void
+): Promise<Blob> {
+  const pdfjsLib = await getPdfJs();
+  const buffer = await pdfBlob.arrayBuffer();
+
+  let srcDoc: Awaited<ReturnType<typeof pdfjsLib.getDocument>['promise']>;
+  try {
+    srcDoc = await pdfjsLib.getDocument({
+      data: buffer,
+      password: password || undefined,
+    }).promise;
+  } catch (err: unknown) {
+    const name = err instanceof Error ? err.name : '';
+    const msg = err instanceof Error ? err.message : '';
+    if (name === 'PasswordException' || /password/i.test(msg)) {
+      throw new Error(
+        password
+          ? 'Incorrect PDF password. Please check the password and try again.'
+          : 'This PDF requires a password. Enter the open password in Conversion Settings before converting.'
+      );
+    }
+    throw err;
+  }
+
+  const outDoc = await PDFDocument.create();
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) {
+    await srcDoc.destroy?.();
+    throw new Error('Could not initialize 2D canvas context.');
+  }
+
+  try {
+    const scale = 150 / 72;
+    for (let pageNum = 1; pageNum <= srcDoc.numPages; pageNum++) {
+      const page = await srcDoc.getPage(pageNum);
+      try {
+        const baseViewport = page.getViewport({ scale: 1 });
+        const renderViewport = page.getViewport({ scale });
+        canvas.width = Math.max(1, Math.floor(renderViewport.width));
+        canvas.height = Math.max(1, Math.floor(renderViewport.height));
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        await page.render({ canvasContext: ctx, viewport: renderViewport } as any).promise;
+
+        const jpgBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error('Unlock page export failed.'))),
+            'image/jpeg',
+            0.92
+          );
+        });
+        const jpgBytes = await jpgBlob.arrayBuffer();
+        const embedded = await outDoc.embedJpg(jpgBytes);
+        const outPage = outDoc.addPage([baseViewport.width, baseViewport.height]);
+        outPage.drawImage(embedded, {
+          x: 0,
+          y: 0,
+          width: baseViewport.width,
+          height: baseViewport.height,
+        });
+      } finally {
+        page.cleanup?.();
+      }
       onProgress?.(Math.round((pageNum / srcDoc.numPages) * 90));
     }
 

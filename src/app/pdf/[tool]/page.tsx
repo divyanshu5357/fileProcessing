@@ -60,8 +60,26 @@ export async function generateMetadata({
   };
 }
 
+const STANDALONE_REDIRECTS: Record<string, string> = {
+  'scan-studio': '/scan-studio',
+  'scan': '/scan-studio',
+  'look-scanned': '/scan-studio',
+  'convert-image': '/image-converter',
+  'resize-image': '/image-converter',
+  'crop-image': '/image-converter',
+  'image-converter': '/image-converter',
+  'image-tools': '/image-tools',
+  'image-size-reducer': '/tools/image-size-reducer',
+  'img-size-reducer': '/tools/image-size-reducer',
+  'reduce-image-size': '/tools/image-size-reducer',
+};
+
 async function ToolContent({ params }: { params: Promise<{ tool: string }> }) {
   const { tool } = await params;
+  const normalized = tool.trim().toLowerCase().replace(/_/g, '-');
+  if (STANDALONE_REDIRECTS[normalized]) {
+    permanentRedirect(STANDALONE_REDIRECTS[normalized]);
+  }
   const canonical = resolveCanonicalToolSlug(tool);
   if (!canonical) {
     notFound();

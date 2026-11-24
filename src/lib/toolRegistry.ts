@@ -160,6 +160,19 @@ export const CENTRAL_TOOL_REGISTRY: CentralToolItem[] = [
     accentColor: 'orange',
     isAvailable: true,
   },
+  {
+    id: 'html-to-pdf',
+    name: 'HTML to PDF',
+    category: 'conversion',
+    categoryLabel: 'Conversion Tools',
+    supportedInputs: ['.html', '.htm'],
+    supportedOutputs: ['.pdf'],
+    description: 'Convert HTML files or pasted HTML markup directly into clean A4 or Letter PDF documents.',
+    route: '/pdf/html-to-pdf',
+    iconName: 'Code',
+    accentColor: 'purple',
+    isAvailable: true,
+  },
 
   // 4. Image Conversions & Processing
   {

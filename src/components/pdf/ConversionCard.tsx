@@ -25,7 +25,6 @@ import {
   Hash,
   AlignLeft,
   ArrowRight,
-  Sparkles,
   PenTool,
   LayoutGrid,
   Crop,
@@ -170,8 +169,12 @@ export function ConversionCard({ tool, onClick }: ConversionCardProps) {
     tool.id === 'pdf-editor'
       ? '/tools/pdf-editor'
       : tool.id === 'pdf-assembler'
-      ? '/tools/pdf-assembler'
-      : `/pdf/${tool.id}`;
+        ? '/tools/pdf-assembler'
+        : tool.id === 'compress-image'
+          ? '/tools/image-size-reducer'
+          : ['convert-image', 'resize-image', 'crop-image'].includes(tool.id)
+            ? '/image-converter'
+            : `/pdf/${tool.id}`;
 
   return (
     <Link

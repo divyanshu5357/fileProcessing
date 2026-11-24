@@ -884,6 +884,156 @@ export function ToolSettingsPanels({
       {toolId === 'compress-image' && (
         <ImageCompressControls settings={settings} onChange={onChange} />
       )}
+
+      {/* 21. DELETE PDF PAGES */}
+      {toolId === 'delete-pdf-pages' && (
+        <div className="flex flex-col gap-2 max-w-md">
+          <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+            Pages to Remove (1-based page numbers or ranges)
+          </label>
+          <input
+            type="text"
+            value={settings.pagesToDeleteText ?? '1'}
+            onChange={(e) => update('pagesToDeleteText', e.target.value)}
+            placeholder="e.g. 1, 3-5"
+            className="text-xs px-3 py-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]"
+          />
+          <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+            Enter page numbers separated by commas or hyphens (for example <code className="font-mono">2, 4-6</code>).
+          </p>
+        </div>
+      )}
+
+      {/* 22. ORGANIZE PDF PAGES */}
+      {toolId === 'organize-pdf' && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-[#F8FAFC] dark:bg-[#0F172A]">
+            <div>
+              <p className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                Reverse Page Sequence Automatically
+              </p>
+              <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                Flip entire PDF backwards (last page first), or enter a custom order below.
+              </p>
+            </div>
+            <Switch
+              checked={Boolean(settings.reverseOrder)}
+              onCheckedChange={(chk: boolean) => update('reverseOrder', chk)}
+            />
+          </div>
+
+          {!settings.reverseOrder && (
+            <div className="flex flex-col gap-1.5 max-w-md">
+              <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                Custom Page Sequence (e.g. 3, 1, 2)
+              </label>
+              <input
+                type="text"
+                value={settings.pageOrderText ?? ''}
+                onChange={(e) => update('pageOrderText', e.target.value)}
+                placeholder="e.g. 3, 1, 2, 4 (blank = reverse)"
+                className="text-xs px-3 py-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 23. PROTECT PDF WITH PASSWORD */}
+      {toolId === 'protect-pdf' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                Document Open Password (Required)
+              </label>
+              <input
+                type="password"
+                value={settings.userPassword ?? ''}
+                onChange={(e) => update('userPassword', e.target.value)}
+                placeholder="Enter password to lock PDF"
+                className="text-xs px-3 py-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                Owner / Permissions Password (Optional)
+              </label>
+              <input
+                type="password"
+                value={settings.ownerPassword ?? ''}
+                onChange={(e) => update('ownerPassword', e.target.value)}
+                placeholder="Optional permissions password"
+                className="text-xs px-3 py-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-4 text-xs">
+            <label className="inline-flex items-center gap-2 cursor-pointer font-medium text-[#0F172A] dark:text-[#F8FAFC]">
+              <input
+                type="checkbox"
+                checked={settings.allowPrinting !== false}
+                onChange={(e) => update('allowPrinting', e.target.checked)}
+                className="rounded border-slate-300 text-blue-600"
+              />
+              Allow Printing
+            </label>
+            <label className="inline-flex items-center gap-2 cursor-pointer font-medium text-[#0F172A] dark:text-[#F8FAFC]">
+              <input
+                type="checkbox"
+                checked={Boolean(settings.allowCopying)}
+                onChange={(e) => update('allowCopying', e.target.checked)}
+                className="rounded border-slate-300 text-blue-600"
+              />
+              Allow Text Copying
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* 24. UNLOCK PDF */}
+      {toolId === 'unlock-pdf' && (
+        <div className="flex flex-col gap-2 max-w-md">
+          <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+            PDF Password
+          </label>
+          <input
+            type="password"
+            value={settings.unlockPassword ?? ''}
+            onChange={(e) => update('unlockPassword', e.target.value)}
+            placeholder="Enter password to unlock & save unencrypted PDF"
+            className="text-xs px-3 py-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]"
+          />
+          <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+            Decryption happens 100% locally in your browser memory — your password is never transmitted anywhere.
+          </p>
+        </div>
+      )}
+
+      {/* 25. STANDARD INFORMATION PANELS (Merge / Extract / Office Extractors) */}
+      {(toolId === 'merge-pdf' ||
+        toolId === 'extract-images' ||
+        toolId === 'pdf-to-excel' ||
+        toolId === 'pdf-to-powerpoint' ||
+        toolId === 'pdf-to-text') && (
+        <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 text-xs text-[#1E3A8A] dark:text-blue-200">
+          <Info className="w-4 h-4 shrink-0 mt-0.5 text-[#2563EB] dark:text-[#60A5FA]" />
+          <div>
+            {toolId === 'merge-pdf' &&
+              'Upload two or more PDF files above and reorder them with the up/down controls before clicking Convert Now to combine them cleanly.'}
+            {toolId === 'extract-images' &&
+              'All embedded images and vector pages from your PDF will be extracted directly in-browser as high-resolution PNG files.'}
+            {toolId === 'pdf-to-excel' &&
+              'Tables and row columns are detected automatically from PDF text coordinates and exported into structured .xlsx worksheets.'}
+            {toolId === 'pdf-to-powerpoint' &&
+              'Each PDF page is rendered cleanly at crisp resolution and placed into a 16:9 editable PowerPoint (.pptx) presentation.'}
+            {toolId === 'pdf-to-text' &&
+              'Extracts searchable UTF-8 plain text across all pages while preserving reading order cleanly.'}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
