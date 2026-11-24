@@ -7,17 +7,17 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: '*',
-        allow: '/',
+        allow: ['/', '/_next/static/', '/_next/image/'],
         disallow: ['/api/', '/dashboard/settings', '/admin/'],
       },
       {
         userAgent: 'Googlebot',
-        allow: '/',
+        allow: ['/', '/_next/static/', '/_next/image/'],
         disallow: ['/api/', '/admin/'],
       },
       {
         userAgent: 'Bingbot',
-        allow: '/',
+        allow: ['/', '/_next/static/', '/_next/image/'],
         disallow: ['/api/', '/admin/'],
       },
     ],

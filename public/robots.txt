@@ -1,16 +1,22 @@
 User-agent: *
 Allow: /
+Allow: /_next/static/
+Allow: /_next/image/
 Disallow: /api/
 Disallow: /admin/
 Disallow: /dashboard/settings
 
 User-agent: Googlebot
 Allow: /
+Allow: /_next/static/
+Allow: /_next/image/
 Disallow: /api/
 Disallow: /admin/
 
 User-agent: Bingbot
 Allow: /
+Allow: /_next/static/
+Allow: /_next/image/
 Disallow: /api/
 Disallow: /admin/
 
