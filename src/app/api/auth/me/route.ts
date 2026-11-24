@@ -81,18 +81,25 @@ export async function GET(req: NextRequest) {
 
     // 4. Sole administrator cryptographic enforcement from database
     if (isAuthenticated && email) {
-      const isSoleAdmin = await verifyIsSoleAdmin({ id: userId, email });
-      if (isSoleAdmin) {
-        role = 'admin';
-        await syncDatabaseRoleForSoleAdmin(userId, true);
-      } else if (role === 'admin') {
-        role = 'user';
-        await syncDatabaseRoleForSoleAdmin(userId, false);
+      if (email === 'test@gyanvatsala.in' || userId === 'test_user_razorpay_reviewer') {
+        isAuthenticated = false;
+      } else {
+        const isSoleAdmin = await verifyIsSoleAdmin({ id: userId, email });
+        if (isSoleAdmin) {
+          role = 'admin';
+          await syncDatabaseRoleForSoleAdmin(userId, true);
+        } else if (role === 'admin') {
+          role = 'user';
+          await syncDatabaseRoleForSoleAdmin(userId, false);
+        }
       }
     }
 
     if (!isAuthenticated) {
-      return NextResponse.json({ authenticated: false, user: null });
+      const response = NextResponse.json({ authenticated: false, user: null });
+      response.cookies.delete('better-auth.session_token');
+      response.cookies.delete('__Secure-better-auth.session_token');
+      return response;
     }
 
     return NextResponse.json({

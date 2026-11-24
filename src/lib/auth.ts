@@ -47,8 +47,8 @@ export const auth = betterAuth({
   secret: getBetterAuthSecret(),
   database: pool || undefined,
   session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24, // 1 day
+    expiresIn: 60 * 60 * 2, // 2 hours strict session limit
+    updateAge: 60 * 30, // 30 minutes
     cookieCache: {
       enabled: true,
       maxAge: 5 * 60, // 5 minutes

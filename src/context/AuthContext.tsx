@@ -84,6 +84,40 @@ const LOCAL_STORAGE_MODE_KEY = 'gyanvatsala_saas_mode';
 const LEGACY_STORAGE_MODE_KEY = 'pixelkit_saas_mode';
 const LOCAL_STORAGE_STORAGE_KEY = 'gyanvatsala_saas_storage';
 const LEGACY_STORAGE_STORAGE_KEY = 'pixelkit_saas_storage';
+const SESSION_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours strict session limit
+const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes inactivity limit
+const SESSION_START_KEY = 'gyanvatsala_session_start';
+const LAST_ACTIVE_KEY = 'gyanvatsala_last_active';
+
+const purgeLocalStorage = () => {
+  try {
+    localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+    localStorage.removeItem(LEGACY_STORAGE_USER_KEY);
+    localStorage.removeItem(LOCAL_STORAGE_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_STORAGE_STORAGE_KEY);
+    localStorage.removeItem(SESSION_START_KEY);
+    localStorage.removeItem(LAST_ACTIVE_KEY);
+    localStorage.removeItem('gyanvatsala_saas_cloud_files');
+    localStorage.removeItem('gyanvatsala_saas_cloud_jobs');
+    localStorage.removeItem('gyanvatsala_saas_cloud_folders');
+    localStorage.removeItem('pixelkit_saas_cloud_files');
+    localStorage.removeItem('pixelkit_saas_cloud_jobs');
+    localStorage.removeItem('pixelkit_saas_cloud_folders');
+  } catch {}
+};
+
+const isStaleOrTestAccount = (u: any): boolean => {
+  if (!u) return true;
+  const email = (u.email || '').toLowerCase().trim();
+  const name = (u.name || '').toLowerCase().trim();
+  return (
+    email.includes('pixelkit.io') ||
+    email.includes('test@gyanvatsala.in') ||
+    name.includes('alex developer') ||
+    name.includes('razorpay reviewer') ||
+    name.includes('reviewer')
+  );
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -106,16 +140,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProcessingModeState(savedMode);
         }
 
-        // Purge any legacy dummy user accounts
+        // Check if session has expired (2-hr max lifespan or 30-min idle)
+        const sessionStart = parseInt(localStorage.getItem(SESSION_START_KEY) || '0', 10);
+        const lastActive = parseInt(localStorage.getItem(LAST_ACTIVE_KEY) || '0', 10);
+        const now = Date.now();
+        const isExpired =
+          (sessionStart > 0 && now - sessionStart > SESSION_MAX_AGE_MS) ||
+          (lastActive > 0 && now - lastActive > SESSION_IDLE_TIMEOUT_MS);
+
+        // Purge any legacy dummy / test accounts or expired sessions
         const savedUser = localStorage.getItem(LOCAL_STORAGE_USER_KEY) || localStorage.getItem(LEGACY_STORAGE_USER_KEY);
         if (savedUser) {
           try {
             const parsed = JSON.parse(savedUser);
-            if (parsed?.email?.includes('pixelkit.io') || parsed?.name === 'Alex Developer') {
-              localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
-              localStorage.removeItem(LEGACY_STORAGE_USER_KEY);
-              localStorage.removeItem(LOCAL_STORAGE_STORAGE_KEY);
-              localStorage.removeItem(LEGACY_STORAGE_STORAGE_KEY);
+            if (isStaleOrTestAccount(parsed) || isExpired) {
+              purgeLocalStorage();
               setUser(null);
             } else {
               // Non-admin default until authoritative server verification completes
@@ -131,7 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const meRes = await fetch('/api/auth/me');
           if (meRes.ok) {
             const meData = await meRes.json();
-            if (meData?.authenticated && meData?.user) {
+            if (meData?.authenticated && meData?.user && !isStaleOrTestAccount(meData.user) && !isExpired) {
               const u = meData.user;
               const verifiedUser: UserProfile = {
                 id: u.id,
@@ -143,7 +182,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               };
               setUser(verifiedUser);
               localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(verifiedUser));
+              if (!localStorage.getItem(SESSION_START_KEY)) {
+                localStorage.setItem(SESSION_START_KEY, Date.now().toString());
+              }
+              localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+            } else {
+              // Server says unauthenticated or account is stale/expired -> wipe state
+              setUser(null);
+              purgeLocalStorage();
             }
+          } else {
+            setUser((prev) => {
+              if (isStaleOrTestAccount(prev)) {
+                purgeLocalStorage();
+                return null;
+              }
+              return prev;
+            });
           }
         } catch (meErr) {
           console.debug('Failed to fetch /api/auth/me', meErr);
@@ -153,18 +208,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const sessionRes = await authClient.getSession();
           if (sessionRes?.data?.user) {
-            const u = sessionRes.data.user;
-            const serverRole = (u as any).role || 'user';
-            const realUser: UserProfile = {
-              id: u.id,
-              name: u.name || u.email?.split('@')[0] || 'User',
-              email: u.email,
-              avatarUrl: u.image || undefined,
-              plan: (u as any).plan || 'Free',
-              role: serverRole,
-            };
-            setUser(realUser);
-            localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(realUser));
+            if (isStaleOrTestAccount(sessionRes.data.user) || isExpired) {
+              await authClient.signOut().catch(() => {});
+              setUser(null);
+              purgeLocalStorage();
+            } else {
+              const u = sessionRes.data.user;
+              const serverRole = (u as any).role || 'user';
+              const realUser: UserProfile = {
+                id: u.id,
+                name: u.name || u.email?.split('@')[0] || 'User',
+                email: u.email,
+                avatarUrl: u.image || undefined,
+                plan: (u as any).plan || 'Free',
+                role: serverRole,
+              };
+              setUser(realUser);
+              localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(realUser));
+            }
           }
         } catch (sessErr) {
           console.debug('No active Better Auth session', sessErr);
@@ -299,6 +360,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
         setUser(profile);
         localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(profile));
+        localStorage.setItem(SESSION_START_KEY, Date.now().toString());
+        localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
         setIsLoading(false);
         closeAuthModal();
         return { success: true };
@@ -324,19 +387,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {}
     setUser(null);
     setStorageUsage(defaultStorageUsage);
-    try {
-      localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
-      localStorage.removeItem(LEGACY_STORAGE_USER_KEY);
-      localStorage.removeItem(LOCAL_STORAGE_STORAGE_KEY);
-      localStorage.removeItem(LEGACY_STORAGE_STORAGE_KEY);
-      localStorage.removeItem('gyanvatsala_saas_cloud_files');
-      localStorage.removeItem('gyanvatsala_saas_cloud_jobs');
-      localStorage.removeItem('gyanvatsala_saas_cloud_folders');
-      localStorage.removeItem('pixelkit_saas_cloud_files');
-      localStorage.removeItem('pixelkit_saas_cloud_jobs');
-      localStorage.removeItem('pixelkit_saas_cloud_folders');
-    } catch {}
+    purgeLocalStorage();
   }, []);
+
+  // Inactivity (30 min) & Session Lifespan (2 hr) Auto Logout Monitor
+  useEffect(() => {
+    if (!user) return;
+
+    if (!localStorage.getItem(SESSION_START_KEY)) {
+      localStorage.setItem(SESSION_START_KEY, Date.now().toString());
+    }
+    localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+
+    let lastThrottle = Date.now();
+    const recordActivity = () => {
+      const now = Date.now();
+      if (now - lastThrottle > 10000) {
+        lastThrottle = now;
+        try {
+          localStorage.setItem(LAST_ACTIVE_KEY, now.toString());
+        } catch {}
+      }
+    };
+
+    const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'];
+    activityEvents.forEach((evt) => {
+      window.addEventListener(evt, recordActivity, { passive: true });
+    });
+
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      const start = parseInt(localStorage.getItem(SESSION_START_KEY) || '0', 10);
+      const last = parseInt(localStorage.getItem(LAST_ACTIVE_KEY) || '0', 10);
+
+      // Check 2-hour absolute session duration limit
+      if (start && now - start >= SESSION_MAX_AGE_MS) {
+        console.warn('[Auth] Session reached 2-hour maximum lifespan. Automatically logging out.');
+        signOut();
+        return;
+      }
+
+      // Check 30-minute idle inactivity timeout
+      if (last && now - last >= SESSION_IDLE_TIMEOUT_MS) {
+        console.warn('[Auth] Session inactive for >30 minutes. Automatically logging out.');
+        signOut();
+        return;
+      }
+    }, 15000);
+
+    return () => {
+      activityEvents.forEach((evt) => {
+        window.removeEventListener(evt, recordActivity);
+      });
+      clearInterval(intervalId);
+    };
+  }, [user, signOut]);
 
   const updateUserPlan = useCallback((newPlan: PlanTier) => {
     setUser((currentUser) => {
