@@ -21,6 +21,10 @@ import {
   WatermarkPdfSettings,
   PageNumberSettings,
   PdfToTextSettings,
+  SignPdfSettings,
+  CropPdfSettings,
+  FlattenPdfSettings,
+  GrayscalePdfSettings,
 } from '@/types/document';
 import {
   Document,
@@ -2084,4 +2088,297 @@ export async function pdfToPlainText(
 
   const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
   return { text: fullText, blob };
+}
+
+function parseHexToRgb(hex: string) {
+  const clean = (hex || '#0f172a').replace('#', '').trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) {
+    return rgb(0.06, 0.09, 0.16);
+  }
+  const r = parseInt(clean.slice(0, 2), 16) / 255;
+  const g = parseInt(clean.slice(2, 4), 16) / 255;
+  const b = parseInt(clean.slice(4, 6), 16) / 255;
+  return rgb(r, g, b);
+}
+
+/**
+ * 18. SIGN PDF
+ * Embeds a stylized signature block with optional title & date stamp on selected pages.
+ */
+export async function signPdfDocument(
+  file: File,
+  settings: SignPdfSettings
+): Promise<Blob> {
+  const bytes = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(bytes);
+  const pages = pdfDoc.getPages();
+  if (pages.length === 0) {
+    throw new Error('PDF contains no pages to sign.');
+  }
+
+  const sigFont = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+  const metaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const inkColor = parseHexToRgb(settings.color || '#1e3a8a');
+  const sigText = (settings.signatureText || 'Signed Digitally').trim();
+  const sigSize = Math.max(12, Math.min(48, settings.fontSize || 24));
+  const titleText = (settings.signerTitle || '').trim();
+  const dateStr = settings.includeDate
+    ? `Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`
+    : '';
+
+  const targetIndices =
+    settings.pageSelection === 'all'
+      ? pages.map((_, idx) => idx)
+      : settings.pageSelection === 'first'
+      ? [0]
+      : [pages.length - 1];
+
+  for (const idx of targetIndices) {
+    const page = pages[idx];
+    const { width, height } = page.getSize();
+    const sigWidth = sigFont.widthOfTextAtSize(sigText, sigSize);
+    const metaWidth = Math.max(
+      titleText ? metaFont.widthOfTextAtSize(titleText, 9) : 0,
+      dateStr ? metaFont.widthOfTextAtSize(dateStr, 9) : 0
+    );
+    const blockWidth = Math.max(sigWidth, metaWidth, 120);
+    const margin = 40;
+
+    let baseX = width - blockWidth - margin;
+    let baseY = margin + 24;
+
+    switch (settings.position) {
+      case 'bottom-left':
+        baseX = margin;
+        baseY = margin + 24;
+        break;
+      case 'bottom-center':
+        baseX = (width - blockWidth) / 2;
+        baseY = margin + 24;
+        break;
+      case 'top-right':
+        baseX = width - blockWidth - margin;
+        baseY = height - margin - sigSize - 10;
+        break;
+      case 'center':
+        baseX = (width - blockWidth) / 2;
+        baseY = height / 2;
+        break;
+      case 'bottom-right':
+      default:
+        baseX = width - blockWidth - margin;
+        baseY = margin + 24;
+        break;
+    }
+
+    baseX = Math.max(20, Math.min(width - blockWidth - 20, baseX));
+    baseY = Math.max(36, Math.min(height - 36, baseY));
+
+    page.drawText(sigText, {
+      x: baseX,
+      y: baseY,
+      size: sigSize,
+      font: sigFont,
+      color: inkColor,
+    });
+
+    page.drawLine({
+      start: { x: baseX, y: baseY - 5 },
+      end: { x: baseX + blockWidth, y: baseY - 5 },
+      thickness: 0.75,
+      color: inkColor,
+      opacity: 0.55,
+    });
+
+    let subY = baseY - 16;
+    if (titleText) {
+      page.drawText(titleText, {
+        x: baseX,
+        y: subY,
+        size: 9,
+        font: metaFont,
+        color: rgb(0.25, 0.3, 0.38),
+      });
+      subY -= 11;
+    }
+    if (dateStr) {
+      page.drawText(dateStr, {
+        x: baseX,
+        y: subY,
+        size: 8.5,
+        font: metaFont,
+        color: rgb(0.35, 0.4, 0.48),
+      });
+    }
+  }
+
+  const outBytes = await pdfDoc.save();
+  return new Blob([outBytes as BlobPart], { type: 'application/pdf' });
+}
+
+/**
+ * 19. CROP PDF MARGINS
+ * Trims margins uniformly across all pages or selected page ranges using CropBox/MediaBox.
+ */
+export async function cropPdfDocument(
+  file: File,
+  settings: CropPdfSettings
+): Promise<Blob> {
+  const bytes = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(bytes);
+  const pages = pdfDoc.getPages();
+  const multiplier = settings.unit === 'mm' ? 72 / 25.4 : 1;
+
+  const topPt = Math.max(0, (settings.marginTop || 0) * multiplier);
+  const rightPt = Math.max(0, (settings.marginRight || 0) * multiplier);
+  const bottomPt = Math.max(0, (settings.marginBottom || 0) * multiplier);
+  const leftPt = Math.max(0, (settings.marginLeft || 0) * multiplier);
+
+  const selectedIndices = settings.pageRange?.trim()
+    ? parsePageRangeString(settings.pageRange, pages.length)
+    : pages.map((_, i) => i);
+
+  for (const idx of selectedIndices) {
+    const page = pages[idx];
+    if (!page) continue;
+    const box = page.getCropBox() || page.getMediaBox();
+    const minSize = 36;
+    const maxCropX = Math.max(0, box.width - minSize);
+    const maxCropY = Math.max(0, box.height - minSize);
+
+    const safeLeft = Math.min(leftPt, maxCropX * 0.45);
+    const safeRight = Math.min(rightPt, maxCropX * 0.45);
+    const safeBottom = Math.min(bottomPt, maxCropY * 0.45);
+    const safeTop = Math.min(topPt, maxCropY * 0.45);
+
+    const newW = Math.max(minSize, box.width - safeLeft - safeRight);
+    const newH = Math.max(minSize, box.height - safeBottom - safeTop);
+    const newX = box.x + safeLeft;
+    const newY = box.y + safeBottom;
+
+    page.setCropBox(newX, newY, newW, newH);
+    page.setMediaBox(newX, newY, newW, newH);
+  }
+
+  const outBytes = await pdfDoc.save();
+  return new Blob([outBytes as BlobPart], { type: 'application/pdf' });
+}
+
+/**
+ * 20. FLATTEN PDF
+ * Flattens interactive form widgets and strips annotations/metadata for read-only sharing.
+ */
+export async function flattenPdfDocument(
+  file: File,
+  settings: FlattenPdfSettings
+): Promise<Blob> {
+  const bytes = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(bytes);
+
+  if (settings.flattenForms) {
+    try {
+      const form = pdfDoc.getForm();
+      form.flatten();
+    } catch {
+      // Document may contain no AcroForm dictionary
+    }
+  }
+
+  if (settings.stripAnnotations) {
+    for (const page of pdfDoc.getPages()) {
+      page.node.delete(PDFName.of('Annots'));
+    }
+  }
+
+  if (settings.cleanMetadata) {
+    pdfDoc.setTitle('');
+    pdfDoc.setAuthor('');
+    pdfDoc.setSubject('');
+    pdfDoc.setKeywords([]);
+    pdfDoc.setCreator('Gyanvatsala Zero-Upload PDF');
+    pdfDoc.setProducer('Gyanvatsala Zero-Upload PDF');
+  }
+
+  const outBytes = await pdfDoc.save({ useObjectStreams: true });
+  return new Blob([outBytes as BlobPart], { type: 'application/pdf' });
+}
+
+/**
+ * 21. GRAYSCALE PDF
+ * Renders pages with luminance desaturation in bounded memory for print-ready monochrome PDFs.
+ */
+export async function grayscalePdfDocument(
+  file: File,
+  settings: GrayscalePdfSettings,
+  onProgress?: (percent: number) => void
+): Promise<Blob> {
+  const pdfjsLib = await getPdfJs();
+  const bytes = await file.arrayBuffer();
+  const loadingTask = pdfjsLib.getDocument({ data: bytes });
+  const srcDoc = await loadingTask.promise;
+  const outDoc = await PDFDocument.create();
+  const scale = (settings.dpi || 150) / 72;
+  const boost = Math.max(0.8, Math.min(1.6, settings.contrastBoost || 1.05));
+  const quality = Math.max(0.5, Math.min(0.95, (settings.quality || 85) / 100));
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) {
+    await srcDoc.destroy?.();
+    throw new Error('Could not initialize 2D canvas context.');
+  }
+
+  try {
+    for (let pageNum = 1; pageNum <= srcDoc.numPages; pageNum++) {
+      const page = await srcDoc.getPage(pageNum);
+      try {
+        const baseViewport = page.getViewport({ scale: 1 });
+        const renderViewport = page.getViewport({ scale });
+        canvas.width = Math.max(1, Math.floor(renderViewport.width));
+        canvas.height = Math.max(1, Math.floor(renderViewport.height));
+
+        await page.render({ canvasContext: ctx, viewport: renderViewport } as any).promise;
+
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          const contrasted = Math.max(0, Math.min(255, (lum - 128) * boost + 128));
+          data[i] = contrasted;
+          data[i + 1] = contrasted;
+          data[i + 2] = contrasted;
+        }
+        ctx.putImageData(imgData, 0, 0);
+
+        const jpegBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error('Grayscale encoding failed.'))),
+            'image/jpeg',
+            quality
+          );
+        });
+        const jpgBytes = await jpegBlob.arrayBuffer();
+        const embedded = await outDoc.embedJpg(jpgBytes);
+        const outPage = outDoc.addPage([baseViewport.width, baseViewport.height]);
+        outPage.drawImage(embedded, {
+          x: 0,
+          y: 0,
+          width: baseViewport.width,
+          height: baseViewport.height,
+        });
+      } finally {
+        page.cleanup?.();
+      }
+
+      onProgress?.(Math.round((pageNum / srcDoc.numPages) * 90));
+    }
+
+    const outBytes = await outDoc.save({ useObjectStreams: true });
+    onProgress?.(100);
+    return new Blob([outBytes as BlobPart], { type: 'application/pdf' });
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+    await srcDoc.destroy?.();
+  }
 }

@@ -1,4 +1,4 @@
-import { AlignmentGuide } from '@/types/pdfEditor';
+import type { AlignmentGuide } from '@/types/pdfEditor';
 
 export interface BoundingBox {
   id?: string;
@@ -15,23 +15,28 @@ export interface AlignmentResult {
 }
 
 /**
- * Calculates smart alignment guides and magnetic snapping against page center and other objects.
- * Similar to Figma / Canva smart guides.
+ * Calculates temporary full-page dotted alignment guides (and optional soft snapping)
+ * across both sides of the dragged row/object from edge to edge of the page.
  */
 export function calculateAlignmentAndSnap({
   draggedBox,
   referenceBoxes,
   pageBounds,
-  snapThreshold = 5,
+  originBox = null,
+  snapThreshold = 4,
+  guidesOnly = false,
+  includeRowRails = true,
 }: {
   draggedBox: BoundingBox;
   referenceBoxes: BoundingBox[];
   pageBounds: { width: number; height: number };
+  originBox?: BoundingBox | null;
   snapThreshold?: number;
+  guidesOnly?: boolean;
+  includeRowRails?: boolean;
 }): AlignmentResult {
   let snappedX = draggedBox.x;
   let snappedY = draggedBox.y;
-  const guides: AlignmentGuide[] = [];
 
   const draggedLeft = draggedBox.x;
   const draggedCenterX = draggedBox.x + draggedBox.width / 2;
@@ -41,161 +46,225 @@ export function calculateAlignmentAndSnap({
   const draggedCenterY = draggedBox.y + draggedBox.height / 2;
   const draggedBottom = draggedBox.y + draggedBox.height;
 
-  // 1. VERTICAL ALIGNMENT (X-Axis guides)
-  interface XCandidate {
-    guideX: number;
-    diff: number; // how much to shift draggedBox.x
-    refYStart: number;
-    refYEnd: number;
+  // 1. VERTICAL ALIGNMENT CANDIDATES (Top-to-Bottom dotted guides across full page height)
+  interface Candidate {
+    pos: number;
+    diff: number;
     label?: string;
   }
 
-  const xCandidates: XCandidate[] = [];
+  const xCandidates: Candidate[] = [];
 
-  // A. Page Center X
+  // Origin vertical track (keeps a moved row vertically aligned with its starting column)
+  if (originBox) {
+    const origLeft = originBox.x;
+    const origRight = originBox.x + originBox.width;
+
+    if (Math.abs(origLeft - draggedLeft) <= snapThreshold) {
+      xCandidates.push({ pos: origLeft, diff: draggedLeft - origLeft, label: 'Start Column' });
+    }
+    if (Math.abs(origRight - draggedRight) <= snapThreshold) {
+      xCandidates.push({ pos: origRight, diff: draggedRight - origRight });
+    }
+  }
+
+  // Page Center X
   const pageCenterX = pageBounds.width / 2;
-  const distCenterToPageCenter = pageCenterX - draggedCenterX;
-  if (Math.abs(distCenterToPageCenter) <= snapThreshold) {
+  if (Math.abs(pageCenterX - draggedCenterX) <= snapThreshold) {
     xCandidates.push({
-      guideX: pageCenterX,
-      diff: -distCenterToPageCenter,
-      refYStart: 0,
-      refYEnd: pageBounds.height,
+      pos: pageCenterX,
+      diff: draggedCenterX - pageCenterX,
       label: 'Page Center',
     });
   }
 
-  // B. Other objects on page
+  // Other objects & rows on page
   for (const ref of referenceBoxes) {
     const refLeft = ref.x;
     const refCenterX = ref.x + ref.width / 2;
     const refRight = ref.x + ref.width;
 
-    const yStart = Math.min(draggedTop, ref.y);
-    const yEnd = Math.max(draggedBottom, ref.y + ref.height);
-
-    // Left-to-Left
     if (Math.abs(refLeft - draggedLeft) <= snapThreshold) {
-      xCandidates.push({ guideX: refLeft, diff: draggedLeft - refLeft, refYStart: yStart, refYEnd: yEnd });
+      xCandidates.push({ pos: refLeft, diff: draggedLeft - refLeft });
     }
-    // Right-to-Right
     if (Math.abs(refRight - draggedRight) <= snapThreshold) {
-      xCandidates.push({ guideX: refRight, diff: draggedRight - refRight, refYStart: yStart, refYEnd: yEnd });
+      xCandidates.push({ pos: refRight, diff: draggedRight - refRight });
     }
-    // Center-to-Center X
     if (Math.abs(refCenterX - draggedCenterX) <= snapThreshold) {
-      xCandidates.push({ guideX: refCenterX, diff: draggedCenterX - refCenterX, refYStart: yStart, refYEnd: yEnd });
+      xCandidates.push({ pos: refCenterX, diff: draggedCenterX - refCenterX });
     }
-    // Left-to-Right
     if (Math.abs(refRight - draggedLeft) <= snapThreshold) {
-      xCandidates.push({ guideX: refRight, diff: draggedLeft - refRight, refYStart: yStart, refYEnd: yEnd });
+      xCandidates.push({ pos: refRight, diff: draggedLeft - refRight });
     }
-    // Right-to-Left
     if (Math.abs(refLeft - draggedRight) <= snapThreshold) {
-      xCandidates.push({ guideX: refLeft, diff: draggedRight - refLeft, refYStart: yStart, refYEnd: yEnd });
+      xCandidates.push({ pos: refLeft, diff: draggedRight - refLeft });
     }
   }
 
-  // Pick closest vertical snap
+  const matchGuides: AlignmentGuide[] = [];
+  const matchedXPositions: number[] = [];
+
   if (xCandidates.length > 0) {
     xCandidates.sort((a, b) => Math.abs(a.diff) - Math.abs(b.diff));
     const bestX = xCandidates[0];
-    snappedX = draggedBox.x - bestX.diff;
+    if (!guidesOnly) {
+      snappedX = draggedBox.x - bestX.diff;
+    }
 
-    // Include all guides matching best snap within 0.5px
+    const seenX = new Set<number>();
     for (const cand of xCandidates) {
-      if (Math.abs(cand.diff - bestX.diff) <= 0.5) {
-        guides.push({
-          id: `v_${cand.guideX.toFixed(1)}_${Math.random().toString(36).substring(2, 6)}`,
+      if (Math.abs(cand.diff - bestX.diff) <= 0.75) {
+        const key = Math.round(cand.pos * 2) / 2;
+        if (seenX.has(key)) continue;
+        seenX.add(key);
+        matchedXPositions.push(cand.pos);
+        matchGuides.push({
+          id: `vm_${key}`,
           type: 'vertical',
-          position: cand.guideX,
-          start: Math.max(0, cand.refYStart - 10),
-          end: Math.min(pageBounds.height, cand.refYEnd + 10),
+          position: cand.pos,
+          start: 0,
+          end: pageBounds.height,
           label: cand.label,
+          variant: 'match',
         });
       }
     }
   }
 
-  // 2. HORIZONTAL ALIGNMENT (Y-Axis guides)
-  interface YCandidate {
-    guideY: number;
-    diff: number; // how much to shift draggedBox.y
-    refXStart: number;
-    refXEnd: number;
-    label?: string;
+  // 2. HORIZONTAL ALIGNMENT CANDIDATES (Left-to-Right dotted guides across full page width)
+  const yCandidates: Candidate[] = [];
+
+  // Origin horizontal track (keeps a moved row horizontally straight with its starting row line)
+  if (originBox) {
+    const origTop = originBox.y;
+    const origBottom = originBox.y + originBox.height;
+
+    if (Math.abs(origTop - draggedTop) <= snapThreshold) {
+      yCandidates.push({ pos: origTop, diff: draggedTop - origTop, label: 'Start Row' });
+    }
+    if (Math.abs(origBottom - draggedBottom) <= snapThreshold) {
+      yCandidates.push({ pos: origBottom, diff: draggedBottom - origBottom });
+    }
   }
 
-  const yCandidates: YCandidate[] = [];
-
-  // A. Page Center Y
+  // Page Center Y
   const pageCenterY = pageBounds.height / 2;
-  const distCenterToPageCenterY = pageCenterY - draggedCenterY;
-  if (Math.abs(distCenterToPageCenterY) <= snapThreshold) {
+  if (Math.abs(pageCenterY - draggedCenterY) <= snapThreshold) {
     yCandidates.push({
-      guideY: pageCenterY,
-      diff: -distCenterToPageCenterY,
-      refXStart: 0,
-      refXEnd: pageBounds.width,
+      pos: pageCenterY,
+      diff: draggedCenterY - pageCenterY,
       label: 'Page Center',
     });
   }
 
-  // B. Other objects on page
+  // Other objects & rows on page
   for (const ref of referenceBoxes) {
     const refTop = ref.y;
     const refCenterY = ref.y + ref.height / 2;
     const refBottom = ref.y + ref.height;
 
-    const xStart = Math.min(draggedLeft, ref.x);
-    const xEnd = Math.max(draggedRight, ref.x + ref.width);
-
-    // Top-to-Top
     if (Math.abs(refTop - draggedTop) <= snapThreshold) {
-      yCandidates.push({ guideY: refTop, diff: draggedTop - refTop, refXStart: xStart, refXEnd: xEnd });
+      yCandidates.push({ pos: refTop, diff: draggedTop - refTop });
     }
-    // Bottom-to-Bottom
     if (Math.abs(refBottom - draggedBottom) <= snapThreshold) {
-      yCandidates.push({ guideY: refBottom, diff: draggedBottom - refBottom, refXStart: xStart, refXEnd: xEnd });
+      yCandidates.push({ pos: refBottom, diff: draggedBottom - refBottom });
     }
-    // Center-to-Center Y
     if (Math.abs(refCenterY - draggedCenterY) <= snapThreshold) {
-      yCandidates.push({ guideY: refCenterY, diff: draggedCenterY - refCenterY, refXStart: xStart, refXEnd: xEnd });
+      yCandidates.push({ pos: refCenterY, diff: draggedCenterY - refCenterY });
     }
-    // Top-to-Bottom
     if (Math.abs(refBottom - draggedTop) <= snapThreshold) {
-      yCandidates.push({ guideY: refBottom, diff: draggedTop - refBottom, refXStart: xStart, refXEnd: xEnd });
+      yCandidates.push({ pos: refBottom, diff: draggedTop - refBottom });
     }
-    // Bottom-to-Top
     if (Math.abs(refTop - draggedBottom) <= snapThreshold) {
-      yCandidates.push({ guideY: refTop, diff: draggedBottom - refTop, refXStart: xStart, refXEnd: xEnd });
+      yCandidates.push({ pos: refTop, diff: draggedBottom - refTop });
     }
   }
 
-  // Pick closest horizontal snap
+  const matchedYPositions: number[] = [];
+
   if (yCandidates.length > 0) {
     yCandidates.sort((a, b) => Math.abs(a.diff) - Math.abs(b.diff));
     const bestY = yCandidates[0];
-    snappedY = draggedBox.y - bestY.diff;
+    if (!guidesOnly) {
+      snappedY = draggedBox.y - bestY.diff;
+    }
 
-    // Include all guides matching best snap within 0.5px
+    const seenY = new Set<number>();
     for (const cand of yCandidates) {
-      if (Math.abs(cand.diff - bestY.diff) <= 0.5) {
-        guides.push({
-          id: `h_${cand.guideY.toFixed(1)}_${Math.random().toString(36).substring(2, 6)}`,
+      if (Math.abs(cand.diff - bestY.diff) <= 0.75) {
+        const key = Math.round(cand.pos * 2) / 2;
+        if (seenY.has(key)) continue;
+        seenY.add(key);
+        matchedYPositions.push(cand.pos);
+        matchGuides.push({
+          id: `hm_${key}`,
           type: 'horizontal',
-          position: cand.guideY,
-          start: Math.max(0, cand.refXStart - 10),
-          end: Math.min(pageBounds.width, cand.refXEnd + 10),
+          position: cand.pos,
+          start: 0,
+          end: pageBounds.width,
           label: cand.label,
+          variant: 'match',
         });
       }
+    }
+  }
+
+  // 3. Always-on temporary edge-to-edge dotted rails from BOTH sides of the dragged row
+  const railGuides: AlignmentGuide[] = [];
+  if (includeRowRails) {
+    const curLeft = guidesOnly ? draggedLeft : snappedX;
+    const curRight = curLeft + draggedBox.width;
+    const curTop = guidesOnly ? draggedTop : snappedY;
+    const curBottom = curTop + draggedBox.height;
+
+    const hasMatchedNear = (arr: number[], val: number) =>
+      arr.some((p) => Math.abs(p - val) <= 1.5);
+
+    if (!hasMatchedNear(matchedXPositions, curLeft)) {
+      railGuides.push({
+        id: 'vr_left',
+        type: 'vertical',
+        position: curLeft,
+        start: 0,
+        end: pageBounds.height,
+        variant: 'rail',
+      });
+    }
+    if (draggedBox.width >= 6 && !hasMatchedNear(matchedXPositions, curRight)) {
+      railGuides.push({
+        id: 'vr_right',
+        type: 'vertical',
+        position: curRight,
+        start: 0,
+        end: pageBounds.height,
+        variant: 'rail',
+      });
+    }
+    if (!hasMatchedNear(matchedYPositions, curTop)) {
+      railGuides.push({
+        id: 'hr_top',
+        type: 'horizontal',
+        position: curTop,
+        start: 0,
+        end: pageBounds.width,
+        variant: 'rail',
+      });
+    }
+    if (draggedBox.height >= 4 && !hasMatchedNear(matchedYPositions, curBottom)) {
+      railGuides.push({
+        id: 'hr_bottom',
+        type: 'horizontal',
+        position: curBottom,
+        start: 0,
+        end: pageBounds.width,
+        variant: 'rail',
+      });
     }
   }
 
   return {
     snappedX,
     snappedY,
-    guides,
+    guides: [...railGuides, ...matchGuides],
   };
 }

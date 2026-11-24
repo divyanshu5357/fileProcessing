@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { getPdfJs } from '@/lib/pdfjsLoader';
+import { useAuth } from '@/context/AuthContext';
+import { getMemoryProfile } from '@/lib/memoryProfile';
 import {
   ChevronLeft,
   ChevronRight,
@@ -38,6 +40,8 @@ export function PdfPreviewer({
   onLoadSuccess,
   onError,
 }: PdfPreviewerProps) {
+  const { user, isAuthenticated } = useAuth();
+  const memProfile = getMemoryProfile(user?.plan, isAuthenticated);
   const [numPages, setNumPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(initialPage);
   const [zoom, setZoom] = useState<number>(1.0);
@@ -153,9 +157,10 @@ export function PdfPreviewer({
       computedScale = Math.max(0.3, Math.min(3.5, computedScale));
 
       const viewport = page.getViewport({ scale: computedScale, rotation: page.rotate || 0 });
-      const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+      const rawDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+      const dpr = Math.min(rawDpr, memProfile.maxCanvasDpr);
 
-      // Set physical canvas pixel buffer with Retina devicePixelRatio
+      // Set physical canvas pixel buffer with capped DPR for Eco memory usage
       canvas.width = Math.floor(viewport.width * dpr);
       canvas.height = Math.floor(viewport.height * dpr);
 
@@ -184,6 +189,7 @@ export function PdfPreviewer({
       activeRenderTaskRef.current = renderTask;
 
       await renderTask.promise;
+      page.cleanup?.();
       activeRenderTaskRef.current = null;
     } catch (err: any) {
       if (err?.name === 'RenderingCancelledException') {
@@ -192,7 +198,7 @@ export function PdfPreviewer({
       }
       console.warn('PDF Page Render Warning:', err);
     }
-  }, [currentPage, zoom, fitMode, numPages]);
+  }, [currentPage, zoom, fitMode, numPages, memProfile.maxCanvasDpr]);
 
   // Trigger render when page, zoom, fitMode, or doc changes
   useEffect(() => {

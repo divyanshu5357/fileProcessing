@@ -22,7 +22,8 @@ function createThumbnail(canvas: HTMLCanvasElement, maxDim: number = 240): strin
  */
 export async function loadPdfToScanPages(
   file: File,
-  onProgress?: (current: number, total: number) => void
+  onProgress?: (current: number, total: number) => void,
+  renderScale: number = 1.5
 ): Promise<ScanPage[]> {
   const pdfjs = await getPdfJs();
   const arrayBuffer = await file.arrayBuffer();
@@ -35,51 +36,59 @@ export async function loadPdfToScanPages(
   const numPages = pdfDoc.numPages;
   const pages: ScanPage[] = [];
 
-  for (let i = 1; i <= numPages; i++) {
-    if (onProgress) {
-      onProgress(i, numPages);
+  try {
+    for (let i = 1; i <= numPages; i++) {
+      if (onProgress) {
+        onProgress(i, numPages);
+      }
+
+      const page = await pdfDoc.getPage(i);
+      try {
+        // Scaled per memory tier (1.25 guest / 1.5 free / 2.0 paid) to keep RAM bounded
+        const viewport = page.getViewport({ scale: renderScale, rotation: page.rotate || 0 });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.floor(viewport.width));
+        canvas.height = Math.max(1, Math.floor(viewport.height));
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          continue;
+        }
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        // PDF background should default to pure white
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        await page.render({
+          canvasContext: ctx,
+          viewport: viewport,
+        }).promise;
+
+        const thumbnailUrl = createThumbnail(canvas);
+
+        pages.push({
+          id: `page-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
+          pageNumber: i,
+          originalCanvas: canvas,
+          originalWidth: canvas.width,
+          originalHeight: canvas.height,
+          thumbnailUrl,
+          settings: {
+            ...DEFAULT_PAGE_SETTINGS,
+            noiseSeed: (i * 1337 + 42) % 100000,
+          },
+          useGlobalSettings: true,
+        });
+      } finally {
+        page.cleanup?.();
+      }
     }
-
-    const page = await pdfDoc.getPage(i);
-    // Render at crisp high-resolution scale 2.0 for razor-sharp text clarity with natural page rotation
-    const viewport = page.getViewport({ scale: 2.0, rotation: page.rotate || 0 });
-
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext('2d');
-
-    if (!ctx) {
-      continue;
-    }
-
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    // PDF background should default to pure white
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    await page.render({
-      canvasContext: ctx,
-      viewport: viewport,
-    }).promise;
-
-    const thumbnailUrl = createThumbnail(canvas);
-
-    pages.push({
-      id: `page-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
-      pageNumber: i,
-      originalCanvas: canvas,
-      originalWidth: canvas.width,
-      originalHeight: canvas.height,
-      thumbnailUrl,
-      settings: {
-        ...DEFAULT_PAGE_SETTINGS,
-        noiseSeed: (i * 1337 + 42) % 100000,
-      },
-      useGlobalSettings: true,
-    });
+  } finally {
+    await pdfDoc.destroy?.();
   }
 
   return pages;
@@ -140,7 +149,8 @@ export async function loadImageToScanPage(file: File, pageNumber: number = 1): P
  */
 export async function loadFilesToScanPages(
   files: File[],
-  onProgress?: (msg: string, percent: number) => void
+  onProgress?: (msg: string, percent: number) => void,
+  renderScale: number = 1.5
 ): Promise<ScanPage[]> {
   const allPages: ScanPage[] = [];
 
@@ -153,7 +163,7 @@ export async function loadFilesToScanPages(
     }
 
     if (isPdf) {
-      const pdfPages = await loadPdfToScanPages(file);
+      const pdfPages = await loadPdfToScanPages(file, undefined, renderScale);
       allPages.push(...pdfPages);
     } else {
       const page = await loadImageToScanPage(file, allPages.length + 1);

@@ -25,10 +25,14 @@ import {
   loadFileToAssembler,
   createEmptyAssemblerDocument,
   generateAssemblerId,
+  sourceFilesCache,
 } from '@/lib/pdfAssemblerEngine';
 import { AssemblerToolbar } from './AssemblerToolbar';
 import { DocumentSection } from './DocumentSection';
 import { SaveExportModal } from './SaveExportModal';
+import { useAuth } from '@/context/AuthContext';
+import { useGuestProductQuota } from '@/hooks/useGuestProductQuota';
+import { GuestQuotaBanner } from '@/components/common/GuestQuotaBanner';
 
 interface PdfAssemblerWorkspaceProps {
   onBackToTools?: () => void;
@@ -37,6 +41,8 @@ interface PdfAssemblerWorkspaceProps {
 export function PdfAssemblerWorkspace({
   onBackToTools,
 }: PdfAssemblerWorkspaceProps) {
+  const { openAuthModal } = useAuth();
+  const quota = useGuestProductQuota('pdf-assembler');
   const [documents, setDocuments] = useState<AssemblerDocument[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('');
@@ -58,14 +64,24 @@ export function PdfAssemblerWorkspace({
 
   const saveSnapshot = useCallback(
     (newDocs: AssemblerDocument[]) => {
+      const maxHist = quota.memoryProfile.maxUndoHistory;
       const snapshot: AssemblerHistorySnapshot = {
         documents: JSON.parse(JSON.stringify(newDocs)),
       };
-      setHistory((prev) => [...prev.slice(0, historyIndex + 1), snapshot]);
-      setHistoryIndex((prev) => prev + 1);
+      setHistory((prev) => {
+        const next = [...prev.slice(0, historyIndex + 1), snapshot];
+        return next.length > maxHist ? next.slice(next.length - maxHist) : next;
+      });
+      setHistoryIndex(Math.min(historyIndex + 1, maxHist - 1));
     },
-    [historyIndex]
+    [historyIndex, quota.memoryProfile.maxUndoHistory]
   );
+
+  useEffect(() => {
+    return () => {
+      sourceFilesCache.clear();
+    };
+  }, []);
 
   const handleUndo = () => {
     if (historyIndex > 0) {
@@ -108,16 +124,50 @@ export function PdfAssemblerWorkspace({
   // Add Files (PDFs or Images)
   const handleAddFiles = async (files: File[]) => {
     if (files.length === 0) return;
+    if (!quota.allowed) {
+      openAuthModal(
+        undefined,
+        `Free guest IP limit reached (${quota.limit}/${quota.limit} edits) for PDF Assembler. Sign in free for unlimited access.`
+      );
+      return;
+    }
+
+    const maxBytes = quota.memoryProfile.maxFileSizeMb * 1024 * 1024;
+    const validFiles = files.filter((file) => {
+      if (file.size > maxBytes) {
+        alert(
+          `"${file.name}" exceeds the ${quota.memoryProfile.maxFileSizeMb} MB ${quota.memoryProfile.label} limit.`
+        );
+        return false;
+      }
+      return true;
+    });
+
+    const availableSlots = Math.max(0, quota.memoryProfile.maxBatchFiles - documents.length);
+    const accepted = validFiles.slice(0, availableSlots);
+    if (accepted.length === 0) {
+      if (validFiles.length > 0) {
+        alert(
+          `${quota.memoryProfile.label} allows up to ${quota.memoryProfile.maxBatchFiles} documents simultaneously to keep memory usage low.`
+        );
+      }
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const loadedDocs: AssemblerDocument[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        setLoadingStatus(`Parsing file ${i + 1} of ${files.length}: ${file.name}...`);
-        const doc = await loadFileToAssembler(file, (p, msg) => {
-          setLoadingStatus(msg);
-        });
+      for (let i = 0; i < accepted.length; i++) {
+        const file = accepted[i];
+        setLoadingStatus(`Parsing file ${i + 1} of ${accepted.length}: ${file.name}...`);
+        const doc = await loadFileToAssembler(
+          file,
+          (p, msg) => {
+            setLoadingStatus(msg);
+          },
+          quota.memoryProfile.assemblerThumbScale
+        );
         loadedDocs.push(doc);
       }
 
@@ -447,6 +497,8 @@ export function PdfAssemblerWorkspace({
         isAllPagesSelectedGlobal={isAllPagesSelectedGlobal}
       />
 
+      <GuestQuotaBanner quota={quota} productName="PDF Assembler" />
+
       {/* Main Multi-Document Workspace Area */}
       <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
         {/* Loading Overlay */}
@@ -589,6 +641,7 @@ export function PdfAssemblerWorkspace({
         isOpen={isSaveModalOpen}
         onClose={() => setIsSaveModalOpen(false)}
         documents={documents}
+        onBeforeExport={() => quota.consumeUse()}
       />
     </div>
   );

@@ -10,19 +10,28 @@ export async function GET(req: NextRequest) {
     let image = '';
     let role: 'admin' | 'support' | 'user' = 'user';
     let plan = 'Free';
+    let hasPassword = false;
     let isAuthenticated = false;
 
     // 1. Try Better Auth getSession
     try {
       const session = await auth.api.getSession({ headers: req.headers });
       if (session?.user) {
+        const sessionUser = session.user as {
+          id: string;
+          email?: string | null;
+          name?: string | null;
+          image?: string | null;
+          role?: string | null;
+          plan?: string | null;
+        };
         isAuthenticated = true;
-        userId = session.user.id;
-        email = (session.user.email || '').toLowerCase().trim();
-        name = session.user.name || email.split('@')[0];
-        image = session.user.image || '';
-        role = ((session.user as any).role || 'user') as any;
-        plan = (session.user as any).plan || 'Free';
+        userId = sessionUser.id;
+        email = (sessionUser.email || '').toLowerCase().trim();
+        name = sessionUser.name || email.split('@')[0];
+        image = sessionUser.image || '';
+        role = (sessionUser.role || 'user') as 'admin' | 'support' | 'user';
+        plan = sessionUser.plan || 'Free';
       }
     } catch (e) {
       console.debug('auth.api.getSession non-fatal error:', e);
@@ -54,7 +63,7 @@ export async function GET(req: NextRequest) {
               email = (row.email || '').toLowerCase().trim();
               name = row.name || email.split('@')[0];
               image = row.image || '';
-              role = (row.role || 'user') as any;
+              role = (row.role || 'user') as 'admin' | 'support' | 'user';
               plan = 'Free';
             }
           }
@@ -64,18 +73,32 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 3. If authenticated, double check Neon database for authoritative role
+    // 3. If authenticated, double check Neon database for authoritative role, password, and plan
     if (isAuthenticated && pool && userId) {
       try {
         const uRes = await pool.query(
           'SELECT role FROM public."user" WHERE id = $1 LIMIT 1',
           [userId]
         );
-        if (uRes.rows.length > 0) {
-          if (uRes.rows[0].role) role = uRes.rows[0].role;
+        if (uRes.rows.length > 0 && uRes.rows[0].role) {
+          role = uRes.rows[0].role;
+        }
+
+        const accRes = await pool.query(
+          `SELECT 1 FROM public.account WHERE "userId" = $1 AND "providerId" = 'credential' AND "password" IS NOT NULL LIMIT 1`,
+          [userId]
+        );
+        hasPassword = accRes.rows.length > 0;
+
+        const subRes = await pool.query(
+          `SELECT plan_name FROM public.subscriptions WHERE user_id = $1 AND subscription_status = 'active' LIMIT 1`,
+          [userId]
+        );
+        if (subRes.rows.length > 0 && subRes.rows[0].plan_name) {
+          plan = subRes.rows[0].plan_name;
         }
       } catch (dbRoleErr) {
-        console.debug('Failed to query DB user table for role:', dbRoleErr);
+        console.debug('Failed to query DB user details:', dbRoleErr);
       }
     }
 
@@ -111,11 +134,13 @@ export async function GET(req: NextRequest) {
         avatarUrl: image || undefined,
         role,
         plan,
+        hasPassword,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal error';
     return NextResponse.json(
-      { authenticated: false, error: error?.message || 'Internal error' },
+      { authenticated: false, error: message },
       { status: 500 }
     );
   }

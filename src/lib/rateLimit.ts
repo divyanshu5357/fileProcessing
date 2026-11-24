@@ -11,7 +11,13 @@ export type RateLimitCategory =
   | 'otp_email'
   | 'otp_account'
   | 'otp_network'
-  | 'otp_cooldown';
+  | 'otp_cooldown'
+  | 'otp_verify_email'
+  | 'otp_verify_ip'
+  | 'password_login_email'
+  | 'password_login_ip'
+  | 'password_signup_ip'
+  | 'password_set_ip';
 
 interface RateLimitConfig {
   limit: number;
@@ -20,16 +26,24 @@ interface RateLimitConfig {
 
 export const LIMITS: Record<RateLimitCategory, RateLimitConfig> = {
   // Business Logic OTP Limits:
-  otp_email: { limit: 3, windowMs: 600_000 },    // Max 3 OTP dispatches per 10 minutes per Target Email
-  otp_cooldown: { limit: 1, windowMs: 60_000 },   // 60-second cooldown between consecutive OTP requests for an email
-  otp_network: { limit: 30, windowMs: 600_000 },  // Max 30 OTP dispatches per 10 minutes per IP/Subnet (accommodates shared offices/NAT)
-  otp_account: { limit: 5, windowMs: 600_000 },  // Max 5 OTP dispatches per 10 minutes per Authenticated Account
-  otp: { limit: 30, windowMs: 600_000 },          // General OTP network category fallback
+  otp_email: { limit: 3, windowMs: 600_000 },       // Max 3 OTP dispatches per 10 minutes per Target Email
+  otp_cooldown: { limit: 1, windowMs: 60_000 },      // 60-second cooldown between consecutive OTP requests for an email
+  otp_network: { limit: 30, windowMs: 600_000 },     // Max 30 OTP dispatches per 10 minutes per IP/Subnet
+  otp_account: { limit: 5, windowMs: 600_000 },      // Max 5 OTP dispatches per 10 minutes per Authenticated Account
+  otp_verify_email: { limit: 5, windowMs: 300_000 }, // Max 5 OTP verification tries per 5 minutes per Email
+  otp_verify_ip: { limit: 20, windowMs: 600_000 },   // Max 20 OTP verification tries per 10 minutes per IP/Subnet
+  otp: { limit: 30, windowMs: 600_000 },             // General OTP network category fallback
+
+  // Password Login & Registration Rate Limits:
+  password_login_email: { limit: 5, windowMs: 900_000 }, // Max 5 password attempts per 15 minutes per Target Email
+  password_login_ip: { limit: 20, windowMs: 900_000 },   // Max 20 password attempts per 15 minutes per IP/Subnet
+  password_signup_ip: { limit: 5, windowMs: 3600_000 },  // Max 5 password account registrations per 1 hour per IP
+  password_set_ip: { limit: 10, windowMs: 900_000 },     // Max 10 password setup requests per 15 minutes per IP
 
   // Middleware Volumetric Protection Limits:
-  auth: { limit: 30, windowMs: 60_000 },          // 30 req/min on auth endpoints (broad volumetric flood guard)
-  admin: { limit: 30, windowMs: 60_000 },         // 30 req/min on admin endpoints
-  api: { limit: 100, windowMs: 60_000 },          // 100 req/min on standard APIs
+  auth: { limit: 30, windowMs: 60_000 },             // 30 req/min on auth endpoints
+  admin: { limit: 30, windowMs: 60_000 },            // 30 req/min on admin endpoints
+  api: { limit: 100, windowMs: 60_000 },             // 100 req/min on standard APIs
 };
 
 interface WindowEntry {
@@ -53,14 +67,20 @@ function cleanupExpired() {
   }
 }
 
+const EMAIL_SCOPED_CATEGORIES = new Set<RateLimitCategory>([
+  'otp_email',
+  'otp_cooldown',
+  'otp_verify_email',
+  'password_login_email',
+]);
+
 /**
- * Resets rate limit for a specific identifier and category (used in tests or manual reset).
+ * Resets rate limit for a specific identifier and category (used in tests or after login success).
  */
 export function resetRateLimit(identifier: string, category: RateLimitCategory): void {
-  const normalizedId =
-    category === 'otp_email' || category === 'otp_cooldown'
-      ? identifier.trim().toLowerCase()
-      : normalizeIp(identifier);
+  const normalizedId = EMAIL_SCOPED_CATEGORIES.has(category)
+    ? identifier.trim().toLowerCase()
+    : normalizeIp(identifier);
   const key = `${category}:${normalizedId}`;
   memoryStore.delete(key);
 }
@@ -104,10 +124,9 @@ export function checkRateLimit(
 
   const cfg = LIMITS[category] || LIMITS.api;
   const now = Date.now();
-  const normalizedId =
-    category === 'otp_email' || category === 'otp_cooldown'
-      ? identifier.trim().toLowerCase()
-      : normalizeIp(identifier);
+  const normalizedId = EMAIL_SCOPED_CATEGORIES.has(category)
+    ? identifier.trim().toLowerCase()
+    : normalizeIp(identifier);
   const key = `${category}:${normalizedId}`;
 
   const current = memoryStore.get(key);
@@ -165,10 +184,9 @@ export async function checkDistributedRateLimit(
   }
 
   const cfg = LIMITS[category] || LIMITS.api;
-  const normalizedId =
-    category === 'otp_email' || category === 'otp_cooldown'
-      ? identifier.trim().toLowerCase()
-      : normalizeIp(identifier);
+  const normalizedId = EMAIL_SCOPED_CATEGORIES.has(category)
+    ? identifier.trim().toLowerCase()
+    : normalizeIp(identifier);
   const key = `ratelimit:${category}:${normalizedId}`;
   const windowSec = Math.ceil(cfg.windowMs / 1000);
 
@@ -354,6 +372,103 @@ export function checkOtpRateLimit(
     ruleEvaluated: 'none',
     ruleTriggered: 'none',
     remaining: emailResult.remaining,
+  };
+}
+
+/**
+ * Multi-axis Rate Limiter for Password Sign-In, Password Registration, and Password Set.
+ * Enforces both target email protection and IP/subnet flood defense.
+ */
+export function checkPasswordAuthRateLimit(
+  ip: string,
+  email: string,
+  mode: 'login' | 'signup' | 'set'
+): OtpRateLimitResult {
+  const cleanEmail = email.trim().toLowerCase();
+
+  if (mode === 'login' && cleanEmail) {
+    const emailRes = checkRateLimit(cleanEmail, 'password_login_email');
+    if (!emailRes.allowed) {
+      return {
+        allowed: false,
+        status: 429,
+        reason: `Too many password login attempts for this email. Try again in ${emailRes.retryAfter}s or sign in with Email OTP.`,
+        retryAfter: emailRes.retryAfter,
+        ruleEvaluated: 'email',
+        remaining: 0,
+      };
+    }
+  }
+
+  const ipCategory: RateLimitCategory =
+    mode === 'signup'
+      ? 'password_signup_ip'
+      : mode === 'set'
+      ? 'password_set_ip'
+      : 'password_login_ip';
+
+  const ipRes = checkRateLimit(ip, ipCategory);
+  if (!ipRes.allowed) {
+    return {
+      allowed: false,
+      status: 429,
+      reason: `Too many authentication attempts from your network. Please wait ${ipRes.retryAfter}s.`,
+      retryAfter: ipRes.retryAfter,
+      ruleEvaluated: 'network',
+      remaining: 0,
+    };
+  }
+
+  return {
+    allowed: true,
+    status: 200,
+    ruleEvaluated: 'none',
+    ruleTriggered: 'none',
+    remaining: ipRes.remaining,
+  };
+}
+
+/**
+ * Multi-axis Rate Limiter for OTP code verification attempts.
+ */
+export function checkOtpVerifyRateLimit(
+  ip: string,
+  email: string
+): OtpRateLimitResult {
+  const cleanEmail = email.trim().toLowerCase();
+
+  if (cleanEmail) {
+    const emailRes = checkRateLimit(cleanEmail, 'otp_verify_email');
+    if (!emailRes.allowed) {
+      return {
+        allowed: false,
+        status: 429,
+        reason: `Too many verification attempts for this code. Request a new code in ${emailRes.retryAfter}s or sign in with password.`,
+        retryAfter: emailRes.retryAfter,
+        ruleEvaluated: 'email',
+        remaining: 0,
+      };
+    }
+  }
+
+  const ipRes = checkRateLimit(ip, 'otp_verify_ip');
+  if (!ipRes.allowed) {
+    return {
+      allowed: false,
+      status: 429,
+      reason: `Too many verification attempts from your network. Please wait ${ipRes.retryAfter}s.`,
+      retryAfter: ipRes.retryAfter,
+      ruleEvaluated: 'network',
+      remaining: 0,
+    };
+  }
+
+  return {
+    allowed: true,
+    status: 200,
+    ruleEvaluated: 'none',
+    ruleTriggered: 'none',
+    remaining: ipRes.remaining,
   };
 }
 

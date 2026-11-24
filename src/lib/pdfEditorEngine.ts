@@ -396,9 +396,9 @@ export async function exportModifiedPdfDocument({
         // Always whiteout the ORIGINAL position of the text so the original printed raster is covered
         page.drawRectangle({
           x: (item.originalPdfX ?? item.pdfX) - 1,
-          y: (item.originalPdfY ?? item.pdfY) - 2,
+          y: (item.originalPdfY ?? item.pdfY) - Math.max(2, item.pdfHeight * 0.22),
           width: item.pdfWidth + 3,
-          height: item.pdfHeight + 4,
+          height: item.pdfHeight * 1.15 + 2,
           color: rgb(1, 1, 1),
         });
 

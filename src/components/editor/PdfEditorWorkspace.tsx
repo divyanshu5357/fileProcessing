@@ -28,6 +28,9 @@ import { ExportPreviewModal } from '@/components/common/ExportPreviewModal';
 import { formatBytes } from '@/lib/utils';
 import { fileTransferService } from '@/lib/fileTransferService';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { useAuth } from '@/context/AuthContext';
+import { useGuestProductQuota } from '@/hooks/useGuestProductQuota';
+import { GuestQuotaBanner } from '@/components/common/GuestQuotaBanner';
 import {
   UploadCloud,
   Sparkles,
@@ -40,6 +43,10 @@ interface PdfEditorWorkspaceProps {
 }
 
 export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
+  const { openAuthModal } = useAuth();
+  const quota = useGuestProductQuota('pdf-editor');
+  const docSessionConsumedRef = useRef(false);
+
   // Document state
   const [file, setFile] = useState<File | null>(null);
   const [pdfBuffer, setPdfBuffer] = useState<ArrayBuffer | null>(null);
@@ -102,8 +109,12 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
       formFields: [...formFields],
       pages: [...pages],
     };
-    setHistory((prev) => [...prev.slice(0, historyIndex + 1), snapshot]);
-    setHistoryIndex((prev) => prev + 1);
+    const maxHist = quota.memoryProfile.maxUndoHistory;
+    setHistory((prev) => {
+      const next = [...prev.slice(0, historyIndex + 1), snapshot];
+      return next.length > maxHist ? next.slice(next.length - maxHist) : next;
+    });
+    setHistoryIndex(Math.min(historyIndex + 1, maxHist - 1));
   }, [
     textItemsByPage,
     addedTexts,
@@ -115,6 +126,7 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
     formFields,
     pages,
     historyIndex,
+    quota.memoryProfile.maxUndoHistory,
   ]);
 
   const handleUndo = () => {
@@ -659,9 +671,17 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
     saveSnapshot();
   };
 
+  const ensureEditorQuota = async (): Promise<boolean> => {
+    if (docSessionConsumedRef.current) return true;
+    const ok = await quota.consumeUse();
+    if (ok) docSessionConsumedRef.current = true;
+    return ok;
+  };
+
   // Apply Changes & Export
   const handleApplyChanges = async () => {
     if (!pdfBuffer || !file) return;
+    if (!(await ensureEditorQuota())) return;
 
     setIsSaving(true);
     try {
@@ -695,6 +715,32 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
 
   // Load PDF file into editor
   const handlePdfLoaded = async (uploadedFile: File) => {
+    const maxBytes = quota.memoryProfile.maxFileSizeMb * 1024 * 1024;
+    if (uploadedFile.size > maxBytes) {
+      alert(
+        `"${uploadedFile.name}" exceeds the ${quota.memoryProfile.maxFileSizeMb} MB ${quota.memoryProfile.label} limit. Sign in or upgrade for larger files.`
+      );
+      return;
+    }
+
+    if (!quota.allowed) {
+      openAuthModal(
+        undefined,
+        `Free guest IP limit reached (${quota.limit}/${quota.limit} edits) for PDF Editor. Sign in free for unlimited editing.`
+      );
+      return;
+    }
+
+    const ok = await quota.consumeUse();
+    if (!ok) return;
+    docSessionConsumedRef.current = true;
+
+    try {
+      await pdfDoc?.destroy?.();
+    } catch {
+      // ignore cleanup error
+    }
+
     setFile(uploadedFile);
     setIsLoading(true);
     setStatusMessage('Reading PDF structure and extracting text...');
@@ -849,6 +895,8 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
         onSaveSignature={handleSaveSignature}
       />
 
+      <GuestQuotaBanner quota={quota} productName="PDF Editor" />
+
       {/* When no PDF is loaded: Display Upload Hero Dropzone */}
       {!pdfBuffer ? (
         <div className="flex-1 flex flex-col items-center justify-center p-6 max-w-3xl mx-auto">
@@ -958,9 +1006,9 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
               </span>
               <span className="text-slate-500 hidden md:inline">
                 {pendingImage && '— Click anywhere on the PDF page to place the selected image.'}
-                {!pendingImage && activeMode === 'select' && '— Click any object to select, move, resize (8 handles) or rotate.'}
+                {!pendingImage && activeMode === 'select' && '— Click to select, drag any row or object freely anywhere with dotted alignment guides, or double-click text to edit.'}
                 {activeMode === 'text' && '— Click anywhere on the page to insert a new multiline text box.'}
-                {activeMode === 'editText' && '— Click existing PDF text to edit directly with auto-detected font family and size.'}
+                {activeMode === 'editText' && '— Click existing PDF text to edit directly, or drag any row anywhere with dotted alignment guides.'}
                 {activeMode === 'whiteout' && '— Drag a rectangle over any content to erase or redact.'}
                 {activeMode === 'annotate' && '— Drag over text or areas to highlight in yellow.'}
                 {activeMode === 'shapes' && '— Drag to draw customizable rectangles and shapes.'}
@@ -987,9 +1035,17 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
               <button
                 type="button"
                 onClick={() => {
+                  try {
+                    pdfDoc?.destroy?.();
+                  } catch {
+                    // ignore
+                  }
+                  docSessionConsumedRef.current = false;
                   setPdfBuffer(null);
                   setPdfDoc(null);
                   setFile(null);
+                  setHistory([]);
+                  setHistoryIndex(-1);
                   setSelectedObject(null);
                   setPendingImage(null);
                 }}
@@ -1013,6 +1069,7 @@ export function PdfEditorWorkspace({ onBackToTools }: PdfEditorWorkspaceProps) {
                     pdfData={pdfBuffer}
                     pdfDoc={pdfDoc}
                     scale={zoomScale}
+                    maxDpr={quota.memoryProfile.maxCanvasDpr}
                     activeMode={activeMode}
                     pendingImage={pendingImage}
                     onClearPendingImage={() => {

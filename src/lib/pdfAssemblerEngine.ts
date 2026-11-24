@@ -24,7 +24,8 @@ export function generateAssemblerId(prefix: string = 'id'): string {
  */
 export async function loadFileToAssembler(
   file: File,
-  onProgress?: (progress: number, message: string) => void
+  onProgress?: (progress: number, message: string) => void,
+  thumbMaxScale: number = 0.28
 ): Promise<AssemblerDocument> {
   const fileId = generateAssemblerId('src');
   const arrayBuffer = await file.arrayBuffer();
@@ -52,45 +53,55 @@ export async function loadFileToAssembler(
 
     const pages: AssemblerPage[] = [];
 
-    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-      if (onProgress) {
-        const percent = 20 + Math.round((pageNum / numPages) * 75);
-        onProgress(percent, `Rendering thumbnail for page ${pageNum} of ${numPages}...`);
+    try {
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        if (onProgress) {
+          const percent = 20 + Math.round((pageNum / numPages) * 75);
+          onProgress(percent, `Rendering thumbnail for page ${pageNum} of ${numPages}...`);
+        }
+
+        const page = await pdfDoc.getPage(pageNum);
+        const rawViewport = page.getViewport({ scale: 1.0 });
+        try {
+          // Scale down proportionally for memory-efficient thumbnail rendering
+          const thumbScale = Math.min(thumbMaxScale, 160 / rawViewport.width);
+          const viewport = page.getViewport({ scale: thumbScale });
+
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.floor(viewport.width));
+          canvas.height = Math.max(1, Math.floor(viewport.height));
+          const ctx = canvas.getContext('2d');
+
+          let thumbnailUrl = '';
+          if (ctx) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            await page.render({
+              canvasContext: ctx,
+              viewport,
+            }).promise;
+            thumbnailUrl = canvas.toDataURL('image/jpeg', 0.72);
+          }
+          canvas.width = 0;
+          canvas.height = 0;
+
+          pages.push({
+            id: generateAssemblerId('page'),
+            sourceDocId: fileId,
+            sourcePageIndex: pageNum - 1, // 0-based index
+            sourceType: 'pdf',
+            rotation: 0,
+            width: rawViewport.width,
+            height: rawViewport.height,
+            thumbnailUrl,
+            selected: false,
+          });
+        } finally {
+          page.cleanup?.();
+        }
       }
-
-      const page = await pdfDoc.getPage(pageNum);
-      // Scale down to ~160px width for snappy thumbnail rendering
-      const rawViewport = page.getViewport({ scale: 1.0 });
-      const thumbScale = Math.min(0.35, 180 / rawViewport.width);
-      const viewport = page.getViewport({ scale: thumbScale });
-
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const ctx = canvas.getContext('2d');
-
-      let thumbnailUrl = '';
-      if (ctx) {
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        await page.render({
-          canvasContext: ctx,
-          viewport,
-        }).promise;
-        thumbnailUrl = canvas.toDataURL('image/jpeg', 0.8);
-      }
-
-      pages.push({
-        id: generateAssemblerId('page'),
-        sourceDocId: fileId,
-        sourcePageIndex: pageNum - 1, // 0-based index
-        sourceType: 'pdf',
-        rotation: 0,
-        width: rawViewport.width,
-        height: rawViewport.height,
-        thumbnailUrl,
-        selected: false,
-      });
+    } finally {
+      await pdfDoc.destroy?.();
     }
 
     if (onProgress) onProgress(100, 'Document loaded successfully');

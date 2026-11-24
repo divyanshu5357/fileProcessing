@@ -67,9 +67,14 @@ import {
 import { PASSPORT_PRESETS } from '@/lib/passportTemplates';
 import { ExportPreviewModal } from '@/components/common/ExportPreviewModal';
 import { fileTransferService } from '@/lib/fileTransferService';
+import { useAuth } from '@/context/AuthContext';
+import { useGuestProductQuota } from '@/hooks/useGuestProductQuota';
+import { GuestQuotaBanner } from '@/components/common/GuestQuotaBanner';
 
 export default function ImageToolsPage() {
   const router = useRouter();
+  const { openAuthModal } = useAuth();
+  const quota = useGuestProductQuota('image-tools');
   // App category & tool state
   const [activeCategory, setActiveCategory] = useState<MainCategory>('image-tools');
   const [selectedPdfTool, setSelectedPdfTool] = useState<PdfToolId | null>(null);
@@ -192,14 +197,61 @@ export default function ImageToolsPage() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const updateProcessedItem = useCallback(
+    (targetId: string, getUpdates: (item: ImageItem) => Partial<ImageItem>) => {
+      setQueue((prev) =>
+        prev.map((item) => {
+          if (item.id !== targetId) return item;
+          if (item.processedUrl) {
+            URL.revokeObjectURL(item.processedUrl);
+          }
+          return { ...item, ...getUpdates(item) };
+        })
+      );
+    },
+    []
+  );
+
   // Helper to ingest files into queue
   const handleAddFiles = useCallback(
     async (files: File[]) => {
       if (!files || files.length === 0) return;
 
+      if (!quota.allowed) {
+        openAuthModal(
+          undefined,
+          `Free guest IP limit reached (${quota.limit}/${quota.limit} edits) for Image Studio. Sign in free for unlimited editing.`
+        );
+        return;
+      }
+
+      const maxBytes = quota.memoryProfile.maxFileSizeMb * 1024 * 1024;
+      const validFiles = files.filter((f) => {
+        if (f.size > maxBytes) {
+          addToast(
+            'File Too Large for Current Plan',
+            `${f.name} exceeds ${quota.memoryProfile.maxFileSizeMb} MB (${quota.memoryProfile.label}).`,
+            'error'
+          );
+          return false;
+        }
+        return true;
+      });
+
+      const remainingSlots = Math.max(0, quota.memoryProfile.maxBatchFiles - queue.length);
+      const accepted = validFiles.slice(0, remainingSlots);
+      if (validFiles.length > remainingSlots) {
+        addToast(
+          'Batch Limit Reached',
+          `${quota.memoryProfile.label} limits queues to ${quota.memoryProfile.maxBatchFiles} images to conserve memory.`,
+          'error'
+        );
+      }
+      if (accepted.length === 0) return;
+
       const newItems: ImageItem[] = [];
 
-      for (const file of files) {
+      for (const file of accepted) {
         const url = URL.createObjectURL(file);
         try {
           const img = await loadImage(url);
@@ -242,7 +294,7 @@ export default function ImageToolsPage() {
         );
       }
     },
-    [activeId, addToast]
+    [activeId, addToast, openAuthModal, quota.allowed, quota.limit, quota.memoryProfile.label, quota.memoryProfile.maxBatchFiles, quota.memoryProfile.maxFileSizeMb, queue.length]
   );
 
   // Ingest pending file from Workspace
@@ -281,24 +333,18 @@ export default function ImageToolsPage() {
   // Single Process Handlers
   const handleApplyCompress = async () => {
     if (!activeImage) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await compressImage(activeImage.file, compressSettings);
       const processedUrl = URL.createObjectURL(res.blob);
-      setQueue((prev) =>
-        prev.map((item) =>
-          item.id === activeImage.id
-            ? {
-                ...item,
-                processedBlob: res.blob,
-                processedUrl,
-                processedSize: res.size,
-                processedWidth: res.width,
-                processedHeight: res.height,
-              }
-            : item
-        )
-      );
+      updateProcessedItem(activeImage.id, () => ({
+        processedBlob: res.blob,
+        processedUrl,
+        processedSize: res.size,
+        processedWidth: res.width,
+        processedHeight: res.height,
+      }));
       addToast(
         'Compression Complete',
         `${formatBytes(activeImage.originalSize)} → ${formatBytes(res.size)}`
@@ -312,24 +358,18 @@ export default function ImageToolsPage() {
 
   const handleApplyResize = async () => {
     if (!activeImage) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await resizeImage(activeImage.file, resizeSettings);
       const processedUrl = URL.createObjectURL(res.blob);
-      setQueue((prev) =>
-        prev.map((item) =>
-          item.id === activeImage.id
-            ? {
-                ...item,
-                processedBlob: res.blob,
-                processedUrl,
-                processedSize: res.size,
-                processedWidth: res.width,
-                processedHeight: res.height,
-              }
-            : item
-        )
-      );
+      updateProcessedItem(activeImage.id, () => ({
+        processedBlob: res.blob,
+        processedUrl,
+        processedSize: res.size,
+        processedWidth: res.width,
+        processedHeight: res.height,
+      }));
       addToast(
         'Resized Successfully',
         `Scaled to ${res.width} × ${res.height} px`
@@ -343,24 +383,18 @@ export default function ImageToolsPage() {
 
   const handleApplyConvert = async () => {
     if (!activeImage) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await convertImage(activeImage.file, convertSettings);
       const processedUrl = URL.createObjectURL(res.blob);
-      setQueue((prev) =>
-        prev.map((item) =>
-          item.id === activeImage.id
-            ? {
-                ...item,
-                processedBlob: res.blob,
-                processedUrl,
-                processedSize: res.size,
-                processedWidth: res.width,
-                processedHeight: res.height,
-              }
-            : item
-        )
-      );
+      updateProcessedItem(activeImage.id, () => ({
+        processedBlob: res.blob,
+        processedUrl,
+        processedSize: res.size,
+        processedWidth: res.width,
+        processedHeight: res.height,
+      }));
       addToast(
         'Format Converted',
         `Converted to ${convertSettings.format}`
@@ -374,24 +408,18 @@ export default function ImageToolsPage() {
 
   const handleApplyCrop = async () => {
     if (!activeImage) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await cropImage(activeImage.file, cropSettings);
       const processedUrl = URL.createObjectURL(res.blob);
-      setQueue((prev) =>
-        prev.map((item) =>
-          item.id === activeImage.id
-            ? {
-                ...item,
-                processedBlob: res.blob,
-                processedUrl,
-                processedSize: res.size,
-                processedWidth: res.width,
-                processedHeight: res.height,
-              }
-            : item
-        )
-      );
+      updateProcessedItem(activeImage.id, () => ({
+        processedBlob: res.blob,
+        processedUrl,
+        processedSize: res.size,
+        processedWidth: res.width,
+        processedHeight: res.height,
+      }));
       addToast('Cropped Successfully', `Cropped to ${res.width} × ${res.height} px`);
     } catch (err: any) {
       addToast('Crop Failed', err.message, 'error');
@@ -402,24 +430,18 @@ export default function ImageToolsPage() {
 
   const handleApplyRotate = async () => {
     if (!activeImage) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await rotateFlipImage(activeImage.file, rotateSettings);
       const processedUrl = URL.createObjectURL(res.blob);
-      setQueue((prev) =>
-        prev.map((item) =>
-          item.id === activeImage.id
-            ? {
-                ...item,
-                processedBlob: res.blob,
-                processedUrl,
-                processedSize: res.size,
-                processedWidth: res.width,
-                processedHeight: res.height,
-              }
-            : item
-        )
-      );
+      updateProcessedItem(activeImage.id, () => ({
+        processedBlob: res.blob,
+        processedUrl,
+        processedSize: res.size,
+        processedWidth: res.width,
+        processedHeight: res.height,
+      }));
       addToast('Rotation Applied', `Transformed orientation`);
     } catch (err: any) {
       addToast('Rotation Failed', err.message, 'error');
@@ -430,25 +452,19 @@ export default function ImageToolsPage() {
 
   const handleStripMetadata = async () => {
     if (!activeImage) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const img = await loadImage(activeImage.url);
       const blob = await stripImageMetadata(img, activeImage.format || 'image/jpeg');
       const processedUrl = URL.createObjectURL(blob);
-      setQueue((prev) =>
-        prev.map((item) =>
-          item.id === activeImage.id
-            ? {
-                ...item,
-                processedBlob: blob,
-                processedUrl,
-                processedSize: blob.size,
-                metadata: null,
-                hasExif: false,
-              }
-            : item
-        )
-      );
+      updateProcessedItem(activeImage.id, () => ({
+        processedBlob: blob,
+        processedUrl,
+        processedSize: blob.size,
+        metadata: null,
+        hasExif: false,
+      }));
       addToast('Metadata Sanitized', '100% EXIF-free byte output generated');
     } catch (err: any) {
       addToast('Sanitization Failed', err.message, 'error');
@@ -459,24 +475,18 @@ export default function ImageToolsPage() {
 
   const handleApplyBeautify = async () => {
     if (!activeImage) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await beautifyScreenshot(activeImage.file, beautifySettings);
       const processedUrl = URL.createObjectURL(res.blob);
-      setQueue((prev) =>
-        prev.map((item) =>
-          item.id === activeImage.id
-            ? {
-                ...item,
-                processedBlob: res.blob,
-                processedUrl,
-                processedSize: res.size,
-                processedWidth: res.width,
-                processedHeight: res.height,
-              }
-            : item
-        )
-      );
+      updateProcessedItem(activeImage.id, () => ({
+        processedBlob: res.blob,
+        processedUrl,
+        processedSize: res.size,
+        processedWidth: res.width,
+        processedHeight: res.height,
+      }));
       addToast('Screenshot Beautified', 'Rendered modern framed mockup');
     } catch (err: any) {
       addToast('Beautify Failed', err.message, 'error');
@@ -487,24 +497,18 @@ export default function ImageToolsPage() {
 
   const handleApplyPassport = async () => {
     if (!activeImage) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const res = await generatePassportPhoto(activeImage.file, passportSettings);
       const processedUrl = URL.createObjectURL(res.blob);
-      setQueue((prev) =>
-        prev.map((item) =>
-          item.id === activeImage.id
-            ? {
-                ...item,
-                processedBlob: res.blob,
-                processedUrl,
-                processedSize: res.size,
-                processedWidth: res.width,
-                processedHeight: res.height,
-              }
-            : item
-        )
-      );
+      updateProcessedItem(activeImage.id, () => ({
+        processedBlob: res.blob,
+        processedUrl,
+        processedSize: res.size,
+        processedWidth: res.width,
+        processedHeight: res.height,
+      }));
       const preset = PASSPORT_PRESETS.find((p) => p.id === passportSettings.presetId);
       addToast(
         'Passport Photo Ready',
@@ -519,6 +523,8 @@ export default function ImageToolsPage() {
 
   // Batch actions
   const handleBatchCompress = async (quality: number) => {
+    if (queue.length === 0) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     let count = 0;
     try {
@@ -530,20 +536,13 @@ export default function ImageToolsPage() {
           format: 'original',
         });
         const processedUrl = URL.createObjectURL(res.blob);
-        setQueue((prev) =>
-          prev.map((q) =>
-            q.id === item.id
-              ? {
-                  ...q,
-                  processedBlob: res.blob,
-                  processedUrl,
-                  processedSize: res.size,
-                  processedWidth: res.width,
-                  processedHeight: res.height,
-                }
-              : q
-          )
-        );
+        updateProcessedItem(item.id, () => ({
+          processedBlob: res.blob,
+          processedUrl,
+          processedSize: res.size,
+          processedWidth: res.width,
+          processedHeight: res.height,
+        }));
         count++;
       }
       addToast('Batch Compression Complete', `Processed all ${count} images`);
@@ -555,6 +554,8 @@ export default function ImageToolsPage() {
   };
 
   const handleBatchConvert = async (format: string) => {
+    if (queue.length === 0) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     let count = 0;
     try {
@@ -565,20 +566,13 @@ export default function ImageToolsPage() {
           bgColor: '#FFFFFF',
         });
         const processedUrl = URL.createObjectURL(res.blob);
-        setQueue((prev) =>
-          prev.map((q) =>
-            q.id === item.id
-              ? {
-                  ...q,
-                  processedBlob: res.blob,
-                  processedUrl,
-                  processedSize: res.size,
-                  processedWidth: res.width,
-                  processedHeight: res.height,
-                }
-              : q
-          )
-        );
+        updateProcessedItem(item.id, () => ({
+          processedBlob: res.blob,
+          processedUrl,
+          processedSize: res.size,
+          processedWidth: res.width,
+          processedHeight: res.height,
+        }));
         count++;
       }
       addToast('Batch Conversion Complete', `Converted all ${count} images to ${format}`);
@@ -590,6 +584,8 @@ export default function ImageToolsPage() {
   };
 
   const handleBatchResize = async (maxWidth: number) => {
+    if (queue.length === 0) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     let count = 0;
     try {
@@ -611,20 +607,13 @@ export default function ImageToolsPage() {
           smoothing: 'high',
         });
         const processedUrl = URL.createObjectURL(res.blob);
-        setQueue((prev) =>
-          prev.map((q) =>
-            q.id === item.id
-              ? {
-                  ...q,
-                  processedBlob: res.blob,
-                  processedUrl,
-                  processedSize: res.size,
-                  processedWidth: res.width,
-                  processedHeight: res.height,
-                }
-              : q
-          )
-        );
+        updateProcessedItem(item.id, () => ({
+          processedBlob: res.blob,
+          processedUrl,
+          processedSize: res.size,
+          processedWidth: res.width,
+          processedHeight: res.height,
+        }));
         count++;
       }
       addToast('Batch Resize Complete', `Scaled all ${count} images`);
@@ -636,6 +625,8 @@ export default function ImageToolsPage() {
   };
 
   const handleBatchStripMetadata = async () => {
+    if (queue.length === 0) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     let count = 0;
     try {
@@ -643,20 +634,13 @@ export default function ImageToolsPage() {
         const img = await loadImage(item.url);
         const blob = await stripImageMetadata(img, item.format || 'image/jpeg');
         const processedUrl = URL.createObjectURL(blob);
-        setQueue((prev) =>
-          prev.map((q) =>
-            q.id === item.id
-              ? {
-                  ...q,
-                  processedBlob: blob,
-                  processedUrl,
-                  processedSize: blob.size,
-                  metadata: null,
-                  hasExif: false,
-                }
-              : q
-          )
-        );
+        updateProcessedItem(item.id, () => ({
+          processedBlob: blob,
+          processedUrl,
+          processedSize: blob.size,
+          metadata: null,
+          hasExif: false,
+        }));
         count++;
       }
       addToast('Batch EXIF Stripping Complete', `Sanitized all ${count} images`);
@@ -725,6 +709,7 @@ export default function ImageToolsPage() {
 
   const handleExportPdf = async () => {
     if (!activeImage) return;
+    if (!(await quota.consumeUse())) return;
     setIsProcessing(true);
     try {
       const blob = activeImage.processedBlob || activeImage.file;
@@ -896,6 +881,7 @@ export default function ImageToolsPage() {
       {/* 4. IMAGE TOOLS WORKBENCH (PRESERVED 100%) */}
       {activeCategory === 'image-tools' && (
         <>
+          <GuestQuotaBanner quota={quota} productName="Image Studio" />
           {queue.length === 0 ? (
             <main className="flex-1 flex flex-col items-center justify-center p-4">
               <Dropzone

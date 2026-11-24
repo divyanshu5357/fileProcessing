@@ -258,4 +258,5 @@ export interface AlignmentGuide {
   start: number;    // Start along perpendicular axis
   end: number;      // End along perpendicular axis
   label?: string;
+  variant?: 'rail' | 'match'; // 'rail' extends dotted guides across page; 'match' highlights straight alignment
 }

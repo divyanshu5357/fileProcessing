@@ -86,7 +86,7 @@ export function CapabilitiesSection() {
             href="/pdf"
             className="inline-flex items-center gap-2 text-sm font-bold text-[#3B50B2] dark:text-[#93A5F5] hover:underline shrink-0 group"
           >
-            <span>View all 24 tools</span>
+            <span>View all 28 tools</span>
             <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
           </Link>
         </div>

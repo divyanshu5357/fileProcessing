@@ -25,6 +25,14 @@ export interface UserProfile {
   avatarUrl?: string;
   plan: PlanTier;
   role?: 'admin' | 'support' | 'user';
+  hasPassword?: boolean;
+}
+
+interface AuthResult {
+  success: boolean;
+  message?: string;
+  retryAfter?: number;
+  needsPasswordSetup?: boolean;
 }
 
 interface AuthContextType {
@@ -35,12 +43,16 @@ interface AuthContextType {
   storageUsage: StorageQuota;
   isAuthModalOpen: boolean;
   authModalInitialEmail?: string;
+  authModalNotice?: string;
   setProcessingMode: (mode: ProcessingMode) => void;
-  openAuthModal: (email?: string) => void;
+  openAuthModal: (email?: string, notice?: string) => void;
   closeAuthModal: () => void;
   signInWithGoogle: (callbackURL?: string) => Promise<void>;
-  sendEmailOtp: (email: string) => Promise<{ success: boolean; message?: string; retryAfter?: number }>;
-  verifyEmailOtp: (email: string, otp: string) => Promise<{ success: boolean; message?: string }>;
+  sendEmailOtp: (email: string) => Promise<AuthResult>;
+  verifyEmailOtp: (email: string, otp: string) => Promise<AuthResult>;
+  signInWithPassword: (email: string, password: string) => Promise<AuthResult>;
+  signUpWithPassword: (name: string, email: string, password: string) => Promise<AuthResult>;
+  setInitialPassword: (newPassword: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
   refreshStorageUsage: () => Promise<void>;
   updateUserPlan: (newPlan: PlanTier) => void;
@@ -68,9 +80,12 @@ const defaultContext: AuthContextType = {
   setProcessingMode: () => {},
   openAuthModal: () => {},
   closeAuthModal: () => {},
-  signInWithGoogle: async (callbackURL?: string) => {},
+  signInWithGoogle: async () => {},
   sendEmailOtp: async () => ({ success: false }),
   verifyEmailOtp: async () => ({ success: false }),
+  signInWithPassword: async () => ({ success: false }),
+  signUpWithPassword: async () => ({ success: false }),
+  setInitialPassword: async () => ({ success: false }),
   signOut: async () => {},
   refreshStorageUsage: async () => {},
   updateUserPlan: () => {},
@@ -126,6 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [storageUsage, setStorageUsage] = useState<StorageQuota>(defaultStorageUsage);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalInitialEmail, setAuthModalInitialEmail] = useState<string | undefined>(undefined);
+  const [authModalNotice, setAuthModalNotice] = useState<string | undefined>(undefined);
   const hasInitializedRef = useRef(false);
 
   // Restore stored session and mode on mount
@@ -177,12 +193,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Defer authoritative server-verified session sync so it does not block initial load or TBT
         const verifyServerSession = async () => {
+          const curStart = parseInt(localStorage.getItem(SESSION_START_KEY) || '0', 10);
+          const curLast = parseInt(localStorage.getItem(LAST_ACTIVE_KEY) || '0', 10);
+          const curNow = Date.now();
+          const curExpired =
+            (curStart > 0 && curNow - curStart > SESSION_MAX_AGE_MS) ||
+            (curLast > 0 && curNow - curLast > SESSION_IDLE_TIMEOUT_MS);
+
           // 1. Authoritative server-verified session sync via /api/auth/me
           try {
             const meRes = await fetch('/api/auth/me');
             if (meRes.ok) {
               const meData = await meRes.json();
-              if (meData?.authenticated && meData?.user && !isStaleOrTestAccount(meData.user) && !isExpired) {
+              if (meData?.authenticated && meData?.user && !isStaleOrTestAccount(meData.user) && !curExpired) {
                 const u = meData.user;
                 const verifiedUser: UserProfile = {
                   id: u.id,
@@ -191,6 +214,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   avatarUrl: u.avatarUrl || undefined,
                   plan: u.plan || 'Free',
                   role: u.role || 'user',
+                  hasPassword: Boolean(u.hasPassword),
                 };
                 setUser(verifiedUser);
                 localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(verifiedUser));
@@ -199,44 +223,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
                 localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
               } else {
-                // Server says unauthenticated or account is stale/expired -> wipe state
                 setUser(null);
                 purgeLocalStorage();
-              }
-            } else {
-              setUser((prev) => {
-                if (isStaleOrTestAccount(prev)) {
-                  purgeLocalStorage();
-                  return null;
+                if (meData?.authenticated && curExpired) {
+                  await authClient.signOut().catch(() => {});
                 }
-                return prev;
-              });
+              }
             }
           } catch (meErr) {
             console.debug('Failed to fetch /api/auth/me', meErr);
           }
 
-          // 2. Also sync with Better Auth client session
+          // 2. Sync Better Auth client session if needed
           try {
             const sessionRes = await authClient.getSession();
             if (sessionRes?.data?.user) {
-              if (isStaleOrTestAccount(sessionRes.data.user) || isExpired) {
+              if (isStaleOrTestAccount(sessionRes.data.user) || curExpired) {
                 await authClient.signOut().catch(() => {});
                 setUser(null);
                 purgeLocalStorage();
               } else {
                 const u = sessionRes.data.user;
-                const serverRole = (u as any).role || 'user';
-                const realUser: UserProfile = {
-                  id: u.id,
-                  name: u.name || u.email?.split('@')[0] || 'User',
-                  email: u.email,
-                  avatarUrl: u.image || undefined,
-                  plan: (u as any).plan || 'Free',
-                  role: serverRole,
-                };
-                setUser(realUser);
-                localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(realUser));
+                setUser((prev) => {
+                  const realUser: UserProfile = {
+                    id: u.id,
+                    name: u.name || u.email?.split('@')[0] || 'User',
+                    email: u.email,
+                    avatarUrl: u.image || undefined,
+                    plan: prev?.plan || (u as any).plan || 'Free',
+                    role: prev?.role || (u as any).role || 'user',
+                    hasPassword: prev?.hasPassword,
+                  };
+                  localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(realUser));
+                  return realUser;
+                });
               }
             }
           } catch (sessErr) {
@@ -267,14 +287,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
-  const openAuthModal = useCallback((email?: string) => {
+  const openAuthModal = useCallback((email?: string, notice?: string) => {
     setAuthModalInitialEmail(email);
+    setAuthModalNotice(notice);
     setIsAuthModalOpen(true);
   }, []);
 
   const closeAuthModal = useCallback(() => {
     setIsAuthModalOpen(false);
     setAuthModalInitialEmail(undefined);
+    setAuthModalNotice(undefined);
   }, []);
 
   const signInWithGoogle = useCallback(async (callbackURL: string = '/workspace') => {
@@ -363,23 +385,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (res?.data?.user) {
         const u = res.data.user;
-        const resEmail = (u.email || uEmail).toLowerCase().trim();
-        const role = ((u as any).role || 'user');
+        let resolvedRole = ((u as any).role || 'user');
+        let resolvedPlan: PlanTier = 'Free';
+        let hasPassword = false;
+
+        try {
+          const meRes = await fetch('/api/auth/me');
+          if (meRes.ok) {
+            const meData = await meRes.json();
+            if (meData?.user) {
+              resolvedRole = meData.user.role || resolvedRole;
+              resolvedPlan = meData.user.plan || 'Free';
+              hasPassword = Boolean(meData.user.hasPassword);
+            }
+          }
+        } catch {}
+
         const profile: UserProfile = {
           id: u.id,
           name: u.name || email.split('@')[0],
           email: u.email || email,
           avatarUrl: u.image,
-          plan: 'Free',
-          role,
+          plan: resolvedPlan,
+          role: resolvedRole,
+          hasPassword,
         };
         setUser(profile);
         localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(profile));
         localStorage.setItem(SESSION_START_KEY, Date.now().toString());
         localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
         setIsLoading(false);
-        closeAuthModal();
-        return { success: true };
+
+        if (hasPassword) {
+          closeAuthModal();
+        }
+        return { success: true, needsPasswordSetup: !hasPassword };
       }
     } catch (e: any) {
       setIsLoading(false);
@@ -395,6 +435,155 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       message: 'Invalid or expired verification code.',
     };
   }, [closeAuthModal]);
+
+  const signInWithPassword = useCallback(
+    async (email: string, password: string): Promise<AuthResult> => {
+      setIsLoading(true);
+      const uEmail = email.toLowerCase().trim();
+      try {
+        const res = await authClient.signIn.email({
+          email: uEmail,
+          password,
+        });
+
+        if (res?.error) {
+          setIsLoading(false);
+          return {
+            success: false,
+            message: res.error.message || 'Invalid email or password.',
+          };
+        }
+
+        if (res?.data?.user) {
+          const u = res.data.user;
+          let resolvedRole = ((u as any).role || 'user');
+          let resolvedPlan: PlanTier = 'Free';
+          try {
+            const meRes = await fetch('/api/auth/me');
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              if (meData?.user) {
+                resolvedRole = meData.user.role || resolvedRole;
+                resolvedPlan = meData.user.plan || 'Free';
+              }
+            }
+          } catch {}
+
+          const profile: UserProfile = {
+            id: u.id,
+            name: u.name || uEmail.split('@')[0],
+            email: u.email || uEmail,
+            avatarUrl: u.image || undefined,
+            plan: resolvedPlan,
+            role: resolvedRole,
+            hasPassword: true,
+          };
+          setUser(profile);
+          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(profile));
+          localStorage.setItem(SESSION_START_KEY, Date.now().toString());
+          localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+          setIsLoading(false);
+          closeAuthModal();
+          return { success: true };
+        }
+      } catch (err: any) {
+        setIsLoading(false);
+        return {
+          success: false,
+          message: err?.message || 'Password sign-in failed.',
+        };
+      }
+      setIsLoading(false);
+      return { success: false, message: 'Invalid email or password.' };
+    },
+    [closeAuthModal]
+  );
+
+  const signUpWithPassword = useCallback(
+    async (name: string, email: string, password: string): Promise<AuthResult> => {
+      setIsLoading(true);
+      const uEmail = email.toLowerCase().trim();
+      const cleanName = name.trim() || uEmail.split('@')[0];
+      try {
+        const res = await authClient.signUp.email({
+          name: cleanName,
+          email: uEmail,
+          password,
+        });
+
+        if (res?.error) {
+          setIsLoading(false);
+          return {
+            success: false,
+            message: res.error.message || 'Could not create account.',
+          };
+        }
+
+        if (res?.data?.user) {
+          const u = res.data.user;
+          const profile: UserProfile = {
+            id: u.id,
+            name: u.name || cleanName,
+            email: u.email || uEmail,
+            avatarUrl: u.image || undefined,
+            plan: 'Free',
+            role: ((u as any).role || 'user'),
+            hasPassword: true,
+          };
+          setUser(profile);
+          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(profile));
+          localStorage.setItem(SESSION_START_KEY, Date.now().toString());
+          localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+          setIsLoading(false);
+          closeAuthModal();
+          return { success: true };
+        }
+      } catch (err: any) {
+        setIsLoading(false);
+        return {
+          success: false,
+          message: err?.message || 'Registration failed.',
+        };
+      }
+      setIsLoading(false);
+      return { success: false, message: 'Registration failed.' };
+    },
+    [closeAuthModal]
+  );
+
+  const setInitialPassword = useCallback(async (newPassword: string): Promise<AuthResult> => {
+    try {
+      const response = await fetch('/api/auth/set-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        return {
+          success: false,
+          message: data?.message || 'Failed to save password.',
+          retryAfter: data?.retryAfter,
+        };
+      }
+
+      setUser((prev) => {
+        if (!prev) return null;
+        const updated = { ...prev, hasPassword: true };
+        try {
+          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      return { success: true, message: data?.message };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err?.message || 'Failed to save password.',
+      };
+    }
+  }, []);
 
   const signOut = useCallback(async () => {
     try {
@@ -539,12 +728,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         storageUsage,
         isAuthModalOpen,
         authModalInitialEmail,
+        authModalNotice,
         setProcessingMode,
         openAuthModal,
         closeAuthModal,
         signInWithGoogle,
         sendEmailOtp,
         verifyEmailOtp,
+        signInWithPassword,
+        signUpWithPassword,
+        setInitialPassword,
         signOut,
         refreshStorageUsage,
         updateUserPlan,

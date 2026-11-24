@@ -41,6 +41,8 @@ import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/Button';
 import { Switch } from '@/components/ui/Switch';
 import { useAuth } from '@/context/AuthContext';
+import { useGuestProductQuota } from '@/hooks/useGuestProductQuota';
+import { GuestQuotaBanner } from '@/components/common/GuestQuotaBanner';
 import { fileManagerService } from '@/lib/fileManagerService';
 import {
   ScanPage,
@@ -148,9 +150,14 @@ function AccordionSection({
 export default function ScanStudioPage() {
   const router = useRouter();
   const { isAuthenticated, storageUsage, openAuthModal, refreshStorageUsage } = useAuth();
+  const quota = useGuestProductQuota('scan-studio');
 
   // Document pages state
   const [pages, setPages] = useState<ScanPage[]>([]);
+  const pagesRef = useRef<ScanPage[]>([]);
+  useEffect(() => {
+    pagesRef.current = pages;
+  }, [pages]);
   const [activePageIndex, setActivePageIndex] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingText, setLoadingText] = useState<string>('');
@@ -403,7 +410,35 @@ export default function ScanStudioPage() {
   // Load uploaded files
   const handleUploadFiles = async (files: File[]) => {
     if (!files || files.length === 0) return;
-    const first = files[0];
+
+    if (!quota.allowed) {
+      openAuthModal(
+        undefined,
+        `Free guest IP limit reached (${quota.limit}/${quota.limit} scans). Sign in free for unlimited scanning.`
+      );
+      return;
+    }
+
+    const maxBytes = quota.memoryProfile.maxFileSizeMb * 1024 * 1024;
+    const validFiles = files.filter((f) => {
+      if (f.size > maxBytes) {
+        alert(
+          `"${f.name}" exceeds the ${quota.memoryProfile.maxFileSizeMb} MB ${quota.memoryProfile.label} limit.`
+        );
+        return false;
+      }
+      return true;
+    });
+
+    const accepted = validFiles.slice(0, quota.memoryProfile.maxBatchFiles);
+    if (accepted.length < validFiles.length) {
+      alert(
+        `${quota.memoryProfile.label} processes up to ${quota.memoryProfile.maxBatchFiles} files per upload batch to keep RAM low.`
+      );
+    }
+    if (accepted.length === 0) return;
+
+    const first = accepted[0];
     if (first) {
       const rawName = first.name.replace(/\.[^/.]+$/, '');
       setBaseDocName(rawName || 'scanned_document');
@@ -412,7 +447,11 @@ export default function ScanStudioPage() {
     setIsLoading(true);
     setLoadingText('Parsing documents into pages...');
     try {
-      const loadedPages = await loadFilesToScanPages(files, (msg) => setLoadingText(msg));
+      const loadedPages = await loadFilesToScanPages(
+        accepted,
+        (msg) => setLoadingText(msg),
+        quota.memoryProfile.scanRenderScale
+      );
       setPages((prev) => {
         const combined = [...prev, ...loadedPages];
         return combined.map((p, idx) => ({ ...p, pageNumber: idx + 1 }));
@@ -427,6 +466,17 @@ export default function ScanStudioPage() {
       setLoadingText('');
     }
   };
+
+  useEffect(() => {
+    return () => {
+      pagesRef.current.forEach((p) => {
+        if (p.originalCanvas) {
+          p.originalCanvas.width = 0;
+          p.originalCanvas.height = 0;
+        }
+      });
+    };
+  }, []);
 
   // Automatically load pending file from Workspace
   useEffect(() => {
@@ -451,14 +501,21 @@ export default function ScanStudioPage() {
   };
 
   const handleDeletePage = (index: number) => {
+    const targetCanvas = pagesRef.current[index]?.originalCanvas;
     if (pages.length <= 1) {
       setPages([]);
       setActivePageIndex(0);
-      return;
+    } else {
+      const newPages = pages
+        .filter((_, i) => i !== index)
+        .map((p, i) => ({ ...p, pageNumber: i + 1 }));
+      setPages(newPages);
+      setActivePageIndex(Math.min(activePageIndex, newPages.length - 1));
     }
-    const newPages = pages.filter((_, i) => i !== index).map((p, i) => ({ ...p, pageNumber: i + 1 }));
-    setPages(newPages);
-    setActivePageIndex(Math.min(activePageIndex, newPages.length - 1));
+    if (targetCanvas) {
+      targetCanvas.width = 0;
+      targetCanvas.height = 0;
+    }
   };
 
   const handleRotatePage = (index: number) => {
@@ -535,6 +592,7 @@ export default function ScanStudioPage() {
   // Generate and open preview modal before download
   const handleGenerateScannedPdf = async () => {
     if (pages.length === 0) return;
+    if (!(await quota.consumeUse())) return;
 
     // Filter pages if a custom range was supplied
     let pagesToExport = pages;
@@ -639,6 +697,7 @@ export default function ScanStudioPage() {
   // Single page JPEG export preview
   const handleExportSinglePageJpeg = async () => {
     if (!currentPage) return;
+    if (!(await quota.consumeUse())) return;
     try {
       const blob = await exportSinglePageImage(
         currentPage,
@@ -678,7 +737,16 @@ export default function ScanStudioPage() {
           else if (cat === 'image-converter') router.push('/image-converter');
         }}
         onAddImages={() => fileInputRef.current?.click()}
-        onClearWorkspace={() => setPages([])}
+        onClearWorkspace={() => {
+          const toRelease = pagesRef.current.map((p) => p.originalCanvas);
+          setPages([]);
+          toRelease.forEach((c) => {
+            if (c) {
+              c.width = 0;
+              c.height = 0;
+            }
+          });
+        }}
         onOpenShortcuts={() => {}}
         onOpenPrivacyInfo={() => {}}
         queueLength={pages.length}
@@ -750,6 +818,8 @@ export default function ScanStudioPage() {
           </div>
         </div>
       </div>
+
+      <GuestQuotaBanner quota={quota} productName="Scan Studio" />
 
       {/* Cloud Save Notification Banner */}
       {cloudSaveMessage && (

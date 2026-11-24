@@ -28,6 +28,10 @@ export type PdfToolId =
   | 'watermark-pdf'
   | 'page-numbers'
   | 'pdf-to-text'
+  | 'sign-pdf'
+  | 'crop-pdf'
+  | 'flatten-pdf'
+  | 'grayscale-pdf'
   | 'pdf-editor'
   | 'pdf-assembler';
 
@@ -203,6 +207,37 @@ export interface PdfToTextSettings {
   preserveLineBreaks: boolean;
 }
 
+export interface SignPdfSettings {
+  signatureText: string;
+  signerTitle?: string;
+  includeDate: boolean;
+  position: 'bottom-right' | 'bottom-left' | 'bottom-center' | 'top-right' | 'center';
+  pageSelection: 'last' | 'first' | 'all';
+  color: string;
+  fontSize: number;
+}
+
+export interface CropPdfSettings {
+  marginTop: number;
+  marginRight: number;
+  marginBottom: number;
+  marginLeft: number;
+  unit: 'pt' | 'mm';
+  pageRange: string;
+}
+
+export interface FlattenPdfSettings {
+  flattenForms: boolean;
+  stripAnnotations: boolean;
+  cleanMetadata: boolean;
+}
+
+export interface GrayscalePdfSettings {
+  dpi: 100 | 150 | 200;
+  contrastBoost: number;
+  quality: number;
+}
+
 export type AnyToolSettings =
   | JpgToPdfSettings
   | WordToPdfSettings
@@ -225,4 +260,8 @@ export type AnyToolSettings =
   | UnlockPdfSettings
   | WatermarkPdfSettings
   | PageNumberSettings
-  | PdfToTextSettings;
+  | PdfToTextSettings
+  | SignPdfSettings
+  | CropPdfSettings
+  | FlattenPdfSettings
+  | GrayscalePdfSettings;

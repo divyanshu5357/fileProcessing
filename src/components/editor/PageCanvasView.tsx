@@ -30,6 +30,7 @@ interface PageCanvasViewProps {
   pdfData: ArrayBuffer | Uint8Array;
   pdfDoc?: any;
   scale: number;
+  maxDpr?: number;
   activeMode: EditorToolMode;
   pendingImage: PendingImagePlacement | null;
   onClearPendingImage: () => void;
@@ -86,6 +87,7 @@ export function PageCanvasView({
   pdfData,
   pdfDoc,
   scale,
+  maxDpr,
   activeMode,
   pendingImage,
   onClearPendingImage,
@@ -142,8 +144,21 @@ export function PageCanvasView({
   // Cursor position preview for pending image placement
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
 
-  // Active smart alignment guides (light orange dashed lines)
+  // Active temporary dotted alignment guides (edge-to-edge while moving rows/objects)
   const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([]);
+  const [draggingRowId, setDraggingRowId] = useState<string | null>(null);
+  const dragOriginBoxRef = useRef<BoundingBox | null>(null);
+  const rowDragRef = useRef<{
+    itemId: string;
+    startClientX: number;
+    startClientY: number;
+    origDomX: number;
+    origDomY: number;
+    origPdfX: number;
+    origPdfY: number;
+    startBox: BoundingBox;
+    hasMoved: boolean;
+  } | null>(null);
 
   // Computed page display dimensions in CSS pixels at current scale
   const is90or270 = pageMeta.rotation === 90 || pageMeta.rotation === 270;
@@ -154,6 +169,7 @@ export function PageCanvasView({
   useEffect(() => {
     let isCancelled = false;
     let renderTask: any = null;
+    const canvasEl = canvasRef.current;
 
     async function renderPage() {
       if (!canvasRef.current) return;
@@ -175,7 +191,7 @@ export function PageCanvasView({
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        const dpr = Math.max(window.devicePixelRatio || 1, 2);
+        const dpr = Math.min(window.devicePixelRatio || 1, maxDpr ?? 1.5);
         canvas.width = Math.floor(viewport.width * dpr);
         canvas.height = Math.floor(viewport.height * dpr);
         canvas.style.width = `${Math.floor(viewport.width)}px`;
@@ -193,6 +209,7 @@ export function PageCanvasView({
         });
 
         await renderTask.promise;
+        page.cleanup?.();
       } catch (err: any) {
         if (err?.name !== 'RenderingCancelledException') {
           console.warn('PDF render error:', err);
@@ -211,8 +228,12 @@ export function PageCanvasView({
           // ignore
         }
       }
+      if (canvasEl) {
+        canvasEl.width = 0;
+        canvasEl.height = 0;
+      }
     };
-  }, [pageMeta.pageNumber, pageMeta.rotation, scale, pdfData, pdfDoc]);
+  }, [pageMeta.pageNumber, pageMeta.rotation, scale, maxDpr, pdfData, pdfDoc]);
 
   // Coordinate conversion helpers:
   // PDF coordinates: origin (0, 0) is BOTTOM-LEFT of page.
@@ -588,12 +609,14 @@ export function PageCanvasView({
     [textItems, addedTexts, images, shapes, pageMeta.pageNumber, scale, pdfToScreen]
   );
 
-  // Handle bounding box move with smart alignment guides and magnetic snapping
+  // Handle object drag movement freely with cursor while showing temporary edge-to-edge dotted guides
   const handleObjectMoveWithSnapping = (deltaScreenX: number, deltaScreenY: number) => {
     if (!selectedObject || !selectedElementData || !selectedScreenBounds) return;
 
-    const targetScreenX = selectedScreenBounds.x + deltaScreenX;
-    const targetScreenY = selectedScreenBounds.y + deltaScreenY;
+    const maxScreenX = Math.max(0, pageW - selectedScreenBounds.width);
+    const maxScreenY = Math.max(0, pageH - selectedScreenBounds.height);
+    const targetScreenX = Math.max(0, Math.min(selectedScreenBounds.x + deltaScreenX, maxScreenX));
+    const targetScreenY = Math.max(0, Math.min(selectedScreenBounds.y + deltaScreenY, maxScreenY));
 
     const draggedBox: BoundingBox = {
       id: selectedObject.id,
@@ -608,31 +631,35 @@ export function PageCanvasView({
       draggedBox,
       referenceBoxes: refBoxes,
       pageBounds: { width: pageW, height: pageH },
-      snapThreshold: 5,
+      originBox: dragOriginBoxRef.current,
+      snapThreshold: 3.5,
+      guidesOnly: true,
     });
 
     setActiveGuides(alignResult.guides);
 
     if (selectedObject.type === 'existingText') {
-      const deltaPdfX = deltaScreenX / scale;
-      const deltaPdfY = -deltaScreenY / scale;
+      const newX = targetScreenX / scale;
+      const newY = targetScreenY / scale;
+      const newPdfX = selectedElementData.pdfX + (newX - selectedElementData.x);
+      const newPdfY = selectedElementData.pdfY - (newY - selectedElementData.y);
       onUpdateTextItem(selectedObject.id, {
-        x: alignResult.snappedX / scale,
-        y: alignResult.snappedY / scale,
-        pdfX: Math.max(0, Math.min(selectedElementData.pdfX + deltaPdfX, pageMeta.width - selectedElementData.pdfWidth)),
-        pdfY: Math.max(0, Math.min(selectedElementData.pdfY + deltaPdfY, pageMeta.height - selectedElementData.pdfHeight)),
+        x: newX,
+        y: newY,
+        pdfX: newPdfX,
+        pdfY: newPdfY,
         isEdited: true,
       });
     } else {
-      const snappedPdf = screenToPdf(
-        alignResult.snappedX,
-        alignResult.snappedY,
+      const nextPdf = screenToPdf(
+        targetScreenX,
+        targetScreenY,
         selectedScreenBounds.width,
         selectedScreenBounds.height
       );
 
-      const clampedPdfX = Math.max(0, Math.min(snappedPdf.pdfX, pageMeta.width - (selectedElementData.pdfWidth || 50)));
-      const clampedPdfY = Math.max(0, Math.min(snappedPdf.pdfY, pageMeta.height - (selectedElementData.pdfHeight || 16)));
+      const clampedPdfX = Math.max(0, Math.min(nextPdf.pdfX, pageMeta.width - (selectedElementData.pdfWidth || 50)));
+      const clampedPdfY = Math.max(0, Math.min(nextPdf.pdfY, pageMeta.height - (selectedElementData.pdfHeight || 16)));
       const updates = { pdfX: clampedPdfX, pdfY: clampedPdfY };
 
       if (selectedObject.type === 'addedText') onUpdateAddedText(selectedObject.id, updates);
@@ -828,6 +855,10 @@ export function PageCanvasView({
             }
 
             const isEditing = activeExistingTextId === item.id;
+            const isSelectedRow =
+              selectedObject?.type === 'existingText' && selectedObject.id === item.id;
+            const isDraggingThisRow = draggingRowId === item.id;
+            const isInteractiveMode = activeMode === 'editText' || activeMode === 'select';
             const itemLeft = item.x * scale;
             const itemTop = item.y * scale;
             const itemWidth = item.width * scale;
@@ -850,7 +881,7 @@ export function PageCanvasView({
                       position: 'absolute',
                       left: Math.max(0, (item.originalX ?? item.x) * scale - 2),
                       top: Math.max(0, (item.originalY ?? item.y) * scale - 2),
-                      width: Math.max(itemWidth + 4, dynamicWidth + 6),
+                      width: itemWidth + 4,
                       height: Math.max(itemHeight + 4, boxHeight + 4),
                       backgroundColor: '#FFFFFF',
                       zIndex: 11,
@@ -864,31 +895,148 @@ export function PageCanvasView({
                     position: 'absolute',
                     left: itemLeft,
                     top: itemTop,
-                    zIndex: isEditing ? 35 : 12,
+                    zIndex: isDraggingThisRow ? 40 : isEditing ? 35 : isSelectedRow ? 14 : 12,
                     minWidth: Math.max(30, dynamicWidth),
                     height: boxHeight,
                     display: 'flex',
                     alignItems: 'baseline',
                   }}
-                  onClick={(e) => {
-                    if (activeMode === 'editText' || activeMode === 'select') {
-                      e.stopPropagation();
+                  onPointerDown={(e) => {
+                    if (isEditing || !isInteractiveMode || e.button !== 0) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (activeExistingTextId && activeExistingTextId !== item.id) {
+                      setActiveExistingTextId(null);
+                    }
+                    setEditingAddedTextId(null);
+                    onSelectObject({
+                      id: item.id,
+                      type: 'existingText',
+                      pageNumber: pageMeta.pageNumber,
+                    });
+
+                    const startBox: BoundingBox = {
+                      id: item.id,
+                      x: itemLeft,
+                      y: itemTop,
+                      width: Math.max(itemWidth, 30),
+                      height: Math.max(itemHeight, 16),
+                    };
+                    rowDragRef.current = {
+                      itemId: item.id,
+                      startClientX: e.clientX,
+                      startClientY: e.clientY,
+                      origDomX: item.x,
+                      origDomY: item.y,
+                      origPdfX: item.pdfX,
+                      origPdfY: item.pdfY,
+                      startBox,
+                      hasMoved: false,
+                    };
+                    dragOriginBoxRef.current = startBox;
+                    try {
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                    } catch {}
+                  }}
+                  onPointerMove={(e) => {
+                    const drag = rowDragRef.current;
+                    if (!drag || drag.itemId !== item.id) return;
+                    e.stopPropagation();
+                    const dxScreen = e.clientX - drag.startClientX;
+                    const dyScreen = e.clientY - drag.startClientY;
+
+                    if (!drag.hasMoved) {
+                      if (Math.hypot(dxScreen, dyScreen) < 3) return;
+                      drag.hasMoved = true;
+                      setDraggingRowId(item.id);
+                    }
+
+                    const maxScreenX = Math.max(0, pageW - drag.startBox.width);
+                    const maxScreenY = Math.max(0, pageH - drag.startBox.height);
+                    const targetScreenX = Math.max(0, Math.min(drag.startBox.x + dxScreen, maxScreenX));
+                    const targetScreenY = Math.max(0, Math.min(drag.startBox.y + dyScreen, maxScreenY));
+
+                    const draggedBox: BoundingBox = {
+                      id: item.id,
+                      x: targetScreenX,
+                      y: targetScreenY,
+                      width: drag.startBox.width,
+                      height: drag.startBox.height,
+                    };
+
+                    const alignResult = calculateAlignmentAndSnap({
+                      draggedBox,
+                      referenceBoxes: getReferenceBoxes(item.id),
+                      pageBounds: { width: pageW, height: pageH },
+                      originBox: drag.startBox,
+                      snapThreshold: 3.5,
+                      guidesOnly: true,
+                    });
+
+                    setActiveGuides(alignResult.guides);
+
+                    const newX = targetScreenX / scale;
+                    const newY = targetScreenY / scale;
+                    const newPdfX = drag.origPdfX + (newX - drag.origDomX);
+                    const newPdfY = drag.origPdfY - (newY - drag.origDomY);
+
+                    onUpdateTextItem(item.id, {
+                      x: newX,
+                      y: newY,
+                      pdfX: newPdfX,
+                      pdfY: newPdfY,
+                      isEdited: true,
+                    });
+                  }}
+                  onPointerUp={(e) => {
+                    const drag = rowDragRef.current;
+                    if (!drag || drag.itemId !== item.id) return;
+                    e.stopPropagation();
+                    try {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    } catch {}
+                    const moved = drag.hasMoved;
+                    rowDragRef.current = null;
+                    dragOriginBoxRef.current = null;
+                    setDraggingRowId(null);
+                    setActiveGuides([]);
+
+                    if (!moved && activeMode === 'editText') {
                       setActiveExistingTextId(item.id);
-                      onSelectObject({
-                        id: item.id,
-                        type: 'existingText',
-                        pageNumber: pageMeta.pageNumber,
-                      });
                     }
                   }}
-                  className={`pointer-events-auto transition-colors ${
-                    activeMode === 'editText' || activeMode === 'select'
-                      ? isEditing
-                        ? 'bg-white ring-1 ring-blue-500 rounded-xs'
-                        : 'hover:bg-blue-500/10 hover:ring-1 hover:ring-blue-400/50 cursor-text'
-                      : item.isEdited
-                      ? 'bg-transparent'
-                      : 'pointer-events-none'
+                  onPointerCancel={(e) => {
+                    const drag = rowDragRef.current;
+                    if (!drag || drag.itemId !== item.id) return;
+                    try {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    } catch {}
+                    rowDragRef.current = null;
+                    dragOriginBoxRef.current = null;
+                    setDraggingRowId(null);
+                    setActiveGuides([]);
+                  }}
+                  onClick={(e) => {
+                    if (isInteractiveMode) {
+                      e.stopPropagation();
+                    }
+                  }}
+                  onDoubleClick={(e) => {
+                    if (isInteractiveMode) {
+                      e.stopPropagation();
+                      setActiveExistingTextId(item.id);
+                    }
+                  }}
+                  className={`transition-shadow ${
+                    isInteractiveMode
+                      ? isDraggingThisRow
+                        ? 'pointer-events-auto bg-white ring-2 ring-blue-500 shadow-md rounded-xs cursor-grabbing'
+                        : isEditing
+                        ? 'pointer-events-auto bg-white ring-1 ring-blue-500 rounded-xs'
+                        : isSelectedRow
+                        ? 'pointer-events-auto bg-blue-500/5 ring-2 ring-blue-500 rounded-xs cursor-grab'
+                        : 'pointer-events-auto hover:bg-blue-500/10 hover:ring-1 hover:ring-blue-400/50 cursor-grab'
+                      : 'pointer-events-none bg-transparent'
                   }`}
                 >
                   {/* Clean white background to ensure text is legible when moved or styled */}
@@ -936,7 +1084,7 @@ export function PageCanvasView({
                         });
                       }}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+                        if (e.key === 'Enter' || e.key === 'Escape') {
                           setActiveExistingTextId(null);
                         }
                       }}
@@ -1254,14 +1402,23 @@ export function PageCanvasView({
             rotation={selectedRotation}
             locked={selectedLocked}
             lockAspectRatio={isAspectLocked}
+            onInteractionStart={() => {
+              dragOriginBoxRef.current = {
+                id: selectedObject?.id,
+                ...selectedScreenBounds,
+              };
+            }}
             onMove={handleObjectMoveWithSnapping}
             onResize={handleObjectResize}
             onRotate={selectedObject?.type !== 'whiteout' ? handleObjectRotate : undefined}
-            onInteractionEnd={() => setActiveGuides([])}
+            onInteractionEnd={() => {
+              dragOriginBoxRef.current = null;
+              setActiveGuides([]);
+            }}
           />
         )}
 
-        {/* Floating Format Bar for Text & Annotations (Matches user reference screenshots) */}
+        {/* Floating Format Bar for Text & Annotations */}
         {selectedObject && (selectedObject.type === 'existingText' || selectedObject.type === 'addedText' || selectedObject.type === 'annotation') && selectedElementData && selectedScreenBounds && (
           <FloatingFormatBar
             item={
@@ -1290,6 +1447,7 @@ export function PageCanvasView({
             }}
             containerBounds={{ width: pageW, height: pageH }}
             supportsLink={selectedObject.type !== 'annotation'}
+            isHiddenWhileDragging={draggingRowId !== null}
             onUpdateItem={(updates) => {
               if (selectedObject.type === 'existingText') {
                 onUpdateTextItem(selectedObject.id, { ...updates, isEdited: true });
@@ -1314,12 +1472,16 @@ export function PageCanvasView({
               onDuplicateObject(selectedObject.type, selectedObject.id);
             }}
             onMoveStart={() => {
-              // drag start
+              dragOriginBoxRef.current = {
+                id: selectedObject?.id,
+                ...selectedScreenBounds,
+              };
             }}
             onMoveItem={(dx, dy) => {
               handleObjectMoveWithSnapping(dx, dy);
             }}
             onMoveEnd={() => {
+              dragOriginBoxRef.current = null;
               setActiveGuides([]);
             }}
             onClose={() => {
@@ -1416,25 +1578,30 @@ export function PageCanvasView({
           </div>
         )}
 
-        {/* Smart Alignment Guides Overlay (Light Orange #F97316 dashed lines) */}
+        {/* Temporary Edge-to-Edge Dotted Alignment Guides Overlay */}
         {activeGuides.length > 0 && (
           <svg
-            className="absolute inset-0 pointer-events-none z-50 overflow-visible"
+            className="absolute inset-0 pointer-events-none z-30 overflow-hidden"
             width={pageW}
             height={pageH}
           >
-            {activeGuides.map((g) => (
-              <line
-                key={g.id}
-                x1={g.type === 'vertical' ? g.position : g.start}
-                y1={g.type === 'vertical' ? g.start : g.position}
-                x2={g.type === 'vertical' ? g.position : g.end}
-                y2={g.type === 'vertical' ? g.end : g.position}
-                stroke="#F97316"
-                strokeWidth="1.5"
-                strokeDasharray="4 4"
-              />
-            ))}
+            {activeGuides.map((g) => {
+              const isMatch = g.variant !== 'rail';
+              return (
+                <line
+                  key={g.id}
+                  x1={g.type === 'vertical' ? g.position : g.start}
+                  y1={g.type === 'vertical' ? g.start : g.position}
+                  x2={g.type === 'vertical' ? g.position : g.end}
+                  y2={g.type === 'vertical' ? g.end : g.position}
+                  stroke={isMatch ? '#F97316' : '#3B82F6'}
+                  strokeOpacity={isMatch ? 0.95 : 0.45}
+                  strokeWidth={isMatch ? 1.75 : 1.25}
+                  strokeDasharray={isMatch ? '2 4' : '1.5 4.5'}
+                  strokeLinecap="round"
+                />
+              );
+            })}
           </svg>
         )}
       </div>

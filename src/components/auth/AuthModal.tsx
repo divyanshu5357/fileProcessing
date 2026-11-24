@@ -5,12 +5,17 @@ import Link from 'next/link';
 import {
   X,
   Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  User as UserIcon,
   ArrowRight,
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
   Loader2,
   RefreshCw,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
@@ -24,11 +29,23 @@ export function AuthModal() {
     signInWithGoogle,
     sendEmailOtp,
     verifyEmailOtp,
+    signInWithPassword,
+    signUpWithPassword,
+    setInitialPassword,
     authModalInitialEmail,
+    authModalNotice,
   } = useAuth();
 
-  const [step, setStep] = useState<'options' | 'otp'>('options');
+  const [step, setStep] = useState<'options' | 'otp' | 'setPassword'>('options');
+  const [authMethod, setAuthMethod] = useState<'password' | 'otp'>('otp');
+  const [passwordMode, setPasswordMode] = useState<'signin' | 'signup'>('signin');
+
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
   const [otp, setOtp] = useState<string[]>(() => createEmptyOtp());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +57,17 @@ export function AuthModal() {
       setEmail(authModalInitialEmail);
     }
   }, [authModalInitialEmail]);
+
+  useEffect(() => {
+    if (!isAuthModalOpen) {
+      setStep('options');
+      setError(null);
+      setSuccessMsg(null);
+      setPassword('');
+      setConfirmPassword('');
+      setOtp(createEmptyOtp());
+    }
+  }, [isAuthModalOpen]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -108,9 +136,77 @@ export function AuthModal() {
       const res = await verifyEmailOtp(email.toLowerCase().trim(), fullCode);
       if (!res.success) {
         setError(res.message || 'Invalid or expired verification code.');
+      } else if (res.needsPasswordSetup) {
+        setSuccessMsg('Email verified! Set a password for quick password sign-in anytime.');
+        setStep('setPassword');
       }
     } catch (err: any) {
       setError(err?.message || 'Verification error. Please retry.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isLoading) return;
+    const cleanEmail = email.toLowerCase().trim();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      return;
+    }
+
+    if (passwordMode === 'signup' && password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    setError(null);
+    setSuccessMsg(null);
+    setIsLoading(true);
+    try {
+      const res =
+        passwordMode === 'signin'
+          ? await signInWithPassword(cleanEmail, password)
+          : await signUpWithPassword(name, cleanEmail, password);
+
+      if (!res.success) {
+        setError(res.message || 'Authentication failed. Please check your details.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Authentication error. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveFirstPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isLoading) return;
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    setError(null);
+    setIsLoading(true);
+    try {
+      const res = await setInitialPassword(password);
+      if (res.success) {
+        closeAuthModal();
+      } else {
+        setError(res.message || 'Could not save password.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to save password.');
     } finally {
       setIsLoading(false);
     }
@@ -133,7 +229,7 @@ export function AuthModal() {
         }
         setError(res.message || 'Failed to resend code.');
       }
-    } catch (e: any) {
+    } catch {
       setError('Failed to resend verification code.');
     } finally {
       setIsLoading(false);
@@ -157,17 +253,31 @@ export function AuthModal() {
         </button>
 
         {/* Brand Header */}
-        <div className="flex flex-col items-center text-center mb-6">
+        <div className="flex flex-col items-center text-center mb-5">
           <GyanvatsalaLogo size={44} className="mb-3" />
           <h2 className="text-xl sm:text-2xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
-            {step === 'options' ? 'Welcome to Gyanvatsala' : 'Verify Your Email'}
+            {step === 'otp'
+              ? 'Verify Your Email'
+              : step === 'setPassword'
+              ? 'Set Your Password'
+              : 'Welcome to Gyanvatsala'}
           </h2>
           <p className="text-xs sm:text-sm text-[#475569] dark:text-[#94A3B8] mt-1">
-            {step === 'options'
-              ? 'Your Digital Document Workspace — Access cloud storage & persistent workspaces.'
-              : `Enter the ${OTP_LENGTH}-digit code sent to ${email} (expires in 5 min)`}
+            {step === 'otp'
+              ? `Enter the ${OTP_LENGTH}-digit code sent to ${email} (expires in 5 min)`
+              : step === 'setPassword'
+              ? 'First-time setup: add a password so you can sign in with either Password or 4-digit OTP.'
+              : 'Sign in free for unlimited PDF editing, conversions & cloud storage.'}
           </p>
         </div>
+
+        {/* Optional Quota / Context Notice */}
+        {authModalNotice && step === 'options' && (
+          <div className="mb-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-xs flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 shrink-0" />
+            <span>{authModalNotice}</span>
+          </div>
+        )}
 
         {/* Error Alert */}
         {error && (
@@ -192,7 +302,7 @@ export function AuthModal() {
               type="button"
               onClick={handleGoogleLogin}
               disabled={isLoading}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-white dark:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] text-slate-800 dark:text-slate-100 font-semibold text-sm hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl bg-white dark:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] text-slate-800 dark:text-slate-100 font-semibold text-sm hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all shadow-xs cursor-pointer disabled:opacity-50"
             >
               {isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
@@ -219,54 +329,213 @@ export function AuthModal() {
               <span>{isLoading ? 'Connecting to Google...' : 'Sign in with Google'}</span>
             </button>
 
-            {/* Divider */}
-            <div className="relative flex items-center justify-center my-3">
-              <div className="border-t border-[#CBD5E1] dark:border-[#334155] w-full" />
-              <span className="bg-white dark:bg-[#111827] px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                Or Continue With Email
-              </span>
+            {/* Auth Method Tabs: 4-Digit OTP vs Password */}
+            <div className="grid grid-cols-2 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('otp');
+                  setError(null);
+                  setSuccessMsg(null);
+                }}
+                className={`py-2 rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  authMethod === 'otp'
+                    ? 'bg-white dark:bg-[#111827] text-blue-600 dark:text-blue-400 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>4-Digit OTP</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('password');
+                  setError(null);
+                  setSuccessMsg(null);
+                }}
+                className={`py-2 rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  authMethod === 'password'
+                    ? 'bg-white dark:bg-[#111827] text-blue-600 dark:text-blue-400 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Password</span>
+              </button>
             </div>
 
-            {/* Email OTP Form */}
-            <form onSubmit={handleSendOtp} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@example.com"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                  />
+            {authMethod === 'otp' ? (
+              /* Email OTP Form */
+              <form onSubmit={handleSendOtp} className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="name@example.com"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={isLoading}
-                className="w-full py-2.5 text-xs font-bold flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Dispatching Code...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Continue with Email Code</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={isLoading}
+                  className="w-full py-2.5 text-xs font-bold flex items-center justify-center gap-2"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Dispatching Code...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Send 4-Digit Email Code</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </Button>
+              </form>
+            ) : (
+              /* Password Sign In / First-Time Password Registration */
+              <form onSubmit={handlePasswordSubmit} className="space-y-3">
+                {passwordMode === 'signup' && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Full Name
+                    </label>
+                    <div className="relative">
+                      <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        required
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Your Name"
+                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                      />
+                    </div>
+                  </div>
                 )}
-              </Button>
-            </form>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="name@example.com"
+                      className="w-full pl-10 pr-4 py-2 rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={8}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder={passwordMode === 'signup' ? 'Create 8+ char password' : 'Enter password'}
+                      className="w-full pl-10 pr-10 py-2 rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {passwordMode === 'signup' && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Confirm Password
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        minLength={8}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Repeat password"
+                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={isLoading}
+                  className="w-full py-2.5 text-xs font-bold flex items-center justify-center gap-2"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>{passwordMode === 'signin' ? 'Signing In...' : 'Creating Account...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{passwordMode === 'signin' ? 'Sign In with Password' : 'Create Account & Sign In'}</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </Button>
+
+                <div className="flex items-center justify-between text-[11px] pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPasswordMode((prev) => (prev === 'signin' ? 'signup' : 'signin'));
+                      setError(null);
+                    }}
+                    className="text-blue-600 dark:text-blue-400 hover:underline font-semibold cursor-pointer"
+                  >
+                    {passwordMode === 'signin'
+                      ? 'First time? Create account with password'
+                      : 'Already have a password? Sign In'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMethod('otp');
+                      setError(null);
+                    }}
+                    className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline cursor-pointer"
+                  >
+                    Use OTP instead
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
-        ) : (
+        ) : step === 'otp' ? (
           /* Step 2: 4-Digit OTP Verification */
           <form onSubmit={handleVerifyOtp} className="space-y-5">
             <div className="space-y-2">
@@ -295,7 +564,7 @@ export function AuthModal() {
               ) : (
                 <>
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Confirm & Enter Workspace</span>
+                  <span>Confirm & Continue</span>
                 </>
               )}
             </Button>
@@ -323,6 +592,82 @@ export function AuthModal() {
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
                 <span>{cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend Code'}</span>
+              </button>
+            </div>
+          </form>
+        ) : (
+          /* Step 3: First-Time User Password Setup */
+          <form onSubmit={handleSaveFirstPassword} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                New Password (8+ characters)
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Create a strong password"
+                  className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Confirm Password
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  minLength={8}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm password"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                />
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={isLoading}
+              className="w-full py-2.5 text-sm font-bold flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Saving Password...</span>
+                </>
+              ) : (
+                <>
+                  <KeyRound className="w-4 h-4" />
+                  <span>Save Password & Enter Workspace</span>
+                </>
+              )}
+            </Button>
+
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={closeAuthModal}
+                className="text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 underline underline-offset-4 cursor-pointer"
+              >
+                Skip for now (set later in Settings)
               </button>
             </div>
           </form>

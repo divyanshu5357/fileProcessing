@@ -632,6 +632,252 @@ export function ToolSettingsPanels({
           )}
         </div>
       )}
+
+      {/* 16. SIGN PDF */}
+      {toolId === 'sign-pdf' && (
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                Signature Text
+              </label>
+              <input
+                type="text"
+                value={settings.signatureText ?? ''}
+                onChange={(e) => update('signatureText', e.target.value)}
+                placeholder="John Doe"
+                className="text-sm font-serif italic px-3 py-2 rounded-lg border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                Signatory Title (Optional)
+              </label>
+              <input
+                type="text"
+                value={settings.signerTitle ?? ''}
+                onChange={(e) => update('signerTitle', e.target.value)}
+                placeholder="Authorized Signatory"
+                className="text-xs px-3 py-2 rounded-lg border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                Placement Position
+              </label>
+              <select
+                value={settings.position || 'bottom-right'}
+                onChange={(e) => update('position', e.target.value)}
+                className="text-xs p-2.5 rounded-lg border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]"
+              >
+                <option value="bottom-right">Bottom Right</option>
+                <option value="bottom-left">Bottom Left</option>
+                <option value="bottom-center">Bottom Center</option>
+                <option value="top-right">Top Right</option>
+                <option value="center">Page Center</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                Apply To Pages
+              </label>
+              <select
+                value={settings.pageSelection || 'last'}
+                onChange={(e) => update('pageSelection', e.target.value)}
+                className="text-xs p-2.5 rounded-lg border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]"
+              >
+                <option value="last">Last Page Only</option>
+                <option value="first">First Page Only</option>
+                <option value="all">Every Page</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                Ink Color & Date
+              </label>
+              <div className="flex items-center gap-3 h-[38px]">
+                <input
+                  type="color"
+                  value={settings.color || '#1e3a8a'}
+                  onChange={(e) => update('color', e.target.value)}
+                  className="w-9 h-9 rounded border border-[#CBD5E1] cursor-pointer"
+                />
+                <label className="flex items-center gap-2 text-xs text-[#334155] dark:text-[#CBD5E1] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.includeDate !== false}
+                    onChange={(e) => update('includeDate', e.target.checked)}
+                    className="rounded border-slate-300 text-blue-600"
+                  />
+                  Stamp Date
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 17. CROP PDF MARGINS */}
+      {toolId === 'crop-pdf' && (
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { key: 'marginTop', label: 'Top Margin' },
+              { key: 'marginRight', label: 'Right Margin' },
+              { key: 'marginBottom', label: 'Bottom Margin' },
+              { key: 'marginLeft', label: 'Left Margin' },
+            ].map((field) => (
+              <div key={field.key} className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                  {field.label} ({settings.unit || 'pt'})
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={250}
+                  value={settings[field.key] ?? 20}
+                  onChange={(e) => update(field.key, Math.max(0, Number(e.target.value)))}
+                  className="text-xs px-3 py-2 rounded-lg border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]"
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">Unit</label>
+              <div className="flex gap-2">
+                {(['pt', 'mm'] as const).map((unit) => (
+                  <button
+                    key={unit}
+                    type="button"
+                    onClick={() => update('unit', unit)}
+                    className={`flex-1 py-2 text-xs font-bold rounded-lg border cursor-pointer ${
+                      (settings.unit || 'pt') === unit
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white dark:bg-[#1E293B] text-[#334155] dark:text-[#CBD5E1] border-[#CBD5E1] dark:border-[#475569]'
+                    }`}
+                  >
+                    {unit === 'pt' ? 'Points (pt)' : 'Millimeters (mm)'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                Page Range (blank = all pages)
+              </label>
+              <input
+                type="text"
+                value={settings.pageRange ?? ''}
+                onChange={(e) => update('pageRange', e.target.value)}
+                placeholder="e.g. 1-3, 5"
+                className="text-xs px-3 py-2 rounded-lg border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 18. FLATTEN PDF */}
+      {toolId === 'flatten-pdf' && (
+        <div className="flex flex-col gap-3">
+          {[
+            {
+              key: 'flattenForms',
+              title: 'Flatten Interactive AcroForm Fields',
+              desc: 'Locks editable text inputs, checkboxes, and dropdowns into static page graphics.',
+            },
+            {
+              key: 'stripAnnotations',
+              title: 'Strip Notes & Comment Annotations',
+              desc: 'Removes interactive pop-up comments and link annotations before archiving.',
+            },
+            {
+              key: 'cleanMetadata',
+              title: 'Scrub Author & Software Metadata',
+              desc: 'Clears identifying Author, Title, and Creator tags for privacy.',
+            },
+          ].map((opt) => (
+            <label
+              key={opt.key}
+              className="flex items-start gap-3 p-3 rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-white dark:bg-[#1E293B] cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={settings[opt.key] !== false}
+                onChange={(e) => update(opt.key, e.target.checked)}
+                className="mt-0.5 rounded border-slate-300 text-blue-600"
+              />
+              <div>
+                <div className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                  {opt.title}
+                </div>
+                <div className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                  {opt.desc}
+                </div>
+              </div>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {/* 19. GRAYSCALE PDF */}
+      {toolId === 'grayscale-pdf' && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+              Output Resolution (DPI)
+            </label>
+            <select
+              value={settings.dpi || 150}
+              onChange={(e) => update('dpi', Number(e.target.value))}
+              className="text-xs p-2.5 rounded-lg border border-[#CBD5E1] dark:border-[#475569] bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]"
+            >
+              <option value={100}>100 DPI (Ultra Low RAM)</option>
+              <option value={150}>150 DPI (Balanced Print)</option>
+              <option value={200}>200 DPI (Sharp Text)</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+              Contrast Boost ({Number(settings.contrastBoost ?? 1.05).toFixed(2)}x)
+            </label>
+            <input
+              type="range"
+              min={0.9}
+              max={1.4}
+              step={0.05}
+              value={settings.contrastBoost ?? 1.05}
+              onChange={(e) => update('contrastBoost', Number(e.target.value))}
+              className="accent-blue-600 mt-2"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+              Compression Quality ({settings.quality ?? 85}%)
+            </label>
+            <input
+              type="range"
+              min={65}
+              max={95}
+              step={5}
+              value={settings.quality ?? 85}
+              onChange={(e) => update('quality', Number(e.target.value))}
+              className="accent-blue-600 mt-2"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

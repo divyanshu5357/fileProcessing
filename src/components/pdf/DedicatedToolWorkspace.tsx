@@ -30,9 +30,15 @@ import {
   watermarkPdf,
   addPageNumbers,
   pdfToPlainText,
+  signPdfDocument,
+  cropPdfDocument,
+  flattenPdfDocument,
+  grayscalePdfDocument,
 } from '@/lib/pdfEngine';
 import { docxToPdf, excelToPdf, pptxToPdf, htmlToPdf } from '@/lib/documentEngine';
 import { createZip, downloadBlob } from '@/lib/utils';
+import { useGuestProductQuota } from '@/hooks/useGuestProductQuota';
+import { GuestQuotaBanner } from '@/components/common/GuestQuotaBanner';
 import {
   ArrowLeft,
   ShieldCheck,
@@ -65,7 +71,22 @@ export function DedicatedToolWorkspace({
     return <PdfAssemblerWorkspace onBackToTools={onBack} />;
   }
 
+  return (
+    <StandardPdfToolWorkspace
+      key={toolId}
+      toolId={toolId}
+      onBack={onBack}
+      onSelectOtherTool={onSelectOtherTool}
+    />
+  );
+}
+
+function StandardPdfToolWorkspace({
+  toolId,
+  onBack,
+}: DedicatedToolWorkspaceProps) {
   const tool = getToolById(toolId) || ALL_PDF_TOOLS[0];
+  const quota = useGuestProductQuota(tool.id);
 
   // Files in workspace
   const [files, setFiles] = useState<UploadedFileItem[]>([]);
@@ -147,6 +168,49 @@ export function DedicatedToolWorkspace({
       };
     }
 
+    if (currentToolId === 'sign-pdf') {
+      return {
+        ...baseSettings,
+        signatureText: 'John Doe',
+        signerTitle: '',
+        includeDate: true,
+        position: 'bottom-right',
+        pageSelection: 'last',
+        color: '#1e3a8a',
+        fontSize: 24,
+      };
+    }
+
+    if (currentToolId === 'crop-pdf') {
+      return {
+        ...baseSettings,
+        marginTop: 20,
+        marginRight: 20,
+        marginBottom: 20,
+        marginLeft: 20,
+        unit: 'pt',
+        pageRange: '',
+      };
+    }
+
+    if (currentToolId === 'flatten-pdf') {
+      return {
+        ...baseSettings,
+        flattenForms: true,
+        stripAnnotations: true,
+        cleanMetadata: true,
+      };
+    }
+
+    if (currentToolId === 'grayscale-pdf') {
+      return {
+        ...baseSettings,
+        dpi: quota.memoryProfile.tier === 'guest' ? 100 : 150,
+        contrastBoost: 1.05,
+        quality: 85,
+      };
+    }
+
     return baseSettings;
   };
 
@@ -178,7 +242,29 @@ export function DedicatedToolWorkspace({
   }, []);
 
   const handleAddFiles = (newFiles: File[]) => {
-    const items: UploadedFileItem[] = newFiles.map((file) => ({
+    const maxBytes = quota.memoryProfile.maxFileSizeMb * 1024 * 1024;
+    const validFiles: File[] = [];
+    for (const file of newFiles) {
+      if (file.size > maxBytes) {
+        setErrorMessage(
+          `"${file.name}" exceeds the ${quota.memoryProfile.maxFileSizeMb} MB ${quota.memoryProfile.label} limit.`
+        );
+        continue;
+      }
+      validFiles.push(file);
+    }
+
+    const availableSlots = Math.max(0, quota.memoryProfile.maxBatchFiles - files.length);
+    if (validFiles.length > availableSlots) {
+      setErrorMessage(
+        `${quota.memoryProfile.label} allows up to ${quota.memoryProfile.maxBatchFiles} files per batch to save memory.`
+      );
+    }
+
+    const accepted = validFiles.slice(0, availableSlots);
+    if (accepted.length === 0) return;
+
+    const items: UploadedFileItem[] = accepted.map((file) => ({
       id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       file,
       name: file.name,
@@ -195,10 +281,17 @@ export function DedicatedToolWorkspace({
   };
 
   const handleClearFiles = () => {
+    results.forEach((r) => URL.revokeObjectURL(r.url));
     setFiles([]);
     setResults([]);
     setErrorMessage(null);
   };
+
+  React.useEffect(() => {
+    return () => {
+      results.forEach((r) => URL.revokeObjectURL(r.url));
+    };
+  }, [results]);
 
   const handleRotateFile = (id: string) => {
     setFiles((prev) =>
@@ -226,6 +319,15 @@ export function DedicatedToolWorkspace({
       return;
     }
 
+    const allowed = await quota.consumeUse();
+    if (!allowed) {
+      setErrorMessage(
+        `Guest IP trial limit reached (${quota.limit}/${quota.limit} uses) for ${tool.name}. Sign in free for unlimited runs.`
+      );
+      return;
+    }
+
+    results.forEach((r) => URL.revokeObjectURL(r.url));
     setIsProcessing(true);
     setProgressPercent(10);
     setStatusMessage('Initializing conversion engine...');
@@ -709,6 +811,96 @@ export function DedicatedToolWorkspace({
         }
       }
 
+      // 20. SIGN PDF
+      else if (tool.id === 'sign-pdf') {
+        for (let i = 0; i < files.length; i++) {
+          const fileItem = files[i];
+          setStatusMessage(`Signing ${fileItem.name}...`);
+          setProgressPercent(Math.round(((i + 1) / files.length) * 85));
+
+          const signedBlob = await signPdfDocument(fileItem.file, settings as any);
+          const url = URL.createObjectURL(signedBlob);
+
+          generatedResults.push({
+            id: `res_${Date.now()}_${i}`,
+            name: `${fileItem.name.replace(/\.[^/.]+$/, '')}_signed.pdf`,
+            originalName: fileItem.name,
+            blob: signedBlob,
+            url,
+            size: signedBlob.size,
+            format: 'application/pdf',
+          });
+        }
+      }
+
+      // 21. CROP PDF MARGINS
+      else if (tool.id === 'crop-pdf') {
+        for (let i = 0; i < files.length; i++) {
+          const fileItem = files[i];
+          setStatusMessage(`Cropping margins of ${fileItem.name}...`);
+          setProgressPercent(Math.round(((i + 1) / files.length) * 85));
+
+          const croppedBlob = await cropPdfDocument(fileItem.file, settings as any);
+          const url = URL.createObjectURL(croppedBlob);
+
+          generatedResults.push({
+            id: `res_${Date.now()}_${i}`,
+            name: `${fileItem.name.replace(/\.[^/.]+$/, '')}_cropped.pdf`,
+            originalName: fileItem.name,
+            blob: croppedBlob,
+            url,
+            size: croppedBlob.size,
+            format: 'application/pdf',
+          });
+        }
+      }
+
+      // 22. FLATTEN PDF
+      else if (tool.id === 'flatten-pdf') {
+        for (let i = 0; i < files.length; i++) {
+          const fileItem = files[i];
+          setStatusMessage(`Flattening layers in ${fileItem.name}...`);
+          setProgressPercent(Math.round(((i + 1) / files.length) * 85));
+
+          const flatBlob = await flattenPdfDocument(fileItem.file, settings as any);
+          const url = URL.createObjectURL(flatBlob);
+
+          generatedResults.push({
+            id: `res_${Date.now()}_${i}`,
+            name: `${fileItem.name.replace(/\.[^/.]+$/, '')}_flattened.pdf`,
+            originalName: fileItem.name,
+            blob: flatBlob,
+            url,
+            size: flatBlob.size,
+            format: 'application/pdf',
+          });
+        }
+      }
+
+      // 23. GRAYSCALE PDF
+      else if (tool.id === 'grayscale-pdf') {
+        for (let i = 0; i < files.length; i++) {
+          const fileItem = files[i];
+          setStatusMessage(`Converting ${fileItem.name} to grayscale...`);
+          const grayBlob = await grayscalePdfDocument(
+            fileItem.file,
+            settings as any,
+            (pct) => setProgressPercent(pct)
+          );
+          const url = URL.createObjectURL(grayBlob);
+
+          generatedResults.push({
+            id: `res_${Date.now()}_${i}`,
+            name: `${fileItem.name.replace(/\.[^/.]+$/, '')}_grayscale.pdf`,
+            originalName: fileItem.name,
+            blob: grayBlob,
+            url,
+            size: grayBlob.size,
+            format: 'application/pdf',
+          });
+        }
+      }
+
       // Default fallback
       else {
         // Generic fallback
@@ -765,6 +957,8 @@ export function DedicatedToolWorkspace({
           </span>
         </div>
       </div>
+
+      <GuestQuotaBanner quota={quota} productName={tool.name} />
 
       {/* Tool Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 bg-white dark:bg-[#111827] border border-[#CBD5E1] dark:border-[#334155] rounded-2xl shadow-xs transition-colors">

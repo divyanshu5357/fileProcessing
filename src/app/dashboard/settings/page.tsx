@@ -10,16 +10,46 @@ import {
   CheckCircle2,
   HardDrive,
   Save,
+  KeyRound,
+  AlertCircle,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { useAuth, ProcessingMode } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
 
 export default function AccountSettingsPage() {
-  const { user, processingMode, setProcessingMode } = useAuth();
-  const [name, setName] = useState(user?.name || 'Senior Architect');
+  const { user, processingMode, setProcessingMode, setInitialPassword } = useAuth();
+  const [name, setName] = useState(user?.name || 'User');
   const [retentionDays, setRetentionDays] = useState('30');
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwMsg, setPwMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleAddPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 8) {
+      setPwMsg({ type: 'error', text: 'Password must be at least 8 characters.' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPwMsg({ type: 'error', text: 'Passwords do not match.' });
+      return;
+    }
+    setPwLoading(true);
+    setPwMsg(null);
+    const res = await setInitialPassword(newPassword);
+    setPwLoading(false);
+    if (res.success) {
+      setNewPassword('');
+      setConfirmPassword('');
+      setPwMsg({ type: 'success', text: res.message || 'Password set successfully!' });
+    } else {
+      setPwMsg({ type: 'error', text: res.message || 'Failed to save password.' });
+    }
+  };
 
   const handleSavePreferences = (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,6 +170,81 @@ export default function AccountSettingsPage() {
               </Button>
             </div>
           </form>
+        </div>
+
+        {/* Password Login Setup Card */}
+        <div className="p-6 rounded-3xl bg-white dark:bg-[#111827] border border-[#CBD5E1] dark:border-[#334155] shadow-xs space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-blue-600" />
+                <span>Account Password Sign-In</span>
+              </h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {user?.hasPassword
+                  ? 'Your password is active. You can sign in using either Password or 4-digit Email OTP.'
+                  : 'Add a password to unlock instant password login in addition to 4-digit Email OTP.'}
+              </p>
+            </div>
+            <span
+              className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-full ${
+                user?.hasPassword
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                  : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+              }`}
+            >
+              {user?.hasPassword ? 'Password Configured' : 'OTP Only'}
+            </span>
+          </div>
+
+          {pwMsg && (
+            <div
+              className={`p-3 rounded-xl text-xs flex items-center gap-2 border ${
+                pwMsg.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300'
+                  : 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-300'
+              }`}
+            >
+              {pwMsg.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0" />
+              )}
+              <span>{pwMsg.text}</span>
+            </div>
+          )}
+
+          {!user?.hasPassword && (
+            <form onSubmit={handleAddPassword} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end pt-1">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">New Password</label>
+                <input
+                  type="password"
+                  minLength={8}
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Min 8 characters"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Confirm Password</label>
+                <input
+                  type="password"
+                  minLength={8}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm password"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <Button type="submit" variant="primary" size="sm" disabled={pwLoading} className="text-xs font-bold py-2">
+                {pwLoading ? 'Saving...' : 'Save Account Password'}
+              </Button>
+            </form>
+          )}
         </div>
 
         {/* Data & Privacy Actions */}

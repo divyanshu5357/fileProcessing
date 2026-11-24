@@ -12,10 +12,6 @@ import {
   ExternalLink,
   Plus,
   Minus,
-  ArrowUp,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
 } from 'lucide-react';
 
 export interface FloatingFormatBarItem {
@@ -55,6 +51,7 @@ export interface FloatingFormatBarProps {
   onMoveItem?: (dx: number, dy: number) => void;
   onMoveStart?: () => void;
   onMoveEnd?: () => void;
+  isHiddenWhileDragging?: boolean;
   onClose?: () => void;
 }
 
@@ -69,14 +66,14 @@ export function FloatingFormatBar({
   onMoveItem,
   onMoveStart,
   onMoveEnd,
+  isHiddenWhileDragging = false,
 }: FloatingFormatBarProps) {
-  const [activeMenu, setActiveMenu] = useState<'none' | 'fontSize' | 'fontFamily' | 'color' | 'link' | 'move'>('none');
+  const [activeMenu, setActiveMenu] = useState<'none' | 'fontSize' | 'fontFamily' | 'color' | 'link'>('none');
   const [linkInputUrl, setLinkInputUrl] = useState(item.linkUrl || '');
   const [customSizeInput, setCustomSizeInput] = useState('');
   const [copiedFeedback, setCopiedFeedback] = useState(false);
   const [isDraggingMove, setIsDraggingMove] = useState(false);
   const dragStartRef = useRef<{ clientX: number; clientY: number } | null>(null);
-  const hasDraggedRef = useRef(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   // Sync link input if item changes
@@ -137,10 +134,11 @@ export function FloatingFormatBar({
   }
   let left = Math.max(10, Math.min(position.left, containerBounds.width - toolbarWidth - 10));
 
-  // 1. Move Drag Pointer Handlers (Smooth drag with Smart Alignment Guides)
+  // 1. Move Drag Pointer Handlers (Direct cursor drag without nudge arrows)
   const handleMovePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     e.stopPropagation();
-    hasDraggedRef.current = false;
+    e.preventDefault();
+    setActiveMenu('none');
     dragStartRef.current = { clientX: e.clientX, clientY: e.clientY };
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -154,14 +152,14 @@ export function FloatingFormatBar({
     const dx = e.clientX - dragStartRef.current.clientX;
     const dy = e.clientY - dragStartRef.current.clientY;
 
-    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-      hasDraggedRef.current = true;
+    if (dx !== 0 || dy !== 0) {
       onMoveItem(dx, dy);
       dragStartRef.current = { clientX: e.clientX, clientY: e.clientY };
     }
   };
 
   const handleMovePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!isDraggingMove && !dragStartRef.current) return;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {}
@@ -206,7 +204,14 @@ export function FloatingFormatBar({
       }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
-      className="pointer-events-auto flex items-center h-9 bg-white dark:bg-slate-900 border border-blue-400 dark:border-blue-500 rounded-lg shadow-xl divide-x divide-blue-200 dark:divide-slate-700 text-blue-600 select-none animate-in fade-in zoom-in-95 duration-100"
+      onPointerDown={(e) => e.stopPropagation()}
+      className={`flex items-center h-9 bg-white dark:bg-slate-900 border border-blue-400 dark:border-blue-500 rounded-lg shadow-xl divide-x divide-blue-200 dark:divide-slate-700 text-blue-600 select-none transition-opacity duration-100 ${
+        isHiddenWhileDragging
+          ? 'opacity-0 pointer-events-none'
+          : isDraggingMove
+          ? 'opacity-35 pointer-events-auto'
+          : 'opacity-100 pointer-events-auto animate-in fade-in zoom-in-95'
+      }`}
     >
       {/* 1. Bold Button (B) */}
       <button
@@ -602,91 +607,24 @@ export function FloatingFormatBar({
         )}
       </div>
 
-      {/* 7. Move Handle & Smart Guides (✥) */}
-      <div className="relative h-full">
-        <button
-          type="button"
-          title="Drag to Move with Smart Guides (or click for nudge buttons)"
-          onPointerDown={handleMovePointerDown}
-          onPointerMove={handleMovePointerMove}
-          onPointerUp={handleMovePointerUp}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!hasDraggedRef.current) {
-              setActiveMenu(activeMenu === 'move' ? 'none' : 'move');
-            }
-          }}
-          className={`px-2.5 h-full flex items-center justify-center transition-colors ${
-            isDraggingMove
-              ? 'bg-blue-600 text-white cursor-grabbing'
-              : activeMenu === 'move'
-              ? 'bg-blue-100 text-blue-800 cursor-grab'
-              : 'hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 cursor-grab'
-          }`}
-        >
-          <Move className="w-3.5 h-3.5" />
-        </button>
-
-        {activeMenu === 'move' && (
-          <div className="absolute top-full mt-2 left-0 z-50 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-700 rounded-lg shadow-2xl p-2 min-w-[130px] flex flex-col items-center gap-1.5">
-            <span className="text-[10px] uppercase font-bold text-slate-400">Nudge Position</span>
-            <div className="grid grid-cols-3 gap-1">
-              <div />
-              <button
-                type="button"
-                title="Move Up 3px"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMoveItem && onMoveItem(0, -3);
-                }}
-                className="p-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-700 flex items-center justify-center cursor-pointer"
-              >
-                <ArrowUp className="w-3.5 h-3.5" />
-              </button>
-              <div />
-
-              <button
-                type="button"
-                title="Move Left 3px"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMoveItem && onMoveItem(-3, 0);
-                }}
-                className="p-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-700 flex items-center justify-center cursor-pointer"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                title="Move Down 3px"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMoveItem && onMoveItem(0, 3);
-                }}
-                className="p-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-700 flex items-center justify-center cursor-pointer"
-              >
-                <ArrowDown className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                title="Move Right 3px"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMoveItem && onMoveItem(3, 0);
-                }}
-                className="p-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-700 flex items-center justify-center cursor-pointer"
-              >
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <span className="text-[9px] text-slate-400 text-center">or drag icon directly</span>
-          </div>
-        )}
-      </div>
+      {/* 7. Direct Drag Handle (✥) — No nudge arrow popup */}
+      <button
+        type="button"
+        title="Drag to move anywhere (or drag text row directly on page)"
+        aria-label="Drag to move item"
+        onPointerDown={handleMovePointerDown}
+        onPointerMove={handleMovePointerMove}
+        onPointerUp={handleMovePointerUp}
+        onPointerCancel={handleMovePointerUp}
+        onClick={(e) => e.stopPropagation()}
+        className={`px-2.5 h-full flex items-center justify-center transition-colors ${
+          isDraggingMove
+            ? 'bg-blue-600 text-white cursor-grabbing'
+            : 'hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 cursor-grab'
+        }`}
+      >
+        <Move className="w-3.5 h-3.5" />
+      </button>
 
       {/* 8. Duplicate Button (⧉) */}
       <button

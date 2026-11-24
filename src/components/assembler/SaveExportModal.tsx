@@ -35,12 +35,14 @@ interface SaveExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   documents: AssemblerDocument[];
+  onBeforeExport?: () => Promise<boolean>;
 }
 
 export function SaveExportModal({
   isOpen,
   onClose,
   documents,
+  onBeforeExport,
 }: SaveExportModalProps) {
   const { isAuthenticated, user, openAuthModal } = useAuth();
 
@@ -62,6 +64,15 @@ export function SaveExportModal({
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
+
+    if (onBeforeExport) {
+      const ok = await onBeforeExport();
+      if (!ok) {
+        setErrorMsg('Guest IP trial limit reached (4/4 edits). Sign in free for unlimited access.');
+        return;
+      }
+    }
+
     setIsProcessing(true);
     setProgress(20);
 

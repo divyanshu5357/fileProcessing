@@ -22,6 +22,7 @@ interface SelectionBoundingBoxProps {
     newHeight: number
   ) => void;
   onRotate?: (angle: number) => void;
+  onInteractionStart?: () => void;
   onInteractionEnd?: () => void;
   className?: string;
 }
@@ -37,6 +38,7 @@ export function SelectionBoundingBox({
   onMove,
   onResize,
   onRotate,
+  onInteractionStart,
   onInteractionEnd,
   className = '',
 }: SelectionBoundingBoxProps) {
@@ -73,6 +75,7 @@ export function SelectionBoundingBox({
       centerY: y + height / 2,
     };
     setIsInteracting(true);
+    onInteractionStart?.();
   };
 
   const handleMovePointerMove = (e: React.PointerEvent) => {
@@ -126,6 +129,7 @@ export function SelectionBoundingBox({
       centerY: y + height / 2,
     };
     setIsInteracting(true);
+    onInteractionStart?.();
   };
 
   const handleResizePointerMove = (
@@ -243,6 +247,7 @@ export function SelectionBoundingBox({
       centerY,
     };
     setIsInteracting(true);
+    onInteractionStart?.();
   };
 
   const handleRotatePointerMove = (e: React.PointerEvent) => {
@@ -307,6 +312,7 @@ export function SelectionBoundingBox({
         onPointerDown={handleMovePointerDown}
         onPointerMove={handleMovePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         style={{
           cursor: locked ? 'default' : 'move',
         }}

@@ -27,6 +27,8 @@ import {
   Sparkles,
   PenTool,
   LayoutGrid,
+  Crop,
+  Contrast,
 } from 'lucide-react';
 
 interface ConversionCardProps {
@@ -57,6 +59,8 @@ const ICON_MAP: Record<string, React.ElementType> = {
   AlignLeft,
   PenTool,
   LayoutGrid,
+  Crop,
+  Contrast,
 };
 
 const ACCENT_STYLES: Record<string, { bg: string; text: string; border: string; glow: string }> = {
