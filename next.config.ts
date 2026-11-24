@@ -10,6 +10,7 @@ export default function (phase: string): NextConfig {
     compress: true,
     experimental: {
       optimizePackageImports: ['lucide-react'],
+      agentUpgrade: "security",
     },
     turbopack: {
       rules: {
