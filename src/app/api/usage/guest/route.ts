@@ -1,43 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, pool } from '@/lib/auth';
 import { extractClientIp, normalizeIp } from '@/lib/ipUtils';
-import {
-  GUEST_LIMIT_6_HOURS,
-  GUEST_LIMIT_DAILY_24H,
-  GUEST_WINDOW_6H_MS,
-  GUEST_WINDOW_24H_MS,
-  GUEST_SPACE_6H_BYTES,
-  formatWaitDuration,
-  getProductMeta,
-  isMeteredGuestProduct,
-  isUnlimitedSimpleProduct,
-} from '@/lib/guestQuota';
 import { getMemoryProfile } from '@/lib/memoryProfile';
+import {
+  loadSignedQuotaPolicy,
+  isValidProductSlug,
+  formatWaitDuration,
+  QUOTA_COOKIE_NAME,
+  verifyOrMintQuotaSid,
+  signExportTicket,
+  ServerQuotaPolicy,
+} from '@/lib/serverQuotaPolicy';
 
 interface UsageEventEntry {
+  gid: string;
   ts: number;
   bytes: number;
 }
 
-// Fallback in-memory event log per subject key when DB pool is unavailable
+// Fallback store ONLY if DB pool is unavailable
 const fallbackEventStore = new Map<string, UsageEventEntry[]>();
 
 const PAID_PLANS = new Set(['prime', 'prime_plus', 'primeplus', 'prime_ultra', 'primeultra']);
 
-async function ensureUsageEventsTable() {
-  if (!pool) return;
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS download_usage_events (
-      id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      subject_key VARCHAR(160) NOT NULL,
-      ip_address VARCHAR(128) NOT NULL,
-      product_id VARCHAR(64) NOT NULL,
-      file_size_bytes BIGINT NOT NULL DEFAULT 0,
-      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_download_usage_subject_created
-      ON download_usage_events (subject_key, created_at DESC);
-  `);
+function attachQuotaCookie(
+  res: NextResponse,
+  cookieHeaderValue: string,
+  shouldSet: boolean
+): NextResponse {
+  if (shouldSet) {
+    res.cookies.set(QUOTA_COOKIE_NAME, cookieHeaderValue, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 30,
+    });
+  }
+  return res;
 }
 
 async function resolveSessionContext(req: NextRequest) {
@@ -76,254 +76,343 @@ async function resolveSessionContext(req: NextRequest) {
   return { authenticated: false, userId: null, plan: 'Free', isUnlimited: false };
 }
 
-async function getWindowStatus(subjectKeys: string[]): Promise<{
-  used6h: number;
-  used24h: number;
-  bytes6h: number;
-  oldest6hMs: number | null;
-  oldest24hMs: number | null;
-}> {
+async function ensureUsageEventsTable() {
+  if (!pool) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS download_usage_events (
+      id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      event_group_id VARCHAR(64) NOT NULL DEFAULT '',
+      subject_key VARCHAR(160) NOT NULL,
+      ip_address VARCHAR(128) NOT NULL,
+      product_id VARCHAR(64) NOT NULL,
+      file_size_bytes BIGINT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE download_usage_events
+      ADD COLUMN IF NOT EXISTS event_group_id VARCHAR(64) NOT NULL DEFAULT '';
+    CREATE INDEX IF NOT EXISTS idx_download_usage_subject_created
+      ON download_usage_events (subject_key, created_at DESC);
+  `);
+}
+
+interface QuotaCheckOutcome {
+  allowed: boolean;
+  reason?: 'window_6h' | 'daily_limit' | 'space_6h' | 'file_size';
+  retryAfterSeconds?: number;
+  waitLabel?: string;
+  refreshAtIso?: string;
+}
+
+async function checkAndRecordAtomic(
+  subjectKeys: string[],
+  normalizedIp: string,
+  productId: string,
+  fileSizeBytes: number,
+  policy: ServerQuotaPolicy,
+  recordOnSuccess: boolean
+): Promise<QuotaCheckOutcome> {
   const now = Date.now();
-  const cutoff6h = now - GUEST_WINDOW_6H_MS;
-  const cutoff24h = now - GUEST_WINDOW_24H_MS;
+  const safeBytes = Math.max(0, Math.round(fileSizeBytes));
+  const sortedKeys = [...new Set(subjectKeys)].sort();
 
   if (pool) {
+    await ensureUsageEventsTable();
+    const client = await pool.connect();
     try {
-      await ensureUsageEventsTable();
-      await pool.query(
-        `DELETE FROM download_usage_events WHERE subject_key = ANY($1::text[]) AND created_at < NOW() - INTERVAL '24 hours'`,
-        [subjectKeys]
+      await client.query('BEGIN');
+      // Advisory transaction locks in consistent sorted order serialize concurrent requests across IP + Cookie + User
+      for (const lockKey of sortedKeys) {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [lockKey]);
+      }
+
+      await client.query(
+        `DELETE FROM download_usage_events
+         WHERE subject_key = ANY($1::text[])
+           AND created_at < NOW() - ($2 * INTERVAL '1 second')`,
+        [sortedKeys, policy.window24hSeconds]
       );
 
-      const res = await pool.query(
-        `SELECT
-           COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '6 hours')::int AS used_6h,
-           COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours')::int AS used_24h,
-           COALESCE(SUM(file_size_bytes) FILTER (WHERE created_at >= NOW() - INTERVAL '6 hours'), 0)::bigint AS bytes_6h,
-           MIN(created_at) FILTER (WHERE created_at >= NOW() - INTERVAL '6 hours') AS oldest_6h,
-           MIN(created_at) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours') AS oldest_24h
-         FROM download_usage_events
-         WHERE subject_key = ANY($1::text[])`,
-        [subjectKeys]
+      const res = await client.query(
+        `WITH deduped AS (
+           SELECT DISTINCT ON (COALESCE(NULLIF(event_group_id, ''), id))
+             COALESCE(NULLIF(event_group_id, ''), id) AS gid,
+             file_size_bytes,
+             created_at
+           FROM download_usage_events
+           WHERE subject_key = ANY($1::text[])
+         )
+         SELECT
+           COUNT(*) FILTER (WHERE created_at >= NOW() - ($2 * INTERVAL '1 second'))::int AS used_6h,
+           COUNT(*) FILTER (WHERE created_at >= NOW() - ($3 * INTERVAL '1 second'))::int AS used_24h,
+           COALESCE(SUM(file_size_bytes) FILTER (WHERE created_at >= NOW() - ($2 * INTERVAL '1 second')), 0)::bigint AS bytes_6h,
+           MIN(created_at) FILTER (WHERE created_at >= NOW() - ($2 * INTERVAL '1 second')) AS oldest_6h,
+           MIN(created_at) FILTER (WHERE created_at >= NOW() - ($3 * INTERVAL '1 second')) AS oldest_24h
+         FROM deduped`,
+        [sortedKeys, policy.window6hSeconds, policy.window24hSeconds]
       );
 
       const row = res.rows[0] || {};
-      return {
-        used6h: Number(row.used_6h || 0),
-        used24h: Number(row.used_24h || 0),
-        bytes6h: Number(row.bytes_6h || 0),
-        oldest6hMs: row.oldest_6h ? new Date(row.oldest_6h).getTime() : null,
-        oldest24hMs: row.oldest_24h ? new Date(row.oldest_24h).getTime() : null,
-      };
-    } catch {
-      // Fallback below
+      const used6h = Number(row.used_6h || 0);
+      const used24h = Number(row.used_24h || 0);
+      const bytes6h = Number(row.bytes_6h || 0);
+      const oldest6hMs = row.oldest_6h ? new Date(row.oldest_6h).getTime() : null;
+      const oldest24hMs = row.oldest_24h ? new Date(row.oldest_24h).getTime() : null;
+
+      if (used24h >= policy.max24hCount) {
+        await client.query('ROLLBACK');
+        const refreshAtMs = (oldest24hMs || now) + policy.window24hSeconds * 1000;
+        const retryAfterSeconds = Math.max(60, Math.ceil((refreshAtMs - now) / 1000));
+        return {
+          allowed: false,
+          reason: 'daily_limit',
+          retryAfterSeconds,
+          waitLabel: formatWaitDuration(retryAfterSeconds),
+          refreshAtIso: new Date(refreshAtMs).toISOString(),
+        };
+      }
+
+      if (used6h >= policy.max6hCount) {
+        await client.query('ROLLBACK');
+        const refreshAtMs = (oldest6hMs || now) + policy.window6hSeconds * 1000;
+        const retryAfterSeconds = Math.max(60, Math.ceil((refreshAtMs - now) / 1000));
+        return {
+          allowed: false,
+          reason: 'window_6h',
+          retryAfterSeconds,
+          waitLabel: formatWaitDuration(retryAfterSeconds),
+          refreshAtIso: new Date(refreshAtMs).toISOString(),
+        };
+      }
+
+      if (bytes6h + safeBytes > policy.max6hBytes) {
+        await client.query('ROLLBACK');
+        const refreshAtMs = (oldest6hMs || now) + policy.window6hSeconds * 1000;
+        const retryAfterSeconds = Math.max(60, Math.ceil((refreshAtMs - now) / 1000));
+        return {
+          allowed: false,
+          reason: bytes6h === 0 ? 'file_size' : 'space_6h',
+          retryAfterSeconds,
+          waitLabel: formatWaitDuration(retryAfterSeconds),
+          refreshAtIso: new Date(refreshAtMs).toISOString(),
+        };
+      }
+
+      if (recordOnSuccess) {
+        const eventGroupId = crypto.randomUUID();
+        for (const key of sortedKeys) {
+          await client.query(
+            `INSERT INTO download_usage_events (id, event_group_id, subject_key, ip_address, product_id, file_size_bytes, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+            [crypto.randomUUID(), eventGroupId, key, normalizedIp, productId, safeBytes]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      return { allowed: true };
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
     }
   }
 
-  const combined: UsageEventEntry[] = [];
-  for (const key of subjectKeys) {
+  // Fallback in-memory check ONLY when no Postgres pool exists
+  const cutoff24h = now - policy.window24hSeconds * 1000;
+  const cutoff6h = now - policy.window6hSeconds * 1000;
+  const seen = new Map<string, UsageEventEntry>();
+  for (const key of sortedKeys) {
     const existing = (fallbackEventStore.get(key) || []).filter((e) => e.ts >= cutoff24h);
     fallbackEventStore.set(key, existing);
-    combined.push(...existing);
+    for (const e of existing) seen.set(e.gid, e);
   }
-  combined.sort((a, b) => a.ts - b.ts);
-  const in6h = combined.filter((e) => e.ts >= cutoff6h);
+  const allEvents = Array.from(seen.values()).sort((a, b) => a.ts - b.ts);
+  const in6h = allEvents.filter((e) => e.ts >= cutoff6h);
   const bytes6h = in6h.reduce((sum, e) => sum + e.bytes, 0);
 
-  return {
-    used6h: in6h.length,
-    used24h: combined.length,
-    bytes6h,
-    oldest6hMs: in6h.length > 0 ? in6h[0].ts : null,
-    oldest24hMs: combined.length > 0 ? combined[0].ts : null,
-  };
-}
+  if (allEvents.length >= policy.max24hCount) {
+    const refreshAtMs = (allEvents[0]?.ts || now) + policy.window24hSeconds * 1000;
+    const retryAfterSeconds = Math.max(60, Math.ceil((refreshAtMs - now) / 1000));
+    return {
+      allowed: false,
+      reason: 'daily_limit',
+      retryAfterSeconds,
+      waitLabel: formatWaitDuration(retryAfterSeconds),
+      refreshAtIso: new Date(refreshAtMs).toISOString(),
+    };
+  }
+  if (in6h.length >= policy.max6hCount) {
+    const refreshAtMs = (in6h[0]?.ts || now) + policy.window6hSeconds * 1000;
+    const retryAfterSeconds = Math.max(60, Math.ceil((refreshAtMs - now) / 1000));
+    return {
+      allowed: false,
+      reason: 'window_6h',
+      retryAfterSeconds,
+      waitLabel: formatWaitDuration(retryAfterSeconds),
+      refreshAtIso: new Date(refreshAtMs).toISOString(),
+    };
+  }
+  if (bytes6h + safeBytes > policy.max6hBytes) {
+    const refreshAtMs = (in6h[0]?.ts || now) + policy.window6hSeconds * 1000;
+    const retryAfterSeconds = Math.max(60, Math.ceil((refreshAtMs - now) / 1000));
+    return {
+      allowed: false,
+      reason: bytes6h === 0 ? 'file_size' : 'space_6h',
+      retryAfterSeconds,
+      waitLabel: formatWaitDuration(retryAfterSeconds),
+      refreshAtIso: new Date(refreshAtMs).toISOString(),
+    };
+  }
 
-async function recordUsageEvent(
-  primaryKey: string,
-  ipAddress: string,
-  productId: string,
-  fileSizeBytes: number
-) {
-  const now = Date.now();
-  const safeBytes = Math.max(0, Math.round(fileSizeBytes));
-  if (pool) {
-    try {
-      await ensureUsageEventsTable();
-      await pool.query(
-        `INSERT INTO download_usage_events (subject_key, ip_address, product_id, file_size_bytes, created_at)
-         VALUES ($1, $2, $3, $4, NOW())`,
-        [primaryKey, ipAddress, productId, safeBytes]
-      );
-      return;
-    } catch {
-      // Fallback below
+  if (recordOnSuccess) {
+    const entry: UsageEventEntry = { gid: crypto.randomUUID(), ts: now, bytes: safeBytes };
+    for (const key of sortedKeys) {
+      const existing = fallbackEventStore.get(key) || [];
+      existing.push(entry);
+      fallbackEventStore.set(key, existing);
     }
   }
-  const arr = (fallbackEventStore.get(primaryKey) || []).filter(
-    (e) => e.ts >= now - GUEST_WINDOW_24H_MS
-  );
-  arr.push({ ts: now, bytes: safeBytes });
-  fallbackEventStore.set(primaryKey, arr);
+  return { allowed: true };
 }
 
 export async function GET(req: NextRequest) {
-  const productId = (req.nextUrl.searchParams.get('productId') || 'pdf-editor').trim();
-  const meta = getProductMeta(productId);
+  const productId = (req.nextUrl.searchParams.get('productId') || 'pdf-editor')
+    .trim()
+    .toLowerCase();
   const ipInfo = extractClientIp(req);
   const normalizedIp = normalizeIp(ipInfo.ip) || 'unknown';
+  const cookie = verifyOrMintQuotaSid(req.cookies.get(QUOTA_COOKIE_NAME)?.value);
+  const policy = await loadSignedQuotaPolicy();
   const sessionCtx = await resolveSessionContext(req);
-  const memoryProfile = getMemoryProfile(sessionCtx.plan, sessionCtx.authenticated);
 
-  if (sessionCtx.isUnlimited || isUnlimitedSimpleProduct(productId)) {
-    return NextResponse.json({
-      authenticated: sessionCtx.authenticated,
-      unlimited: true,
-      allowed: true,
-      productId,
-      productName: meta.name,
-      memoryProfile,
-    });
+  const isSimpleTool = policy.simpleProducts.includes(productId);
+  const memoryProfile = isSimpleTool
+    ? getMemoryProfile('PrimePlus', true)
+    : getMemoryProfile(sessionCtx.plan, sessionCtx.authenticated);
+
+  if (sessionCtx.isUnlimited || isSimpleTool) {
+    return attachQuotaCookie(
+      NextResponse.json({
+        authenticated: sessionCtx.authenticated,
+        unlimited: true,
+        allowed: true,
+        memoryProfile,
+      }),
+      cookie.cookieHeaderValue,
+      cookie.isNew
+    );
   }
 
-  const subjectKeys = [`ip:${normalizedIp}`];
+  const subjectKeys = [`ip:${normalizedIp}`, `sid:${cookie.sid}`];
   if (sessionCtx.userId) subjectKeys.push(`user:${sessionCtx.userId}`);
-  const status = await getWindowStatus(subjectKeys);
-  const allowed =
-    status.used6h < GUEST_LIMIT_6_HOURS &&
-    status.used24h < GUEST_LIMIT_DAILY_24H &&
-    status.bytes6h < GUEST_SPACE_6H_BYTES;
 
-  // Never expose IP address or raw limit counts in UI responses
-  return NextResponse.json({
-    authenticated: sessionCtx.authenticated,
-    unlimited: false,
-    allowed,
+  const check = await checkAndRecordAtomic(
+    subjectKeys,
+    normalizedIp,
     productId,
-    productName: meta.name,
-    memoryProfile,
-  });
+    0,
+    policy,
+    false
+  );
+
+  // Notice: Wait numbers, counts, and IP details are never returned proactively in GET
+  return attachQuotaCookie(
+    NextResponse.json({
+      authenticated: sessionCtx.authenticated,
+      unlimited: false,
+      allowed: check.allowed,
+      memoryProfile,
+    }),
+    cookie.cookieHeaderValue,
+    cookie.isNew
+  );
 }
 
 export async function POST(req: NextRequest) {
   const ipInfo = extractClientIp(req);
   const normalizedIp = normalizeIp(ipInfo.ip) || 'unknown';
+  const cookie = verifyOrMintQuotaSid(req.cookies.get(QUOTA_COOKIE_NAME)?.value);
   const body = await req.json().catch(() => ({}));
   const productId = (
     typeof body?.productId === 'string' ? body.productId : 'pdf-editor'
-  ).trim();
+  )
+    .trim()
+    .toLowerCase();
   const fileSizeBytes = Math.max(0, Number(body?.fileSizeBytes || 0));
 
-  if (!isMeteredGuestProduct(productId)) {
+  if (!isValidProductSlug(productId)) {
     return NextResponse.json({ error: 'Invalid tool request.' }, { status: 400 });
   }
 
-  const meta = getProductMeta(productId);
+  const policy = await loadSignedQuotaPolicy();
   const sessionCtx = await resolveSessionContext(req);
-  const memoryProfile = getMemoryProfile(sessionCtx.plan, sessionCtx.authenticated);
+  const isSimpleTool = policy.simpleProducts.includes(productId);
+  const memoryProfile = isSimpleTool
+    ? getMemoryProfile('PrimePlus', true)
+    : getMemoryProfile(sessionCtx.plan, sessionCtx.authenticated);
 
-  // Simple lightweight tasks (e.g. Image to PDF, PDF to Image, Image Size Reducer) & Paid accounts are unlimited
-  if (sessionCtx.isUnlimited || isUnlimitedSimpleProduct(productId)) {
-    return NextResponse.json({
-      authenticated: sessionCtx.authenticated,
-      unlimited: true,
-      allowed: true,
-      productId,
-      productName: meta.name,
-      memoryProfile,
-    });
+  if (sessionCtx.isUnlimited || isSimpleTool) {
+    return attachQuotaCookie(
+      NextResponse.json({
+        authenticated: sessionCtx.authenticated,
+        unlimited: true,
+        allowed: true,
+        exportTicket: signExportTicket(productId, `ok:${cookie.sid}`),
+        memoryProfile,
+      }),
+      cookie.cookieHeaderValue,
+      cookie.isNew
+    );
   }
 
-  const primaryKey = `ip:${normalizedIp}`;
-  const subjectKeys = [primaryKey];
+  const subjectKeys = [`ip:${normalizedIp}`, `sid:${cookie.sid}`];
   if (sessionCtx.userId) subjectKeys.push(`user:${sessionCtx.userId}`);
 
-  const status = await getWindowStatus(subjectKeys);
-  const now = Date.now();
-
-  if (status.used24h >= GUEST_LIMIT_DAILY_24H) {
-    const refreshAtMs = (status.oldest24hMs || now) + GUEST_WINDOW_24H_MS;
-    const retryAfterSeconds = Math.max(60, Math.ceil((refreshAtMs - now) / 1000));
-    const waitLabel = formatWaitDuration(retryAfterSeconds);
-
-    return NextResponse.json(
-      {
-        authenticated: sessionCtx.authenticated,
-        unlimited: false,
-        allowed: false,
-        reason: 'daily_limit',
-        requiresUpgrade: true,
-        retryAfterSeconds,
-        waitLabel,
-        refreshAtIso: new Date(refreshAtMs).toISOString(),
-        productId,
-        productName: meta.name,
-        message: `Daily download limit exceeded. Please wait ${waitLabel} for refresh or upgrade to Premium to download now.`,
-      },
-      { status: 403 }
-    );
-  }
-
-  if (status.used6h >= GUEST_LIMIT_6_HOURS) {
-    const refreshAtMs = (status.oldest6hMs || now) + GUEST_WINDOW_6H_MS;
-    const retryAfterSeconds = Math.max(60, Math.ceil((refreshAtMs - now) / 1000));
-    const waitLabel = formatWaitDuration(retryAfterSeconds);
-
-    return NextResponse.json(
-      {
-        authenticated: sessionCtx.authenticated,
-        unlimited: false,
-        allowed: false,
-        reason: 'window_6h',
-        requiresUpgrade: true,
-        retryAfterSeconds,
-        waitLabel,
-        refreshAtIso: new Date(refreshAtMs).toISOString(),
-        productId,
-        productName: meta.name,
-        message: `Download limit exceeded. Please wait for the 6-hour refresh (${waitLabel} remaining) or upgrade to Premium to download your edited file immediately.`,
-      },
-      { status: 403 }
-    );
-  }
-
-  // Cumulative 15 MB total space across 6 hours (e.g. 5 MB + 10 MB = 15 MB used)
-  if (status.bytes6h + fileSizeBytes > GUEST_SPACE_6H_BYTES) {
-    const refreshAtMs = (status.oldest6hMs || now) + GUEST_WINDOW_6H_MS;
-    const retryAfterSeconds = Math.max(60, Math.ceil((refreshAtMs - now) / 1000));
-    const waitLabel = formatWaitDuration(retryAfterSeconds);
-    const remainingSpaceBytes = Math.max(0, GUEST_SPACE_6H_BYTES - status.bytes6h);
-
-    return NextResponse.json(
-      {
-        authenticated: sessionCtx.authenticated,
-        unlimited: false,
-        allowed: false,
-        reason: status.bytes6h === 0 ? 'file_size' : 'space_6h',
-        requiresUpgrade: true,
-        retryAfterSeconds,
-        waitLabel,
-        remainingSpaceBytes,
-        refreshAtIso: new Date(refreshAtMs).toISOString(),
-        productId,
-        productName: meta.name,
-        message:
-          status.bytes6h === 0
-            ? 'This file exceeds the 15 MB 6-hour space limit. Upgrade to Premium to download immediately.'
-            : `6-hour 15 MB total space limit exceeded. Please wait ${waitLabel} for refresh or upgrade to Premium to download immediately.`,
-      },
-      { status: 403 }
-    );
-  }
-
-  await recordUsageEvent(primaryKey, normalizedIp, productId, fileSizeBytes);
-
-  return NextResponse.json({
-    authenticated: sessionCtx.authenticated,
-    unlimited: false,
-    allowed: true,
+  const check = await checkAndRecordAtomic(
+    subjectKeys,
+    normalizedIp,
     productId,
-    productName: meta.name,
-    memoryProfile,
-  });
+    fileSizeBytes,
+    policy,
+    true
+  );
+
+  if (!check.allowed) {
+    return attachQuotaCookie(
+      NextResponse.json(
+        {
+          authenticated: sessionCtx.authenticated,
+          unlimited: false,
+          allowed: false,
+          reason: check.reason || 'window_6h',
+          requiresUpgrade: true,
+          retryAfterSeconds: check.retryAfterSeconds,
+          waitLabel: check.waitLabel,
+          refreshAtIso: check.refreshAtIso,
+          message:
+            check.reason === 'file_size'
+              ? 'This file exceeds the standard allowance. Upgrade to Premium to download immediately.'
+              : check.reason === 'daily_limit'
+              ? `Daily download limit exceeded. Please wait ${check.waitLabel} for refresh or upgrade to Premium to download now.`
+              : `Download limit exceeded. Please wait ${check.waitLabel} for the 6-hour refresh or upgrade to Premium to download your edited file immediately.`,
+        },
+        { status: 403 }
+      ),
+      cookie.cookieHeaderValue,
+      cookie.isNew
+    );
+  }
+
+  return attachQuotaCookie(
+    NextResponse.json({
+      authenticated: sessionCtx.authenticated,
+      unlimited: false,
+      allowed: true,
+      exportTicket: signExportTicket(productId, `ip:${normalizedIp}`),
+      memoryProfile,
+    }),
+    cookie.cookieHeaderValue,
+    cookie.isNew
+  );
 }

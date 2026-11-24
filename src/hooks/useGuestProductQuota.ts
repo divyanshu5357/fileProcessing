@@ -3,13 +3,11 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { getMemoryProfile, MemoryProfile } from '@/lib/memoryProfile';
-import { GUEST_LIMIT_6_HOURS, isUnlimitedSimpleProduct } from '@/lib/guestQuota';
 import { requestDownloadAllowance, DownloadAllowanceResult } from '@/lib/downloadQuotaClient';
 
 export interface GuestQuotaState {
   isGuest: boolean;
   unlimited: boolean;
-  limit: number;
   allowed: boolean;
   memoryProfile: MemoryProfile;
   loading: boolean;
@@ -21,28 +19,23 @@ export interface GuestQuotaState {
 const PAID_TIERS = new Set(['prime', 'primeplus', 'prime_plus', 'primeultra', 'prime_ultra']);
 
 /**
- * Provides tiered file-size/RAM defaults without rendering any limit or IP details in the UI.
- * Backend enforces 4 downloads per 6 hours (files under 15 MB) and 9 downloads per day silently.
+ * Queries server-enforced allowance without bundling hardcoded quota limits into client JS.
  */
 export function useGuestProductQuota(productId: string): GuestQuotaState {
   const { user, isAuthenticated } = useAuth();
-  const isSimpleTool = isUnlimitedSimpleProduct(productId);
   const isPaidOrAdmin =
-    isSimpleTool ||
-    (Boolean(isAuthenticated) &&
-      (user?.role === 'admin' ||
-        PAID_TIERS.has((user?.plan || '').toLowerCase().replace(/\s+/g, ''))));
+    Boolean(isAuthenticated) &&
+    (user?.role === 'admin' ||
+      PAID_TIERS.has((user?.plan || '').toLowerCase().replace(/\s+/g, '')));
 
   const isGuest = !isPaidOrAdmin;
   const fallbackMemory = useMemo(
-    () =>
-      isSimpleTool
-        ? getMemoryProfile('PrimePlus', true)
-        : getMemoryProfile(user?.plan, isAuthenticated),
-    [isSimpleTool, user?.plan, isAuthenticated]
+    () => getMemoryProfile(user?.plan, isAuthenticated),
+    [user?.plan, isAuthenticated]
   );
 
   const [allowed, setAllowed] = useState(true);
+  const [serverUnlimited, setServerUnlimited] = useState(false);
   const [serverProfile, setServerProfile] = useState<MemoryProfile | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -56,14 +49,16 @@ export function useGuestProductQuota(productId: string): GuestQuotaState {
     try {
       const res = await fetch(`/api/usage/guest?productId=${encodeURIComponent(productId)}`, {
         cache: 'no-store',
+        credentials: 'same-origin',
       });
       if (res.ok) {
         const data = await res.json();
         setAllowed(Boolean(data.allowed));
+        if (typeof data.unlimited === 'boolean') setServerUnlimited(data.unlimited);
         if (data.memoryProfile) setServerProfile(data.memoryProfile);
       }
     } catch {
-      // keep silent defaults
+      // keep clean defaults
     } finally {
       setLoading(false);
     }
@@ -76,6 +71,7 @@ export function useGuestProductQuota(productId: string): GuestQuotaState {
       }
       const res = await requestDownloadAllowance(productId, fileSizeBytes);
       setAllowed(res.allowed);
+      if (typeof res.unlimited === 'boolean') setServerUnlimited(res.unlimited);
       return res;
     },
     [isPaidOrAdmin, productId]
@@ -87,10 +83,9 @@ export function useGuestProductQuota(productId: string): GuestQuotaState {
   }, [consumeDownloadQuota]);
 
   return {
-    isGuest,
-    unlimited: isPaidOrAdmin,
-    limit: GUEST_LIMIT_6_HOURS,
-    allowed: isPaidOrAdmin ? true : allowed,
+    isGuest: isGuest && !serverUnlimited,
+    unlimited: isPaidOrAdmin || serverUnlimited,
+    allowed: isPaidOrAdmin || serverUnlimited ? true : allowed,
     memoryProfile: isPaidOrAdmin ? fallbackMemory : serverProfile || fallbackMemory,
     loading,
     consumeDownloadQuota,

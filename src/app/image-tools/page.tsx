@@ -286,7 +286,7 @@ export default function ImageToolsPage() {
         );
       }
     },
-    [activeId, addToast, openAuthModal, quota.allowed, quota.limit, quota.memoryProfile.label, quota.memoryProfile.maxBatchFiles, quota.memoryProfile.maxFileSizeMb, queue.length]
+    [activeId, addToast, quota.memoryProfile.maxBatchFiles, quota.memoryProfile.maxFileSizeMb, queue.length]
   );
 
   // Ingest pending file from Workspace

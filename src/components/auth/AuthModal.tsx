@@ -48,6 +48,7 @@ export function AuthModal() {
   const [showPassword, setShowPassword] = useState(false);
 
   const [otpCode, setOtpCode] = useState('');
+  const otpInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -285,7 +286,7 @@ export function AuthModal() {
               ? `Enter the verification code sent to ${email} (expires in 5 min)`
               : step === 'setPassword'
               ? 'First-time setup: add a password so you can sign in with either Password or Email OTP.'
-              : 'Sign in free for unlimited PDF editing, conversions & cloud storage.'}
+              : 'Sign in to access your saved files, document history & cloud workspace.'}
           </p>
         </div>
 
@@ -554,28 +555,86 @@ export function AuthModal() {
             )}
           </div>
         ) : step === 'otp' ? (
-          /* Step 2: Verification Code */
+          /* Step 2: Verification Code (4 spaced input boxes) */
           <form onSubmit={handleVerifyOtp} className="space-y-5">
-            <div className="space-y-2">
+            <div className="space-y-3">
               <label
-                htmlFor="otp-verification-input"
+                htmlFor="otp-digit-0"
                 className="text-xs font-semibold text-slate-700 dark:text-slate-300 block text-center"
               >
                 Verification Code
               </label>
-              <input
-                id="otp-verification-input"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                autoComplete="one-time-code"
-                autoFocus
-                maxLength={8}
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                placeholder="Enter verification code"
-                className="w-full h-12 sm:h-14 text-center text-xl sm:text-2xl font-mono font-bold tracking-[0.4em] rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-blue-600 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-              />
+              <div className="flex items-center justify-center gap-3 sm:gap-4">
+                {[0, 1, 2, 3].map((idx) => (
+                  <input
+                    key={idx}
+                    id={`otp-digit-${idx}`}
+                    ref={(el) => {
+                      otpInputRefs.current[idx] = el;
+                    }}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete={idx === 0 ? 'one-time-code' : 'off'}
+                    autoFocus={idx === 0}
+                    maxLength={1}
+                    aria-label={`Verification code digit ${idx + 1}`}
+                    value={otpCode[idx] || ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      if (!raw) {
+                        const chars = otpCode.padEnd(4, ' ').split('');
+                        chars[idx] = ' ';
+                        setOtpCode(chars.join('').replace(/\s+$/g, '').replace(/\s/g, ''));
+                        return;
+                      }
+                      if (raw.length > 1) {
+                        const pasted = raw.slice(0, 4);
+                        setOtpCode(pasted);
+                        const nextFocus = Math.min(3, pasted.length - 1);
+                        otpInputRefs.current[nextFocus]?.focus();
+                        return;
+                      }
+                      const digits = Array.from({ length: 4 }, (_, i) => otpCode[i] || '');
+                      digits[idx] = raw;
+                      setOtpCode(digits.join(''));
+                      if (idx < 3) {
+                        otpInputRefs.current[idx + 1]?.focus();
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Backspace') {
+                        const digits = Array.from({ length: 4 }, (_, i) => otpCode[i] || '');
+                        if (digits[idx]) {
+                          digits[idx] = '';
+                          setOtpCode(digits.join(''));
+                        } else if (idx > 0) {
+                          digits[idx - 1] = '';
+                          setOtpCode(digits.join(''));
+                          otpInputRefs.current[idx - 1]?.focus();
+                        }
+                        e.preventDefault();
+                      } else if (e.key === 'ArrowLeft' && idx > 0) {
+                        otpInputRefs.current[idx - 1]?.focus();
+                      } else if (e.key === 'ArrowRight' && idx < 3) {
+                        otpInputRefs.current[idx + 1]?.focus();
+                      }
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pasted = e.clipboardData
+                        .getData('text')
+                        .replace(/\D/g, '')
+                        .slice(0, 4);
+                      if (!pasted) return;
+                      setOtpCode(pasted);
+                      const focusIdx = Math.min(3, pasted.length - 1);
+                      otpInputRefs.current[focusIdx]?.focus();
+                    }}
+                    className="w-12 h-14 sm:w-14 sm:h-16 text-center text-xl sm:text-2xl font-mono font-bold rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-blue-600 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  />
+                ))}
+              </div>
             </div>
 
             <Button

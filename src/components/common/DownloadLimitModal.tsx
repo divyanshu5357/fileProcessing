@@ -6,13 +6,21 @@ import { Button } from '@/components/ui/Button';
 import { useAuth, PlanTier } from '@/context/AuthContext';
 import { openRazorpayCheckout } from '@/lib/razorpayClient';
 import { DownloadAllowanceResult } from '@/lib/downloadQuotaClient';
-import { formatWaitDuration } from '@/lib/guestQuota';
 
 interface DownloadLimitModalProps {
   isOpen: boolean;
   onClose: () => void;
   limitInfo: DownloadAllowanceResult | null;
   onUpgradeSuccess?: () => void;
+}
+
+function formatDurationDisplay(seconds: number): string {
+  const totalMinutes = Math.max(1, Math.ceil(seconds / 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  if (hours > 0 && mins > 0) return `${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${mins}m`;
 }
 
 const PREMIUM_PLANS: {
@@ -75,12 +83,13 @@ export function DownloadLimitModal({
   const isFileSizeIssue = limitInfo.reason === 'file_size';
   const isSpaceIssue = limitInfo.reason === 'space_6h';
   const isDailyIssue = limitInfo.reason === 'daily_limit';
+  const isVerifyFailed = limitInfo.reason === 'verification_failed';
   const remainingSeconds = Math.max(
     0,
     (limitInfo.retryAfterSeconds || 0) - elapsedSeconds
   );
   const liveWaitText =
-    remainingSeconds > 0 ? formatWaitDuration(remainingSeconds) : limitInfo.waitLabel || '6h';
+    remainingSeconds > 0 ? formatDurationDisplay(remainingSeconds) : limitInfo.waitLabel || '6h';
 
   const handleBuyPremium = async () => {
     if (!isAuthenticated || !user) {
@@ -160,7 +169,6 @@ export function DownloadLimitModal({
         className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="px-6 py-5 bg-gradient-to-r from-amber-500/10 via-blue-600/10 to-indigo-600/10 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
@@ -168,12 +176,14 @@ export function DownloadLimitModal({
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-tight">
-                {isFileSizeIssue
-                  ? 'File Exceeds 15 MB Space Allowance'
+                {isVerifyFailed
+                  ? 'Download Verification Required'
+                  : isFileSizeIssue
+                  ? 'File Exceeds Standard Space'
                   : isSpaceIssue
-                  ? '6-Hour 15 MB Space Limit Exceeded'
+                  ? 'Space Allowance Reached'
                   : isDailyIssue
-                  ? 'Daily Download Limit Exceeded'
+                  ? 'Daily Limit Exceeded'
                   : 'Download Limit Exceeded'}
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
@@ -191,29 +201,22 @@ export function DownloadLimitModal({
           </button>
         </div>
 
-        {/* Body */}
         <div className="p-6 space-y-5">
-          {!isFileSizeIssue && (
-            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-start gap-3">
-              <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                <p className="font-bold text-slate-900 dark:text-white">
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-start gap-3">
+            <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+              {!isFileSizeIssue && !isVerifyFailed && (
+                <p className="font-bold text-slate-900 dark:text-white mb-0.5">
                   Auto-refreshes in {liveWaitText}
                 </p>
-                <p className="mt-0.5">
-                  Standard allowance covers 15 MB cumulative total space (up to 4 heavy files) per 6 hours and up to 9 tasks daily. Wait for the 6-hour refresh to reset automatically, or upgrade to Premium to download your edited file immediately.
-                </p>
-              </div>
+              )}
+              <p>
+                {limitInfo.message ||
+                  'Your current allowance is exhausted. Wait for the 6-hour refresh or upgrade to Premium to download your edited file immediately.'}
+              </p>
             </div>
-          )}
+          </div>
 
-          {isFileSizeIssue && (
-            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-              This file exceeds the 15 MB 6-hour space allowance. Upgrade to a Premium plan to unlock downloads up to 100 MB with unlimited tasks.
-            </div>
-          )}
-
-          {/* Plan Selector */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
               <span className="flex items-center gap-1.5">
@@ -268,7 +271,6 @@ export function DownloadLimitModal({
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
             <Button
               variant="primary"
