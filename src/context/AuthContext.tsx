@@ -39,7 +39,6 @@ interface AuthContextType {
   openAuthModal: (email?: string) => void;
   closeAuthModal: () => void;
   signInWithGoogle: (callbackURL?: string) => Promise<void>;
-  signInWithPassword: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
   sendEmailOtp: (email: string) => Promise<{ success: boolean; message?: string; retryAfter?: number }>;
   verifyEmailOtp: (email: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   signOut: () => Promise<void>;
@@ -70,7 +69,6 @@ const defaultContext: AuthContextType = {
   openAuthModal: () => {},
   closeAuthModal: () => {},
   signInWithGoogle: async (callbackURL?: string) => {},
-  signInWithPassword: async () => ({ success: false }),
   sendEmailOtp: async () => ({ success: false }),
   verifyEmailOtp: async () => ({ success: false }),
   signOut: async () => {},
@@ -255,56 +253,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const signInWithPassword = useCallback(async (email: string, password: string) => {
-    setIsLoading(true);
-    const uEmail = email.toLowerCase().trim();
-
-    try {
-      const res = await fetch('/api/auth/sign-in-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: uEmail, password }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setIsLoading(false);
-        return { success: false, message: data.error || 'Invalid email or password.' };
-      }
-
-      if (data.user) {
-        const profile: UserProfile = {
-          id: data.user.id,
-          name: data.user.name,
-          email: data.user.email,
-          avatarUrl: data.user.avatarUrl,
-          plan: (data.user.plan as PlanTier) || 'Free',
-          role: data.user.role || 'user',
-        };
-        setUser(profile);
-        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(profile));
-        setIsLoading(false);
-        closeAuthModal();
-        return { success: true };
-      }
-    } catch (err: any) {
-      setIsLoading(false);
-      return { success: false, message: err?.message || 'Sign in failed. Please try again.' };
-    }
-
-    setIsLoading(false);
-    return { success: false, message: 'Sign in failed.' };
-  }, [closeAuthModal]);
-
   const verifyEmailOtp = useCallback(async (email: string, otp: string) => {
     setIsLoading(true);
     const uEmail = email.toLowerCase().trim();
-
-    // Support test account via OTP bypass
-    if (uEmail === 'test@gyanvatsala.in') {
-      const pwRes = await signInWithPassword('test@gyanvatsala.in', 'TestAccount@2026');
-      setIsLoading(false);
-      return pwRes;
-    }
 
     try {
       // Official Better Auth sign-in with email OTP
@@ -472,7 +423,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         openAuthModal,
         closeAuthModal,
         signInWithGoogle,
-        signInWithPassword,
         sendEmailOtp,
         verifyEmailOtp,
         signOut,
