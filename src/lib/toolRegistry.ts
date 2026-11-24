@@ -499,7 +499,9 @@ export function getFileCategory(ext: string): 'pdf' | 'image' | 'word' | 'excel'
 
 // Backward Compatibility Helpers for existing PDF tools components
 export const ALL_PDF_TOOLS: ToolDefinition[] = CENTRAL_TOOL_REGISTRY.filter(
-  (t) => t.category === 'pdf' || t.category === 'editing' || t.category === 'conversion' || t.category === 'compression'
+  (t) =>
+    (t.category === 'pdf' || t.category === 'editing' || t.category === 'conversion' || t.category === 'compression') &&
+    (t.supportedInputs.includes('.pdf') || t.supportedOutputs.includes('.pdf'))
 ).map((t) => ({
   id: t.id as PdfToolId,
   name: t.name,

@@ -442,6 +442,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (hasPassword) {
           closeAuthModal();
+          if (
+            (profile.role === 'admin' || profile.role === 'support') &&
+            typeof window !== 'undefined' &&
+            !window.location.pathname.startsWith('/admin')
+          ) {
+            window.location.assign('/admin');
+          }
         }
         return { success: true, needsPasswordSetup: !hasPassword };
       }
@@ -520,6 +527,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
           setIsLoading(false);
           closeAuthModal();
+          if (
+            (profile.role === 'admin' || profile.role === 'support') &&
+            typeof window !== 'undefined' &&
+            !window.location.pathname.startsWith('/admin')
+          ) {
+            window.location.assign('/admin');
+          }
           return { success: true };
         }
       } catch (err: any) {
@@ -581,6 +595,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
           setIsLoading(false);
           closeAuthModal();
+          if (
+            (profile.role === 'admin' || profile.role === 'support') &&
+            typeof window !== 'undefined' &&
+            !window.location.pathname.startsWith('/admin')
+          ) {
+            window.location.assign('/admin');
+          }
           return { success: true };
         }
       } catch (err: any) {

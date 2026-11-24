@@ -56,7 +56,7 @@ export default function SubscriptionPage() {
       amount: user?.plan === 'PrimePlus' ? '₹99' : user?.plan === 'Prime' ? '₹49' : user?.plan === 'PrimeUltra' ? '₹249' : '₹0',
       cycle: 'Monthly',
       status: 'Succeeded',
-      method: 'UPI / Razorpay',
+      method: 'Online Payment',
     },
   ]);
 

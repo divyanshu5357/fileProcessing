@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { RAZORPAY_PLANS, createRazorpayOrder, getRazorpayKeyId } from '@/lib/razorpay';
+import { createRazorpayOrder, getRazorpayKeyId } from '@/lib/razorpay';
+import { getPlanByIdOrSlug, getSiteSettings } from '@/lib/siteConfigServer';
 
 export async function POST(req: NextRequest) {
   try {
@@ -42,15 +43,25 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const planConfig = RAZORPAY_PLANS[rawPlanId];
-    if (!planConfig) {
+    // Verify Admin has enabled live paid upgrades
+    const settings = await getSiteSettings();
+    if (!settings.paymentsEnabled) {
       return NextResponse.json(
-        { error: `Invalid plan specified: ${rawPlanId}. Available plans: prime, prime_plus, prime_ultra.` },
+        { error: 'Paid upgrades are currently disabled by the site administrator (Coming Soon).' },
+        { status: 403 }
+      );
+    }
+
+    const planConfig = await getPlanByIdOrSlug(rawPlanId);
+    if (!planConfig || !planConfig.isActive) {
+      return NextResponse.json(
+        { error: `Invalid or inactive plan specified: ${rawPlanId}.` },
         { status: 400 }
       );
     }
 
-    const amountPaise = billingCycle === 'yearly' ? planConfig.yearlyPaise : planConfig.monthlyPaise;
+    const amountInr = billingCycle === 'yearly' ? planConfig.priceYearlyInr : planConfig.priceMonthlyInr;
+    const amountPaise = Math.max(100, Math.round(amountInr * 100));
     const receiptId = `rcpt_${userId.slice(0, 8)}_${Date.now().toString(36)}`;
 
     // Create official Razorpay Order
@@ -84,10 +95,11 @@ export async function POST(req: NextRequest) {
         email: userEmail,
       },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[checkout] Order creation error:', err);
+    const message = err instanceof Error ? err.message : 'Failed to initialize payment checkout.';
     return NextResponse.json(
-      { error: err.message || 'Failed to initialize payment checkout.' },
+      { error: message },
       { status: 500 }
     );
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, pool } from '@/lib/auth';
 import { RAZORPAY_PLANS, verifyRazorpaySignature } from '@/lib/razorpay';
+import { getPlanByIdOrSlug } from '@/lib/siteConfigServer';
 import { createInternalAssertion } from '@/lib/internalAuth';
 
 const getInternalSecret = () => process.env.INTERNAL_SERVICE_KEY || '';
@@ -61,9 +62,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Resolve plan config
+    // 3. Resolve live DB plan config (fallback cleanly to default static map)
     const normalizedPlanId = (plan_id || 'prime').toLowerCase().replace(/-/g, '_');
-    const planConfig = RAZORPAY_PLANS[normalizedPlanId] || RAZORPAY_PLANS.prime;
+    const dbPlan = await getPlanByIdOrSlug(normalizedPlanId).catch(() => null);
+    const staticFallback = RAZORPAY_PLANS[normalizedPlanId] || RAZORPAY_PLANS.prime;
+    const resolvedPlan = dbPlan
+      ? {
+          id: dbPlan.id,
+          name: dbPlan.name,
+          tier: dbPlan.tier,
+          monthlyPriceInr: dbPlan.priceMonthlyInr,
+          yearlyPriceInr: dbPlan.priceYearlyInr,
+          storageLimitBytes: dbPlan.storageLimitBytes,
+          fileSizeLimitBytes: dbPlan.maxFileSizeBytes,
+          retentionDays: dbPlan.retentionDays,
+        }
+      : staticFallback;
+    const planConfig = resolvedPlan;
     const isYearly = billing_cycle.toLowerCase() === 'yearly';
     const amountInr = isYearly ? planConfig.yearlyPriceInr : planConfig.monthlyPriceInr;
     const intervalSql = isYearly ? "interval '1 year'" : "interval '1 month'";
@@ -180,7 +195,7 @@ export async function POST(req: NextRequest) {
       paymentId: razorpay_payment_id,
       message: `Congratulations! Your plan has been successfully upgraded to ${planConfig.name}.`,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[verify] Payment verification handler failed:', err);
     return NextResponse.json(
       { error: 'Payment verification could not be completed. Please contact support if charged.' },

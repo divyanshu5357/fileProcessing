@@ -66,6 +66,13 @@ export default function AuthenticatedWorkspace() {
   const router = useRouter();
   const { user, storageUsage } = useAuth();
 
+  // Website administrators belong in the Admin Analytics & Controls Console, not the user tool workspace
+  useEffect(() => {
+    if (user?.role === 'admin' || user?.role === 'support') {
+      router.replace('/admin');
+    }
+  }, [user?.role, router]);
+
   // Active uploaded file in workspace
   const [activeFile, setActiveFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);

@@ -36,13 +36,19 @@ import {
   Info,
   LogOut,
   Calendar,
+  Sliders,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
+import {
+  AdminControlsPanel,
+  type AdminControlsPayload,
+} from '@/components/admin/AdminControlsPanel';
 
 // Authoritative admin roles are enforced via database user.role from verified server sessions
 type AdminTab =
   | 'overview'
+  | 'controls'
   | 'revenue'
   | 'subscriptions'
   | 'storage'
@@ -61,6 +67,7 @@ export default function AdminDashboardPage() {
 
   // Data states
   const [overviewData, setOverviewData] = useState<any>(null);
+  const [controlsData, setControlsData] = useState<AdminControlsPayload | null>(null);
   const [revenueData, setRevenueData] = useState<any>(null);
   const [subscriptionsData, setSubscriptionsData] = useState<any>(null);
   const [storageData, setStorageData] = useState<any>(null);
@@ -71,6 +78,7 @@ export default function AdminDashboardPage() {
   // User search/filter
   const [userSearch, setUserSearch] = useState('');
   const [userPlanFilter, setUserPlanFilter] = useState('all');
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
   const userEmail = (user?.email || '').toLowerCase().trim();
   // Authoritative administrator verification
@@ -78,14 +86,37 @@ export default function AdminDashboardPage() {
   const isSupport = user?.role === 'support';
   const isAuthorized = isAdmin || isSupport;
 
-  // Auto-switch away from revenue if support
+  // Support optional ?tab=controls or ?tab=users deep link
   useEffect(() => {
-    if (isSupport && !isAdmin && activeTab === 'revenue') {
+    if (typeof window === 'undefined') return;
+    const requested = new URLSearchParams(window.location.search).get('tab') as AdminTab | null;
+    const validTabs: AdminTab[] = [
+      'overview',
+      'controls',
+      'revenue',
+      'subscriptions',
+      'storage',
+      'processing',
+      'users',
+      'health',
+    ];
+    if (requested && validTabs.includes(requested)) {
+      if (isSupport && !isAdmin && (requested === 'revenue' || requested === 'controls')) {
+        setActiveTab('overview');
+      } else {
+        setActiveTab(requested);
+      }
+    }
+  }, [isSupport, isAdmin]);
+
+  // Auto-switch away from revenue/controls if support
+  useEffect(() => {
+    if (isSupport && !isAdmin && (activeTab === 'revenue' || activeTab === 'controls')) {
       setActiveTab('overview');
     }
   }, [isSupport, isAdmin, activeTab]);
 
-  // Fetch admin metrics from backend
+  // Fetch admin metrics from backend & Neon PostgreSQL controls API
   useEffect(() => {
     if (!isAuthenticated || !isAuthorized) {
       setIsLoading(false);
@@ -96,26 +127,22 @@ export default function AdminDashboardPage() {
     setIsLoading(true);
 
     async function loadData() {
-      const headers = {
-        'X-User-Email': userEmail,
-        'X-User-Id': user?.id || 'usr_admin',
-        'X-User-Role': 'admin',
-      };
-
       try {
-        const [ovRes, revRes, subRes, stRes, procRes, usrRes, hlthRes] =
+        const [ovRes, ctrlRes, revRes, subRes, stRes, procRes, usrRes, hlthRes] =
           await Promise.all([
-            fetch('/api/admin/overview', { headers }).then((r) => r.json()).catch(() => null),
-            isAdmin ? fetch('/api/admin/revenue', { headers }).then((r) => r.json()).catch(() => null) : Promise.resolve(null),
-            isAdmin ? fetch('/api/admin/subscriptions', { headers }).then((r) => r.json()).catch(() => null) : Promise.resolve(null),
-            fetch('/api/admin/storage', { headers }).then((r) => r.json()).catch(() => null),
-            fetch('/api/admin/processing', { headers }).then((r) => r.json()).catch(() => null),
-            fetch(`/api/admin/users?q=${encodeURIComponent(userSearch)}&plan=${userPlanFilter}`, { headers }).then((r) => r.json()).catch(() => null),
-            fetch('/api/admin/health', { headers }).then((r) => r.json()).catch(() => null),
+            fetch('/api/admin/overview').then((r) => r.json()).catch(() => null),
+            isAdmin ? fetch('/api/admin/controls').then((r) => (r.ok ? r.json() : null)).catch(() => null) : Promise.resolve(null),
+            isAdmin ? fetch('/api/admin/revenue').then((r) => r.json()).catch(() => null) : Promise.resolve(null),
+            isAdmin ? fetch('/api/admin/subscriptions').then((r) => r.json()).catch(() => null) : Promise.resolve(null),
+            fetch('/api/admin/storage').then((r) => r.json()).catch(() => null),
+            fetch('/api/admin/processing').then((r) => r.json()).catch(() => null),
+            fetch(`/api/admin/users?q=${encodeURIComponent(userSearch)}&plan=${userPlanFilter}`).then((r) => r.json()).catch(() => null),
+            fetch('/api/admin/health').then((r) => r.json()).catch(() => null),
           ]);
 
         if (isMounted) {
           setOverviewData(ovRes);
+          if (ctrlRes) setControlsData(ctrlRes);
           setRevenueData(revRes);
           setSubscriptionsData(subRes);
           setStorageData(stRes);
@@ -124,7 +151,7 @@ export default function AdminDashboardPage() {
           setHealthData(hlthRes);
           setIsLoading(false);
         }
-      } catch (err) {
+      } catch {
         if (isMounted) setIsLoading(false);
       }
     }
@@ -211,11 +238,11 @@ export default function AdminDashboardPage() {
           </p>
           <div className="pt-2 flex flex-col gap-2">
             <Link
-              href="/workspace"
+              href="/"
               className="w-full py-2.5 rounded-xl font-bold text-xs bg-[#536BCE] hover:bg-[#4157B5] text-white flex items-center justify-center gap-2 shadow-xs"
             >
-              <LayoutDashboard className="w-3.5 h-3.5" />
-              <span>Return to User Workspace</span>
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Return to Homepage</span>
             </Link>
             <button
               type="button"
@@ -257,6 +284,21 @@ export default function AdminDashboardPage() {
               <LayoutDashboard className="w-4 h-4 shrink-0" />
               <span>Overview</span>
             </button>
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('controls')}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition cursor-pointer text-left ${
+                  activeTab === 'controls'
+                    ? 'bg-blue-50 dark:bg-blue-950/60 text-[#536BCE] font-bold border border-blue-200 dark:border-blue-900/60'
+                    : 'text-[#727783] dark:text-[#9DA3AE] hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Sliders className="w-4 h-4 shrink-0" />
+                <span>Controls & Limits</span>
+              </button>
+            )}
 
             {isAdmin && (
               <button
@@ -357,11 +399,11 @@ export default function AdminDashboardPage() {
           </div>
 
           <Link
-            href="/workspace"
+            href="/pricing"
             className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-[#F7F8FA] dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#20232B] dark:text-[#F8FAFC] transition border border-[#E9EBF0] dark:border-slate-700"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>User Workspace</span>
+            <ArrowUpRight className="w-3.5 h-3.5" />
+            <span>Preview Pricing Page</span>
           </Link>
         </div>
       </aside>
@@ -373,17 +415,19 @@ export default function AdminDashboardPage() {
           <div className="flex items-center gap-3">
             <h1 className="text-base sm:text-lg font-black tracking-tight text-[#20232B] dark:text-[#F8FAFC] capitalize">
               {activeTab === 'overview'
-                ? 'Executive Overview'
+                ? 'Website Analytics & Overview'
+                : activeTab === 'controls'
+                ? 'Website Controls, Plans & Limits'
                 : activeTab === 'revenue'
-                ? 'Revenue & Payment Gateway'
+                ? 'Revenue & Storefront Status'
                 : activeTab === 'subscriptions'
                 ? 'Subscription Distribution'
                 : activeTab === 'storage'
-                ? 'S3 Storage Analytics'
+                ? 'Cloud Storage Analytics'
                 : activeTab === 'processing'
-                ? 'Job Processing Metrics'
+                ? 'Tool Usage & Processing Metrics'
                 : activeTab === 'users'
-                ? 'User Directory & Quotas'
+                ? 'User Directory & Plan Overrides'
                 : 'System Infrastructure Health'}
             </h1>
           </div>
@@ -459,6 +503,37 @@ export default function AdminDashboardPage() {
           </div>
         </header>
 
+        {/* Responsive Mobile / Tablet Navigation Bar */}
+        <div className="md:hidden border-b border-[#E9EBF0] dark:border-[#1E2330] bg-white dark:bg-[#0D1017] px-4 py-2 overflow-x-auto flex items-center gap-2 text-xs font-semibold">
+          {(
+            [
+              { id: 'overview', label: 'Overview', show: true },
+              { id: 'controls', label: 'Controls & Limits', show: isAdmin },
+              { id: 'revenue', label: 'Revenue', show: isAdmin },
+              { id: 'subscriptions', label: 'Subscriptions', show: true },
+              { id: 'storage', label: 'Storage', show: true },
+              { id: 'processing', label: 'Processing', show: true },
+              { id: 'users', label: 'Users', show: true },
+              { id: 'health', label: 'Health', show: true },
+            ] as const
+          )
+            .filter((item) => item.show)
+            .map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveTab(item.id)}
+                className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition cursor-pointer ${
+                  activeTab === item.id
+                    ? 'bg-[#536BCE] text-white font-bold'
+                    : 'bg-[#F7F8FA] dark:bg-[#161B26] text-[#727783] dark:text-[#9DA3AE]'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+        </div>
+
         {/* Tab Content Panes */}
         <div className="p-4 sm:p-8 max-w-7xl mx-auto w-full space-y-6">
           {/* TAB 1: OVERVIEW */}
@@ -517,9 +592,17 @@ export default function AdminDashboardPage() {
                       <span className="text-3xl font-black text-[#20232B] dark:text-[#F8FAFC]">
                         ₹{revenueData?.total_verified_revenue_inr ?? 0}
                       </span>
-                      <span className="text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md">
-                        Pre-Payment
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('controls')}
+                        className={`text-xs font-bold px-2 py-0.5 rounded-md cursor-pointer ${
+                          controlsData?.siteSettings?.paymentsEnabled
+                            ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            : 'text-amber-700 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-300'
+                        }`}
+                      >
+                        {controlsData?.siteSettings?.paymentsEnabled ? 'Payments Live' : 'Coming Soon'}
+                      </button>
                     </div>
                   </div>
                 ) : (
@@ -539,6 +622,59 @@ export default function AdminDashboardPage() {
                 )}
               </div>
 
+              {/* Website Usage Analytics & Live Quota Snapshot (Admin) */}
+              {isAdmin && controlsData?.usageAnalytics && (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-2xl bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#727783]">
+                      Exports (Last 6h)
+                    </span>
+                    <p className="text-2xl font-black text-[#20232B] dark:text-[#F8FAFC]">
+                      {controlsData.usageAnalytics.events6h}
+                    </p>
+                    <span className="text-[10px] text-[#727783]">
+                      Quota Cap: {controlsData.quotaPolicy.max6hCount} / {Math.round(controlsData.quotaPolicy.window6hSeconds / 3600)}h
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#727783]">
+                      Exports (Last 24h)
+                    </span>
+                    <p className="text-2xl font-black text-[#20232B] dark:text-[#F8FAFC]">
+                      {controlsData.usageAnalytics.events24h}
+                    </p>
+                    <span className="text-[10px] text-[#727783]">
+                      Daily Cap: {controlsData.quotaPolicy.max24hCount} / 24h
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#727783]">
+                      24h Processed Volume
+                    </span>
+                    <p className="text-2xl font-black text-[#20232B] dark:text-[#F8FAFC]">
+                      {formatBytes(controlsData.usageAnalytics.bytes24h)}
+                    </p>
+                    <span className="text-[10px] text-[#727783]">
+                      Free Window Cap: {Math.round(controlsData.quotaPolicy.max6hBytes / (1024 * 1024))} MB
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#727783]">
+                      Unique Visitors (24h)
+                    </span>
+                    <p className="text-2xl font-black text-[#20232B] dark:text-[#F8FAFC]">
+                      {controlsData.usageAnalytics.uniqueSubjects24h}
+                    </p>
+                    <span className="text-[10px] text-[#727783]">
+                      7d Total Tasks: {controlsData.usageAnalytics.events7d}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Subscriptions & Distribution Card */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 p-6 rounded-3xl bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] shadow-2xs space-y-4">
@@ -557,7 +693,7 @@ export default function AdminDashboardPage() {
                       <p className="text-2xl font-black text-[#20232B] dark:text-[#F8FAFC]">
                         {overviewData?.subscription_distribution?.free ?? 1}
                       </p>
-                      <span className="text-[10px] text-emerald-600 font-bold block">15 MB / 7 Days</span>
+                      <span className="text-[10px] text-emerald-600 font-bold block">Active Now</span>
                     </div>
 
                     <div className="p-3.5 rounded-2xl bg-[#F7F8FA] dark:bg-[#0D1017] border border-[#E9EBF0] dark:border-[#222632] space-y-1">
@@ -565,7 +701,9 @@ export default function AdminDashboardPage() {
                       <p className="text-2xl font-black text-[#20232B] dark:text-[#F8FAFC]">
                         {overviewData?.subscription_distribution?.prime ?? 0}
                       </p>
-                      <span className="text-[10px] text-amber-600 font-bold block">Coming Soon</span>
+                      <span className={`text-[10px] font-bold block ${controlsData?.siteSettings?.paymentsEnabled ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Coming Soon'}
+                      </span>
                     </div>
 
                     <div className="p-3.5 rounded-2xl bg-[#F7F8FA] dark:bg-[#0D1017] border border-[#E9EBF0] dark:border-[#222632] space-y-1">
@@ -573,7 +711,9 @@ export default function AdminDashboardPage() {
                       <p className="text-2xl font-black text-[#536BCE]">
                         {overviewData?.subscription_distribution?.prime_plus ?? 0}
                       </p>
-                      <span className="text-[10px] text-amber-600 font-bold block">Coming Soon</span>
+                      <span className={`text-[10px] font-bold block ${controlsData?.siteSettings?.paymentsEnabled ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Coming Soon'}
+                      </span>
                     </div>
 
                     <div className="p-3.5 rounded-2xl bg-[#F7F8FA] dark:bg-[#0D1017] border border-[#E9EBF0] dark:border-[#222632] space-y-1">
@@ -581,20 +721,33 @@ export default function AdminDashboardPage() {
                       <p className="text-2xl font-black text-[#20232B] dark:text-[#F8FAFC]">
                         {overviewData?.subscription_distribution?.prime_ultra ?? 0}
                       </p>
-                      <span className="text-[10px] text-amber-600 font-bold block">Coming Soon</span>
+                      <span className={`text-[10px] font-bold block ${controlsData?.siteSettings?.paymentsEnabled ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Coming Soon'}
+                      </span>
                     </div>
                   </div>
                 </div>
 
                 <div className="p-6 rounded-3xl bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] shadow-2xs space-y-4">
-                  <h2 className="text-sm font-bold text-[#20232B] dark:text-[#F8FAFC]">
-                    System Readiness
-                  </h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-sm font-bold text-[#20232B] dark:text-[#F8FAFC]">
+                      System Readiness
+                    </h2>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('controls')}
+                        className="text-[11px] font-bold text-[#536BCE] hover:underline cursor-pointer"
+                      >
+                        Manage
+                      </button>
+                    )}
+                  </div>
                   <div className="space-y-3 text-xs">
                     <div className="flex items-center justify-between py-2 border-b border-[#E9EBF0] dark:border-[#222632]">
-                      <span className="text-[#727783]">Backend API</span>
+                      <span className="text-[#727783]">Platform Engine</span>
                       <span className="font-bold text-emerald-600 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Online (v1.0.0)
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Online
                       </span>
                     </div>
                     <div className="flex items-center justify-between py-2 border-b border-[#E9EBF0] dark:border-[#222632]">
@@ -604,21 +757,40 @@ export default function AdminDashboardPage() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between py-2 border-b border-[#E9EBF0] dark:border-[#222632]">
-                      <span className="text-[#727783]">Payment Gateway</span>
-                      <span className="font-bold text-amber-600 flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5" /> Razorpay Review
-                      </span>
+                      <span className="text-[#727783]">Paid Plans</span>
+                      <button
+                        type="button"
+                        onClick={() => isAdmin && setActiveTab('controls')}
+                        className={`font-bold flex items-center gap-1.5 cursor-pointer ${
+                          controlsData?.siteSettings?.paymentsEnabled ? 'text-emerald-600' : 'text-amber-600'
+                        }`}
+                      >
+                        {controlsData?.siteSettings?.paymentsEnabled ? (
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5" />
+                        )}
+                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Coming Soon'}
+                      </button>
                     </div>
                     <div className="flex items-center justify-between py-2">
-                      <span className="text-[#727783]">Workers</span>
+                      <span className="text-[#727783]">Quota Signing</span>
                       <span className="font-bold text-blue-600 flex items-center gap-1.5">
-                        <Cpu className="w-3.5 h-3.5" /> 4 Concurrency
+                        <ShieldCheck className="w-3.5 h-3.5" /> HMAC Enforced
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+          )}
+
+          {/* TAB 1.5: WEBSITE CONTROLS & LIMITS */}
+          {activeTab === 'controls' && isAdmin && (
+            <AdminControlsPanel
+              controlsData={controlsData}
+              onUpdated={() => setRefreshKey((k) => k + 1)}
+            />
           )}
 
           {/* TAB 2: REVENUE & PAYMENTS */}
@@ -658,27 +830,48 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
-              {/* Informative Empty State for Gateway Integration */}
+              {/* Payment Mode & Checkout Control Banner */}
               <div className="p-8 rounded-3xl bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                    <CreditCard className="w-6 h-6" />
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={`w-12 h-12 rounded-2xl border flex items-center justify-center shrink-0 ${
+                        controlsData?.siteSettings?.paymentsEnabled
+                          ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-900/60 text-emerald-600 dark:text-emerald-400'
+                          : 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-900/60 text-amber-600 dark:text-amber-400'
+                      }`}
+                    >
+                      <CreditCard className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <h2 className="text-base font-bold text-[#20232B] dark:text-[#F8FAFC]">
+                        Checkout Availability:{' '}
+                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Coming Soon'}
+                      </h2>
+                      <p className="text-xs text-[#727783] dark:text-[#9DA3AE] leading-relaxed max-w-3xl">
+                        {revenueData?.gateway_integration?.notice ||
+                          (controlsData?.siteSettings?.paymentsEnabled
+                            ? 'Paid plans are currently active on Pricing and Export Modals.'
+                            : 'Paid plans are currently marked as Coming Soon. Switch Paid Plans to Live Active in Website Controls whenever ready to accept orders.')}
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <h2 className="text-base font-bold text-[#20232B] dark:text-[#F8FAFC]">
-                      Payment Gateway Integration: Razorpay (Pre-Launch Review)
-                    </h2>
-                    <p className="text-xs text-[#727783] dark:text-[#9DA3AE] leading-relaxed max-w-3xl">
-                      {revenueData?.gateway_integration?.notice ||
-                        'Gyanvatsala is currently operating in pre-payment launch mode. All in-browser file transformations and Free Starter cloud storage are active. Razorpay merchant onboarding is underway. No mock or fabricated revenue records are generated.'}
-                    </p>
-                  </div>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={() => setActiveTab('controls')}
+                    className="text-xs font-bold px-4 py-2 shrink-0"
+                  >
+                    Open Payment Controls
+                  </Button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-4 border-t border-[#E9EBF0] dark:border-[#222632] text-xs">
                   <div className="p-4 rounded-2xl bg-[#F7F8FA] dark:bg-[#0D1017] border border-[#E9EBF0] dark:border-[#222632] space-y-1">
-                    <span className="font-semibold text-[#727783]">Merchant Account</span>
-                    <p className="font-bold text-[#20232B] dark:text-[#F8FAFC]">Under Compliance Review</p>
+                    <span className="font-semibold text-[#727783]">Storefront State</span>
+                    <p className="font-bold text-[#20232B] dark:text-[#F8FAFC]">
+                      {controlsData?.siteSettings?.paymentsEnabled ? 'Live Checkouts Enabled' : 'Coming Soon Mode'}
+                    </p>
                   </div>
                   <div className="p-4 rounded-2xl bg-[#F7F8FA] dark:bg-[#0D1017] border border-[#E9EBF0] dark:border-[#222632] space-y-1">
                     <span className="font-semibold text-[#727783]">Webhook Listener</span>
@@ -786,7 +979,7 @@ export default function AdminDashboardPage() {
                   <p className="text-2xl font-black text-[#20232B] dark:text-[#F8FAFC]">
                     {storageData?.saved_files_count ?? 0}
                   </p>
-                  <span className="text-[10px] text-slate-500 font-mono">User Workspace</span>
+                  <span className="text-[10px] text-slate-500 font-mono">Cloud File Store</span>
                 </div>
                 <div className="p-5 rounded-2xl bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] space-y-1">
                   <span className="text-xs font-semibold text-[#727783]">Expiring Next 48h</span>
@@ -905,9 +1098,9 @@ export default function AdminDashboardPage() {
                     <thead>
                       <tr className="border-b border-[#E9EBF0] dark:border-[#222632] text-[#727783]">
                         <th className="pb-3 font-semibold">User</th>
-                        <th className="pb-3 font-semibold">Plan</th>
+                        <th className="pb-3 font-semibold">Role</th>
+                        <th className="pb-3 font-semibold">Plan Control</th>
                         <th className="pb-3 font-semibold">Storage Used</th>
-                        <th className="pb-3 font-semibold">Saved Files</th>
                         <th className="pb-3 font-semibold">Created Date</th>
                         <th className="pb-3 font-semibold">Status</th>
                       </tr>
@@ -919,9 +1112,55 @@ export default function AdminDashboardPage() {
                             <p className="font-bold text-[#20232B] dark:text-[#F8FAFC]">{u.name}</p>
                             <p className="text-[11px] text-[#727783] font-mono">{u.email}</p>
                           </td>
-                          <td className="py-3 font-bold text-[#536BCE]">{u.plan}</td>
+                          <td className="py-3">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                u.role === 'admin'
+                                  ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300'
+                                  : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                              }`}
+                            >
+                              {u.role || 'user'}
+                            </span>
+                          </td>
+                          <td className="py-3 font-bold text-[#536BCE]">
+                            {u.role === 'admin' ? (
+                              <span className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400">
+                                Platform Admin
+                              </span>
+                            ) : (
+                              <select
+                                aria-label={`Plan for ${u.email}`}
+                                disabled={!isAdmin || updatingUserId === u.id}
+                                value={(u.plan_id || 'free').toLowerCase()}
+                                onChange={async (e) => {
+                                  const nextPlanId = e.target.value;
+                                  setUpdatingUserId(u.id);
+                                  try {
+                                    await fetch('/api/admin/controls', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        action: 'update_user_plan',
+                                        userId: u.id,
+                                        planId: nextPlanId,
+                                      }),
+                                    });
+                                    setRefreshKey((k) => k + 1);
+                                  } finally {
+                                    setUpdatingUserId(null);
+                                  }
+                                }}
+                                className="px-2.5 py-1 rounded-lg border border-[#E9EBF0] dark:border-[#222632] bg-[#F7F8FA] dark:bg-[#0D1017] text-xs font-semibold text-[#20232B] dark:text-[#F8FAFC] cursor-pointer"
+                              >
+                                <option value="free">Free Starter</option>
+                                <option value="prime">Prime</option>
+                                <option value="prime_plus">PrimePlus</option>
+                                <option value="prime_ultra">PrimeUltra</option>
+                              </select>
+                            )}
+                          </td>
                           <td className="py-3 font-mono">{formatBytes(u.storage_used_bytes)}</td>
-                          <td className="py-3 font-mono">{u.total_files} files</td>
                           <td className="py-3 text-[#727783] font-mono">
                             {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
                           </td>

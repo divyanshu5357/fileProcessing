@@ -264,13 +264,23 @@ export function Header({
             </button>
           )}
 
-          <Link
-            href="/workspace"
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#20232B] dark:bg-[#536BCE] hover:bg-[#343A46] dark:hover:bg-[#4157B5] text-white text-sm font-medium transition shadow-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-[#536BCE]"
-          >
-            <span>Get Started</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
+          {user?.role === 'admin' ? (
+            <Link
+              href="/admin"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition shadow-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Admin Dashboard</span>
+            </Link>
+          ) : (
+            <Link
+              href="/workspace"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#20232B] dark:bg-[#536BCE] hover:bg-[#343A46] dark:hover:bg-[#4157B5] text-white text-sm font-medium transition shadow-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-[#536BCE]"
+            >
+              <span>Get Started</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          )}
         </div>
 
         {/* Mobile menu trigger */}
@@ -354,12 +364,22 @@ export function Header({
                 Sign In
               </button>
             )}
-            <Link
-              href="/workspace"
-              className="w-full text-center py-2.5 rounded-xl bg-[#536BCE] text-white text-sm font-medium shadow-xs"
-            >
-              Enter Workspace
-            </Link>
+            {user?.role === 'admin' ? (
+              <Link
+                href="/admin"
+                className="w-full text-center py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold shadow-xs flex items-center justify-center gap-2"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Admin Dashboard</span>
+              </Link>
+            ) : (
+              <Link
+                href="/workspace"
+                className="w-full text-center py-2.5 rounded-xl bg-[#536BCE] text-white text-sm font-medium shadow-xs"
+              >
+                Enter Workspace
+              </Link>
+            )}
           </div>
         </div>
       )}

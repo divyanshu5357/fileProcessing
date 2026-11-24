@@ -66,13 +66,42 @@ export function DownloadLimitModal({
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [statusNote, setStatusNote] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
+  const [livePlans, setLivePlans] = useState(PREMIUM_PLANS);
 
   useEffect(() => {
     if (!isOpen) return;
+    let active = true;
+    fetch('/api/subscriptions/plans', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!active || !data) return;
+        if (typeof data.paymentsEnabled === 'boolean') {
+          setPaymentsEnabled(data.paymentsEnabled);
+        }
+        if (Array.isArray(data.plans)) {
+          const paid = data.plans.filter((p: { id?: string }) => p.id && p.id !== 'free');
+          if (paid.length > 0) {
+            setLivePlans(
+              paid.map((p: { id: string; tier: PlanTier; name: string; priceMonthlyInr: number; maxFileSizeBytes: number; isRecommended?: boolean }) => ({
+                id: p.id as 'prime' | 'prime_plus' | 'prime_ultra',
+                tier: p.tier,
+                name: p.name,
+                price: `₹${p.priceMonthlyInr}/mo`,
+                note: `Unlimited exports • ${Math.max(1, Math.round((p.maxFileSizeBytes || 26214400) / (1024 * 1024)))} MB files`,
+                recommended: Boolean(p.isRecommended),
+              }))
+            );
+          }
+        }
+      })
+      .catch(() => {});
+
     const timer = setInterval(() => {
       setElapsedSeconds((s) => s + 60);
     }, 60000);
     return () => {
+      active = false;
       clearInterval(timer);
       setElapsedSeconds(0);
     };
@@ -92,6 +121,11 @@ export function DownloadLimitModal({
     remainingSeconds > 0 ? formatDurationDisplay(remainingSeconds) : limitInfo.waitLabel || '6h';
 
   const handleBuyPremium = async () => {
+    if (!paymentsEnabled) {
+      setStatusNote('Paid plan upgrades are currently paused (Coming Soon). Your free allowance refreshes automatically.');
+      return;
+    }
+
     if (!isAuthenticated || !user) {
       openAuthModal(
         undefined,
@@ -100,7 +134,7 @@ export function DownloadLimitModal({
       return;
     }
 
-    const plan = PREMIUM_PLANS.find((p) => p.id === selectedPlanId) || PREMIUM_PLANS[1];
+    const plan = livePlans.find((p) => p.id === selectedPlanId) || livePlans[1] || PREMIUM_PLANS[1];
     setCheckoutBusy(true);
     setStatusNote(null);
 
@@ -234,7 +268,7 @@ export function DownloadLimitModal({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              {PREMIUM_PLANS.map((plan) => {
+              {livePlans.map((plan) => {
                 const active = selectedPlanId === plan.id;
                 return (
                   <button
@@ -275,7 +309,7 @@ export function DownloadLimitModal({
             <Button
               variant="primary"
               size="lg"
-              disabled={checkoutBusy}
+              disabled={checkoutBusy || !paymentsEnabled}
               onClick={handleBuyPremium}
               className="w-full sm:flex-1 font-extrabold gap-2 justify-center"
             >
@@ -283,6 +317,11 @@ export function DownloadLimitModal({
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Connecting Checkout...</span>
+                </>
+              ) : !paymentsEnabled ? (
+                <>
+                  <Crown className="w-4 h-4" />
+                  <span>Paid Upgrades Coming Soon</span>
                 </>
               ) : (
                 <>
@@ -301,7 +340,7 @@ export function DownloadLimitModal({
               onClick={onClose}
               className="w-full sm:w-auto text-xs font-semibold"
             >
-              Wait 6 Hours
+              Wait {liveWaitText}
             </Button>
           </div>
         </div>

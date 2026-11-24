@@ -226,3 +226,98 @@ export function signExportTicket(productId: string, subjectKey: string): string 
     .slice(0, 24);
   return `${ts}.${mac}`;
 }
+
+export interface UpdateQuotaPolicyInput {
+  max6hCount?: number;
+  max24hCount?: number;
+  max6hBytes?: number;
+  window6hSeconds?: number;
+  window24hSeconds?: number;
+  simpleProducts?: string[];
+}
+
+/**
+ * Validates, signs with HMAC-SHA256, and persists website quota limits into PostgreSQL.
+ * Strictly called by authenticated Administrator endpoints.
+ */
+export async function updateSignedQuotaPolicy(
+  input: UpdateQuotaPolicyInput
+): Promise<ServerQuotaPolicy> {
+  const current = await loadSignedQuotaPolicy();
+
+  const max6hCount =
+    typeof input.max6hCount === 'number' && Number.isFinite(input.max6hCount) && input.max6hCount >= 1
+      ? Math.min(1000, Math.round(input.max6hCount))
+      : current.max6hCount;
+  const max24hCount =
+    typeof input.max24hCount === 'number' && Number.isFinite(input.max24hCount) && input.max24hCount >= 1
+      ? Math.max(max6hCount, Math.min(5000, Math.round(input.max24hCount)))
+      : Math.max(max6hCount, current.max24hCount);
+  const max6hBytes =
+    typeof input.max6hBytes === 'number' && Number.isFinite(input.max6hBytes) && input.max6hBytes >= 1024 * 1024
+      ? Math.min(2 * 1024 * 1024 * 1024, Math.round(input.max6hBytes))
+      : current.max6hBytes;
+  const window6hSeconds =
+    typeof input.window6hSeconds === 'number' &&
+    Number.isFinite(input.window6hSeconds) &&
+    input.window6hSeconds >= 60
+      ? Math.min(7 * 24 * 60 * 60, Math.round(input.window6hSeconds))
+      : current.window6hSeconds;
+  const window24hSeconds =
+    typeof input.window24hSeconds === 'number' &&
+    Number.isFinite(input.window24hSeconds) &&
+    input.window24hSeconds >= 60
+      ? Math.min(30 * 24 * 60 * 60, Math.round(input.window24hSeconds))
+      : current.window24hSeconds;
+
+  const simpleProducts = Array.isArray(input.simpleProducts)
+    ? Array.from(
+        new Set(
+          input.simpleProducts
+            .map((s) => String(s).trim().toLowerCase())
+            .filter(Boolean)
+        )
+      )
+    : current.simpleProducts;
+
+  const updated: ServerQuotaPolicy = {
+    policyKey: 'default',
+    max6hCount,
+    max24hCount,
+    max6hBytes,
+    window6hSeconds,
+    window24hSeconds,
+    simpleProducts,
+  };
+
+  if (pool) {
+    const signature = signPolicy(updated);
+    await pool.query(
+      `INSERT INTO quota_policies (
+        policy_key, max_6h_count, max_24h_count, max_6h_bytes,
+        window_6h_seconds, window_24h_seconds, simple_products, signature, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, NOW())
+      ON CONFLICT (policy_key) DO UPDATE SET
+        max_6h_count = EXCLUDED.max_6h_count,
+        max_24h_count = EXCLUDED.max_24h_count,
+        max_6h_bytes = EXCLUDED.max_6h_bytes,
+        window_6h_seconds = EXCLUDED.window_6h_seconds,
+        window_24h_seconds = EXCLUDED.window_24h_seconds,
+        simple_products = EXCLUDED.simple_products,
+        signature = EXCLUDED.signature,
+        updated_at = NOW()`,
+      [
+        updated.policyKey,
+        updated.max6hCount,
+        updated.max24hCount,
+        updated.max6hBytes,
+        updated.window6hSeconds,
+        updated.window24hSeconds,
+        JSON.stringify(updated.simpleProducts),
+        signature,
+      ]
+    );
+  }
+
+  return updated;
+}
