@@ -7,6 +7,7 @@ export default function (phase: string): NextConfig {
   }
 
   return {
+    poweredByHeader: false,
     compress: true,
     experimental: {
       optimizePackageImports: ['lucide-react'],

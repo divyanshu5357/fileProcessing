@@ -142,8 +142,13 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: 8,
     maxPasswordLength: 128,
-    autoSignIn: true,
-    requireEmailVerification: false,
+    autoSignIn: false,
+    requireEmailVerification: true,
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    autoSignInAfterVerification: true,
+    expiresIn: 300,
   },
   rateLimit: {
     enabled: true,
@@ -191,6 +196,7 @@ export const auth = betterAuth({
       allowedAttempts: 5,
       storeOTP: 'hashed',
       resendStrategy: 'rotate',
+      overrideDefaultEmailVerification: true,
       rateLimit: {
         window: 60,
         max: 3,

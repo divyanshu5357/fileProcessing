@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: authErr?.message || 'Failed to generate verification code.',
+          message: 'Unable to dispatch verification code at this moment. Please try again shortly.',
         },
         { status: 400 }
       );
@@ -172,15 +172,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            delivery.error ||
-            'Failed to deliver email. Please check your domain verification or try again.',
+          message: 'Failed to deliver verification email. Please verify your address and try again.',
         },
         { status: 400 }
       );
     }
 
-    // Update timestamp on successful dispatch
+    // Prune stale cooldown entries before recording to bound memory
+    if (lastRequestTimestamps.size > 2000) {
+      const expiryCutoff = now - COOLDOWN_SECONDS * 1000;
+      for (const [k, ts] of lastRequestTimestamps.entries()) {
+        if (ts < expiryCutoff) lastRequestTimestamps.delete(k);
+      }
+    }
     lastRequestTimestamps.set(cleanEmail, now);
 
     logOtpDiagnostic({
@@ -205,7 +209,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message: err?.message || 'Authentication service error. Try again shortly.',
+        message: 'Authentication service error. Try again shortly.',
       },
       { status: 500 }
     );

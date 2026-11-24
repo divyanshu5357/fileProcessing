@@ -38,11 +38,16 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
     'camera=(), microphone=(), geolocation=(), payment=*'
   );
 
+  // Additional hardening headers
+  res.headers.set('X-Permitted-Cross-Domain-Policies', 'none');
+  res.headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.headers.set('X-DNS-Prefetch-Control', 'off');
+
   // Enforce HSTS only in production environments
   if (process.env.NODE_ENV === 'production') {
     res.headers.set(
       'Strict-Transport-Security',
-      'max-age=31536000; includeSubDomains'
+      'max-age=31536000; includeSubDomains; preload'
     );
   }
 
@@ -55,6 +60,11 @@ export function middleware(req: NextRequest) {
   // Rate limit all API routes
   if (pathname.startsWith('/api/')) {
     const ipInfo = extractClientIp(req);
+    const isSensitiveApi =
+      pathname.startsWith('/api/auth') ||
+      pathname.startsWith('/api/admin') ||
+      pathname.startsWith('/api/usage') ||
+      pathname.startsWith('/api/subscriptions');
 
     // Determine category based on endpoint sensitivity
     let category: RateLimitCategory = 'api';
@@ -90,6 +100,10 @@ export function middleware(req: NextRequest) {
     response.headers.set('X-RateLimit-Limit', String(result.limit));
     response.headers.set('X-RateLimit-Remaining', String(result.remaining));
     response.headers.set('X-RateLimit-Reset', String(result.reset));
+    if (isSensitiveApi) {
+      response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      response.headers.set('Pragma', 'no-cache');
+    }
     return applySecurityHeaders(response);
   }
 

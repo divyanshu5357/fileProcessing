@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, pool } from '@/lib/auth';
 import { extractClientIp, maskIp, normalizeIp } from '@/lib/ipUtils';
-import { GUEST_MAX_USES_PER_PRODUCT, getProductMeta } from '@/lib/guestQuota';
+import { GUEST_MAX_USES_PER_PRODUCT, getProductMeta, isMeteredGuestProduct } from '@/lib/guestQuota';
 import { getMemoryProfile } from '@/lib/memoryProfile';
 
 // Process fallback map ONLY if DB pool is unavailable
@@ -108,6 +108,12 @@ export async function POST(req: NextRequest) {
   const userAgent = req.headers.get('user-agent') || '';
   const body = await req.json().catch(() => ({}));
   const productId = (typeof body?.productId === 'string' ? body.productId : 'pdf-editor').trim();
+  if (!isMeteredGuestProduct(productId)) {
+    return NextResponse.json(
+      { error: 'Invalid product identifier.' },
+      { status: 400 }
+    );
+  }
   const meta = getProductMeta(productId);
   const limit = meta.limit || GUEST_MAX_USES_PER_PRODUCT;
 

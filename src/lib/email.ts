@@ -63,7 +63,7 @@ export async function sendOtpEmail(
   const subject = 'Your Gyanvatsala verification code';
   const formattedOtp = otp.length === 8 ? `${otp.slice(0, 4)} ${otp.slice(4)}` : otp;
 
-  const plainText = `Gyanvatsala - Your Digital Document Workspace\n\nYour Verification Code: ${otp}\n\nUse this 4-digit code to complete authentication for your Gyanvatsala account. This code expires in 5 minutes.\n\nSecurity Notice: If you did not request this verification code, please ignore this email. Never share this code with anyone.\n\nNeed assistance? Contact our support team at fileprocess@gyanvatsala.in\n\n(c) ${new Date().getFullYear()} Gyanvatsala. All rights reserved.`;
+  const plainText = `Gyanvatsala - Your Digital Document Workspace\n\nYour Verification Code: ${otp}\n\nUse this security verification code to complete authentication for your Gyanvatsala account. This code expires in 5 minutes.\n\nSecurity Notice: If you did not request this verification code, please ignore this email. Never share this code with anyone.\n\nNeed assistance? Contact our support team at fileprocess@gyanvatsala.in\n\n(c) ${new Date().getFullYear()} Gyanvatsala. All rights reserved.`;
 
   const html = `
     <!DOCTYPE html>
@@ -100,7 +100,7 @@ export async function sendOtpEmail(
         <div class="content">
           <h1 class="title">Verification One-Time Passcode</h1>
           <p class="description">
-            Use the 4-digit verification code below to complete your authentication. This security code is valid for <strong>5 minutes</strong>.
+            Use the verification code below to complete your authentication. This security code is valid for <strong>5 minutes</strong>.
           </p>
           <div class="otp-container">
             <div class="otp-code">${formattedOtp}</div>

@@ -33,6 +33,7 @@ interface AuthResult {
   message?: string;
   retryAfter?: number;
   needsPasswordSetup?: boolean;
+  needsEmailVerification?: boolean;
 }
 
 interface AuthContextType {
@@ -48,8 +49,8 @@ interface AuthContextType {
   openAuthModal: (email?: string, notice?: string) => void;
   closeAuthModal: () => void;
   signInWithGoogle: (callbackURL?: string) => Promise<void>;
-  sendEmailOtp: (email: string) => Promise<AuthResult>;
-  verifyEmailOtp: (email: string, otp: string) => Promise<AuthResult>;
+  sendEmailOtp: (email: string, type?: 'sign-in' | 'email-verification') => Promise<AuthResult>;
+  verifyEmailOtp: (email: string, otp: string, mode?: 'sign-in' | 'email-verification') => Promise<AuthResult>;
   signInWithPassword: (email: string, password: string) => Promise<AuthResult>;
   signUpWithPassword: (name: string, email: string, password: string) => Promise<AuthResult>;
   setInitialPassword: (newPassword: string) => Promise<AuthResult>;
@@ -319,61 +320,80 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const sendEmailOtp = useCallback(async (email: string) => {
-    try {
-      const response = await fetch('/api/auth/request-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.toLowerCase().trim(),
-          type: 'sign-in',
-        }),
-      });
+  const sendEmailOtp = useCallback(
+    async (email: string, type: 'sign-in' | 'email-verification' = 'sign-in') => {
+      try {
+        const response = await fetch('/api/auth/request-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email.toLowerCase().trim(),
+            type,
+          }),
+        });
 
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data?.success) {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.success) {
+          return {
+            success: false,
+            message: data?.message || 'Failed to send verification code. Please check your email.',
+            retryAfter: data?.retryAfter,
+          };
+        }
+
+        return {
+          success: true,
+          message: data?.message || 'Verification code sent to your email.',
+        };
+      } catch (err: any) {
         return {
           success: false,
-          message: data?.message || 'Failed to dispatch verification code. Please check your email.',
-          retryAfter: data?.retryAfter,
+          message: err?.message || 'Authentication service error. Try again shortly.',
         };
       }
+    },
+    []
+  );
 
-      return {
-        success: true,
-        message: data?.message || 'Verification code sent to your email.',
-      };
-    } catch (err: any) {
-      return {
-        success: false,
-        message: err?.message || 'Authentication service error. Try again shortly.',
-      };
-    }
-  }, []);
+  const verifyEmailOtp = useCallback(
+    async (
+      email: string,
+      otp: string,
+      mode: 'sign-in' | 'email-verification' = 'sign-in'
+    ): Promise<AuthResult> => {
+      setIsLoading(true);
+      const uEmail = email.toLowerCase().trim();
 
-  const verifyEmailOtp = useCallback(async (email: string, otp: string) => {
-    setIsLoading(true);
-    const uEmail = email.toLowerCase().trim();
-
-    try {
-      // Official Better Auth sign-in with email OTP
-      let res: any = null;
-      if (typeof (authClient.signIn as any).emailOtp === 'function') {
-        res = await (authClient.signIn as any).emailOtp({
-          email: uEmail,
-          otp: otp.trim(),
-        });
-      } else if (typeof (authClient.signIn as any).emailOTP === 'function') {
-        res = await (authClient.signIn as any).emailOTP({
-          email: uEmail,
-          otp: otp.trim(),
-        });
-      } else {
-        res = await (authClient as any).emailOTP?.verifyEmail({
-          email: uEmail,
-          otp: otp.trim(),
-        });
-      }
+      try {
+        let res: any = null;
+        if (mode === 'email-verification') {
+          if (typeof (authClient as any).emailOtp?.verifyEmail === 'function') {
+            res = await (authClient as any).emailOtp.verifyEmail({
+              email: uEmail,
+              otp: otp.trim(),
+            });
+          } else {
+            res = await (authClient as any).emailOTP?.verifyEmail({
+              email: uEmail,
+              otp: otp.trim(),
+            });
+          }
+        } else if (typeof (authClient.signIn as any).emailOtp === 'function') {
+          res = await (authClient.signIn as any).emailOtp({
+            email: uEmail,
+            otp: otp.trim(),
+          });
+        } else if (typeof (authClient.signIn as any).emailOTP === 'function') {
+          res = await (authClient.signIn as any).emailOTP({
+            email: uEmail,
+            otp: otp.trim(),
+          });
+        } else {
+          res = await (authClient as any).emailOTP?.verifyEmail({
+            email: uEmail,
+            otp: otp.trim(),
+          });
+        }
 
       if (res?.error) {
         setIsLoading(false);
@@ -448,9 +468,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (res?.error) {
           setIsLoading(false);
+          const errCode = (res.error as any)?.code || '';
+          const errMsg = res.error.message || 'Invalid email or password.';
+          if (
+            errCode === 'EMAIL_NOT_VERIFIED' ||
+            errMsg.toLowerCase().includes('not verified')
+          ) {
+            return {
+              success: false,
+              needsEmailVerification: true,
+              message: `Please enter the verification code sent to ${uEmail} to activate your account.`,
+            };
+          }
           return {
             success: false,
-            message: res.error.message || 'Invalid email or password.',
+            message: errMsg,
           };
         }
 
@@ -516,6 +548,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return {
             success: false,
             message: res.error.message || 'Could not create account.',
+          };
+        }
+
+        if (res?.data && !res.data.token) {
+          setIsLoading(false);
+          return {
+            success: true,
+            needsEmailVerification: true,
+            message: `Verification code sent to ${uEmail}. Please enter it below to complete signup.`,
           };
         }
 

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { auth, pool } from '@/lib/auth';
 import { verifyIsSoleAdmin } from '@/lib/adminSecurity';
-import { createInternalAssertion } from '@/lib/internalAuth';
+import { createInternalAssertion, verifyInternalAssertion } from '@/lib/internalAuth';
 
 const getBackendBase = () =>
   (process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
@@ -21,6 +22,10 @@ async function resolveUserRole(req: NextRequest): Promise<{
     if (session?.user) {
       const email = (session.user.email || '').toLowerCase().trim();
       let role: 'admin' | 'support' | 'user' = 'user';
+
+      if (!session.user.emailVerified) {
+        return { userId: '', email: '', role: 'user', isAuthenticated: false };
+      }
 
       // Verify sole admin against encrypted database configuration
       const isSoleAdmin = await verifyIsSoleAdmin({ id: session.user.id, email });
@@ -50,70 +55,30 @@ async function resolveUserRole(req: NextRequest): Promise<{
     console.debug('[Admin Route] Session verification error:', err);
   }
 
-  // 1b. Direct database session query fallback for browser cookies
-  if (pool) {
-    try {
-      const cookieHeader = req.headers.get('cookie') || '';
-      const tokenMatch = cookieHeader.match(/(?:better-auth\.session_token|__Secure-better-auth\.session_token)=([^;]+)/);
-      if (tokenMatch) {
-        let rawToken = decodeURIComponent(tokenMatch[1].trim());
-        if (rawToken.includes('.')) {
-          rawToken = rawToken.split('.')[0];
-        }
-        const sRes = await pool.query(
-          `SELECT s."userId", s."expiresAt", u.email, u.role, u."emailVerified" 
-           FROM public.session s 
-           JOIN public."user" u ON s."userId" = u.id 
-           WHERE s.token = $1 OR s.id = $1 LIMIT 1`,
-          [rawToken]
-        );
-        if (sRes.rows.length > 0) {
-          const row = sRes.rows[0];
-          const expiresAt = new Date(row.expiresAt);
-          if (expiresAt > new Date()) {
-            const email = (row.email || '').toLowerCase().trim();
-            let role: 'admin' | 'support' | 'user' = 'user';
-            
-            const isSoleAdmin = await verifyIsSoleAdmin({ id: row.userId, email });
-            if (isSoleAdmin) {
-              role = 'admin';
-            } else if (row.role === 'support' && row.emailVerified) {
-              role = 'support';
-            }
-            return {
-              userId: row.userId,
-              email,
-              role,
-              isAuthenticated: true,
-            };
-          }
-        }
-      }
-    } catch (dbErr) {
-      console.debug('[Admin Route] DB session lookup error:', dbErr);
-    }
-  }
+  // 2. Internal service-to-service call verified via timing-safe secret + signed HMAC assertion
+  const internalSecret = getInternalSecret().trim();
+  const providedSecret = (req.headers.get('x-internal-secret') || '').trim();
+  const assertionToken = req.headers.get('x-internal-assertion') || '';
 
-  // 2. Fallback check ONLY for authenticated internal service-to-service calls
-  const internalSecret = getInternalSecret();
-  const providedSecret = req.headers.get('x-internal-secret');
-  if (internalSecret && providedSecret && providedSecret === internalSecret) {
-    const headerEmail = (req.headers.get('x-user-email') || '').toLowerCase().trim();
-    const headerId = req.headers.get('x-user-id');
-    const headerRole = req.headers.get('x-user-role');
+  const secretMatches =
+    internalSecret.length >= 16 &&
+    providedSecret.length === internalSecret.length &&
+    crypto.timingSafeEqual(Buffer.from(providedSecret), Buffer.from(internalSecret));
 
-    if (headerId && headerEmail) {
-      const isSoleAdmin = await verifyIsSoleAdmin({ id: headerId, email: headerEmail });
-      if (headerRole === 'admin' && isSoleAdmin) {
-        return { userId: headerId, email: headerEmail, role: 'admin', isAuthenticated: true };
+  if (secretMatches && assertionToken) {
+    const claims = verifyInternalAssertion(assertionToken);
+    if (claims && (claims.role === 'admin' || claims.role === 'support')) {
+      const isSoleAdmin = await verifyIsSoleAdmin({ id: claims.sub, email: claims.email });
+      if (claims.role === 'admin' && isSoleAdmin) {
+        return { userId: claims.sub, email: claims.email, role: 'admin', isAuthenticated: true };
       }
-      if (headerRole === 'support' && pool) {
+      if (claims.role === 'support' && pool) {
         const uRes = await pool.query(
           `SELECT role, "emailVerified" FROM public."user" WHERE id = $1 LIMIT 1`,
-          [headerId]
+          [claims.sub]
         );
         if (uRes.rows.length > 0 && uRes.rows[0].role === 'support' && uRes.rows[0].emailVerified) {
-          return { userId: headerId, email: headerEmail, role: 'support', isAuthenticated: true };
+          return { userId: claims.sub, email: claims.email, role: 'support', isAuthenticated: true };
         }
       }
     }

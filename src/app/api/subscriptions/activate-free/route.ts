@@ -11,49 +11,16 @@ export async function POST(req: NextRequest) {
     let userEmail = '';
     let isAuthenticated = false;
 
-    // 1. Authenticate via Better Auth session
+    // 1. Authenticate via cryptographically signed Better Auth session
     try {
       const session = await auth.api.getSession({ headers: req.headers });
-      if (session?.user) {
+      if (session?.user && session.user.emailVerified) {
         isAuthenticated = true;
         userId = session.user.id;
         userEmail = session.user.email || '';
       }
     } catch (e) {
       console.debug('[activate-free] auth.api.getSession error:', e);
-    }
-
-    // 1b. Direct DB session fallback
-    if (!isAuthenticated && pool) {
-      try {
-        const cookieHeader = req.headers.get('cookie') || '';
-        const tokenMatch = cookieHeader.match(
-          /(?:better-auth\.session_token|__Secure-better-auth\.session_token)=([^;]+)/
-        );
-        if (tokenMatch) {
-          let rawToken = decodeURIComponent(tokenMatch[1].trim());
-          if (rawToken.includes('.')) {
-            rawToken = rawToken.split('.')[0];
-          }
-          const sRes = await pool.query(
-            `SELECT s."userId", s."expiresAt", u.email 
-             FROM public.session s 
-             JOIN public."user" u ON s."userId" = u.id 
-             WHERE s.token = $1 OR s.id = $1 LIMIT 1`,
-            [rawToken]
-          );
-          if (sRes.rows.length > 0) {
-            const row = sRes.rows[0];
-            if (new Date(row.expiresAt) > new Date()) {
-              isAuthenticated = true;
-              userId = row.userId;
-              userEmail = row.email || '';
-            }
-          }
-        }
-      } catch (dbErr) {
-        console.debug('[activate-free] DB session check error:', dbErr);
-      }
     }
 
     // Reject unauthenticated requests - Never trust client-supplied headers without a valid session

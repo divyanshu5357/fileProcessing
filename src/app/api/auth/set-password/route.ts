@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth, pool } from '@/lib/auth';
 import { extractClientIp } from '@/lib/ipUtils';
 import { checkPasswordAuthRateLimit } from '@/lib/rateLimit';
+import { validatePasswordStrength } from '@/lib/passwordPolicy';
 
 export async function POST(req: NextRequest) {
   const ipInfo = extractClientIp(req);
@@ -31,11 +32,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const newPassword = typeof body?.newPassword === 'string' ? body.newPassword : '';
 
-    if (newPassword.length < 8 || newPassword.length > 128) {
+    const pwCheck = validatePasswordStrength(newPassword, email);
+    if (!pwCheck.valid) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Password must be between 8 and 128 characters.',
+          message: pwCheck.message || 'Password does not meet security requirements.',
         },
         { status: 400 }
       );
@@ -67,7 +69,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       hasPassword: true,
-      message: 'Password saved. You can now sign in with password or 4-digit OTP.',
+      message: 'Password saved. You can now sign in with password or Email OTP.',
     });
   } catch (err: unknown) {
     const typedErr = err as { body?: { message?: string }; message?: string };
@@ -78,7 +80,7 @@ export async function POST(req: NextRequest) {
         success: false,
         message:
           status === 403
-            ? 'Please verify your session with a fresh 4-digit OTP before adding a password.'
+            ? 'Please verify your session with a fresh Email OTP before adding a password.'
             : msg,
       },
       { status }

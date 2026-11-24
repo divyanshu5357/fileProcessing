@@ -17,7 +17,6 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { OtpCodeInput, OTP_LENGTH, createEmptyOtp } from '@/components/auth/OtpCodeInput';
 
 export default function AdminLoginPage() {
   const {
@@ -33,7 +32,7 @@ export default function AdminLoginPage() {
 
   const [step, setStep] = useState<'options' | 'otp'>('options');
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState<string[]>(() => createEmptyOtp());
+  const [otpCode, setOtpCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
@@ -84,7 +83,7 @@ export default function AdminLoginPage() {
     try {
       const res = await sendEmailOtp(cleanEmail);
       if (res.success) {
-        setOtp(createEmptyOtp());
+        setOtpCode('');
         setStep('otp');
         setCooldown(60);
       } else {
@@ -107,7 +106,7 @@ export default function AdminLoginPage() {
     try {
       const res = await sendEmailOtp(email.toLowerCase().trim());
       if (res.success) {
-        setOtp(createEmptyOtp());
+        setOtpCode('');
         setCooldown(60);
       } else {
         if (res.retryAfter) {
@@ -125,9 +124,9 @@ export default function AdminLoginPage() {
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
-    const fullCode = otp.join('').trim();
-    if (fullCode.length !== OTP_LENGTH) {
-      setError(`Please enter the complete ${OTP_LENGTH}-digit verification code.`);
+    const fullCode = otpCode.trim();
+    if (fullCode.length < 4) {
+      setError('Please enter a valid verification code.');
       return;
     }
     setError(null);
@@ -288,7 +287,7 @@ export default function AdminLoginPage() {
                   </>
                 ) : (
                   <>
-                    <span>Continue with Email Code</span>
+                    <span>Send Code</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </>
                 )}
@@ -296,27 +295,37 @@ export default function AdminLoginPage() {
             </form>
           </div>
         ) : (
-          /* Step 2: 4-Digit OTP */
+          /* Step 2: OTP Verification */
           <form onSubmit={handleVerifyOtp} className="space-y-5">
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-[#CBD5E1] block text-center">
-                Enter {OTP_LENGTH}-Digit Admin Passcode
+              <label
+                htmlFor="admin-otp-input"
+                className="text-xs font-semibold text-[#CBD5E1] block text-center"
+              >
+                Enter Admin Passcode
               </label>
               <p className="text-[11px] text-[#9DA3AE] text-center">
-                Dispatched to <span className="text-white font-mono">{email}</span> (expires in 5 min)
+                Verification code sent to <span className="text-white font-mono">{email}</span> (expires in 5 min)
               </p>
-              <OtpCodeInput
-                value={otp}
-                onChange={setOtp}
-                idPrefix="admin-otp"
-                inputClassName="w-12 h-12 sm:w-14 sm:h-14 text-center text-xl sm:text-2xl font-mono font-bold rounded-xl border border-[#28314A] bg-[#0D1017] text-[#93A5F5] focus:outline-none focus:ring-2 focus:ring-[#536BCE] transition"
+              <input
+                id="admin-otp-input"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="one-time-code"
+                autoFocus
+                maxLength={8}
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                placeholder="Enter verification code"
+                className="w-full h-12 sm:h-14 text-center text-xl sm:text-2xl font-mono font-bold tracking-[0.4em] rounded-xl border border-[#28314A] bg-[#0D1017] text-[#93A5F5] focus:outline-none focus:ring-2 focus:ring-[#536BCE] transition"
               />
             </div>
 
             <Button
               type="submit"
               variant="primary"
-              disabled={isLoading || otp.join('').trim().length !== OTP_LENGTH}
+              disabled={isLoading || otpCode.trim().length < 4}
               className="w-full py-2.5 text-xs font-bold bg-[#536BCE] hover:bg-[#4157B5] text-white flex items-center justify-center gap-2"
             >
               {isLoading ? (
@@ -334,7 +343,7 @@ export default function AdminLoginPage() {
                 type="button"
                 onClick={() => {
                   setStep('options');
-                  setOtp(createEmptyOtp());
+                  setOtpCode('');
                   setError(null);
                 }}
                 className="text-[#9DA3AE] hover:text-white transition"

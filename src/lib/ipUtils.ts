@@ -101,6 +101,22 @@ export function extractClientIp(req: NextRequest): ExtractedIpInfo {
     };
   }
 
+  // 2b. Platform-verified edge headers (Vercel / Fly)
+  const platformIp =
+    req.headers.get('x-vercel-forwarded-for') ||
+    req.headers.get('fly-client-ip');
+  if (platformIp) {
+    const candidate = platformIp.split(',')[0].trim();
+    if (isValidIp(candidate)) {
+      return {
+        ip: candidate,
+        source: 'edge_runtime',
+        isLoopback: isLoopbackIp(candidate),
+        isPrivate: isPrivateIp(candidate),
+      };
+    }
+  }
+
   // 3. Cloudflare Edge: verified with cf-ray presence to eliminate spoofing by external clients
   const hasCfRay = Boolean(req.headers.get('cf-ray'));
   const cfIp = req.headers.get('cf-connecting-ip');
@@ -114,7 +130,7 @@ export function extractClientIp(req: NextRequest): ExtractedIpInfo {
     };
   }
 
-  // 4. X-Forwarded-For: iterate through hops and prefer public client IP
+  // 4. X-Forwarded-For: scan right-to-left (proxy-appended hop) to prevent client header spoofing
   const forwarded = req.headers.get('x-forwarded-for');
   if (forwarded) {
     const validIps = forwarded
@@ -123,9 +139,14 @@ export function extractClientIp(req: NextRequest): ExtractedIpInfo {
       .filter((s) => isValidIp(s));
 
     if (validIps.length > 0) {
-      // Find first non-private public client IP
-      const publicIp = validIps.find((ip) => !isPrivateIp(ip));
-      const selected = publicIp || validIps[0];
+      let publicIp: string | undefined;
+      for (let i = validIps.length - 1; i >= 0; i--) {
+        if (!isPrivateIp(validIps[i])) {
+          publicIp = validIps[i];
+          break;
+        }
+      }
+      const selected = publicIp || validIps[validIps.length - 1];
       return {
         ip: selected,
         source: 'forwarded_for',

@@ -8,6 +8,7 @@ import {
   checkOtpRateLimit,
   resetRateLimit,
 } from '@/lib/rateLimit';
+import { validatePasswordStrength } from '@/lib/passwordPolicy';
 
 const handler = toNextJsHandler(auth.handler);
 
@@ -65,11 +66,29 @@ export async function POST(req: NextRequest) {
         }
       );
     }
+
+    const rawPassword = typeof parsedBody?.password === 'string' ? parsedBody.password : '';
+    const pwCheck = validatePasswordStrength(rawPassword, email);
+    if (!pwCheck.valid) {
+      return NextResponse.json(
+        {
+          code: 'WEAK_PASSWORD',
+          message: pwCheck.message || 'Password does not meet security requirements.',
+        },
+        { status: 400 }
+      );
+    }
+
     return handler.POST(req);
   }
 
   // 2. OTP Verification & Direct Send Rate Limiting
-  if (pathname.endsWith('/sign-in/email-otp') || pathname.endsWith('/email-otp/verify-email')) {
+  if (
+    pathname.endsWith('/sign-in/email-otp') ||
+    pathname.endsWith('/email-otp/verify-email') ||
+    pathname.endsWith('/email-otp/check-verification-otp') ||
+    pathname.endsWith('/email-otp/reset-password')
+  ) {
     const check = checkOtpVerifyRateLimit(ipInfo.ip, email);
     if (!check.allowed) {
       return NextResponse.json(
@@ -86,13 +105,21 @@ export async function POST(req: NextRequest) {
     }
 
     const res = await handler.POST(req);
-    if (res.ok && email) {
+    if (
+      res.ok &&
+      email &&
+      !pathname.endsWith('/email-otp/check-verification-otp')
+    ) {
       resetRateLimit(email, 'otp_verify_email');
     }
     return res;
   }
 
-  if (pathname.endsWith('/email-otp/send-verification-otp')) {
+  if (
+    pathname.endsWith('/email-otp/send-verification-otp') ||
+    pathname.endsWith('/forget-password/email-otp') ||
+    pathname.endsWith('/email-otp/request-password-reset')
+  ) {
     if (email) {
       const check = checkOtpRateLimit(ipInfo.ip, email);
       if (!check.allowed) {

@@ -16,6 +16,7 @@ import {
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { useAuth, ProcessingMode } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
+import { validatePasswordStrength } from '@/lib/passwordPolicy';
 
 export default function AccountSettingsPage() {
   const { user, processingMode, setProcessingMode, setInitialPassword } = useAuth();
@@ -30,8 +31,9 @@ export default function AccountSettingsPage() {
 
   const handleAddPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword.length < 8) {
-      setPwMsg({ type: 'error', text: 'Password must be at least 8 characters.' });
+    const pwCheck = validatePasswordStrength(newPassword, user?.email);
+    if (!pwCheck.valid) {
+      setPwMsg({ type: 'error', text: pwCheck.message || 'Password is too weak.' });
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -182,8 +184,8 @@ export default function AccountSettingsPage() {
               </h2>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 {user?.hasPassword
-                  ? 'Your password is active. You can sign in using either Password or 4-digit Email OTP.'
-                  : 'Add a password to unlock instant password login in addition to 4-digit Email OTP.'}
+                  ? 'Your password is active. You can sign in using either Password or Email OTP.'
+                  : 'Add a password to unlock instant password login in addition to Email OTP.'}
               </p>
             </div>
             <span

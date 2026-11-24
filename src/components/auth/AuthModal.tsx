@@ -20,7 +20,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { GyanvatsalaLogo } from '@/components/common/GyanvatsalaLogo';
-import { OtpCodeInput, OTP_LENGTH, createEmptyOtp } from '@/components/auth/OtpCodeInput';
+import { validatePasswordStrength } from '@/lib/passwordPolicy';
 
 export function AuthModal() {
   const {
@@ -39,6 +39,7 @@ export function AuthModal() {
   const [step, setStep] = useState<'options' | 'otp' | 'setPassword'>('options');
   const [authMethod, setAuthMethod] = useState<'password' | 'otp'>('otp');
   const [passwordMode, setPasswordMode] = useState<'signin' | 'signup'>('signin');
+  const [otpPurpose, setOtpPurpose] = useState<'sign-in' | 'email-verification'>('sign-in');
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -46,7 +47,7 @@ export function AuthModal() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const [otp, setOtp] = useState<string[]>(() => createEmptyOtp());
+  const [otpCode, setOtpCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -61,11 +62,12 @@ export function AuthModal() {
   useEffect(() => {
     if (!isAuthModalOpen) {
       setStep('options');
+      setOtpPurpose('sign-in');
       setError(null);
       setSuccessMsg(null);
       setPassword('');
       setConfirmPassword('');
-      setOtp(createEmptyOtp());
+      setOtpCode('');
     }
   }, [isAuthModalOpen]);
 
@@ -103,12 +105,13 @@ export function AuthModal() {
     setSuccessMsg(null);
     setIsLoading(true);
     try {
-      const res = await sendEmailOtp(cleanEmail);
+      const res = await sendEmailOtp(cleanEmail, 'sign-in');
       if (res.success) {
-        setOtp(createEmptyOtp());
+        setOtpPurpose('sign-in');
+        setOtpCode('');
         setStep('otp');
         setCooldown(60);
-        setSuccessMsg(`We sent a ${OTP_LENGTH}-digit verification code to ${cleanEmail}`);
+        setSuccessMsg(`Verification code sent to ${cleanEmail}.`);
       } else {
         if (res.retryAfter) {
           setCooldown(res.retryAfter);
@@ -125,15 +128,15 @@ export function AuthModal() {
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
-    const fullCode = otp.join('').trim();
-    if (fullCode.length !== OTP_LENGTH) {
-      setError(`Please enter the complete ${OTP_LENGTH}-digit verification code.`);
+    const fullCode = otpCode.trim();
+    if (fullCode.length < 4) {
+      setError('Please enter a valid verification code.');
       return;
     }
     setError(null);
     setIsLoading(true);
     try {
-      const res = await verifyEmailOtp(email.toLowerCase().trim(), fullCode);
+      const res = await verifyEmailOtp(email.toLowerCase().trim(), fullCode, otpPurpose);
       if (!res.success) {
         setError(res.message || 'Invalid or expired verification code.');
       } else if (res.needsPasswordSetup) {
@@ -155,13 +158,19 @@ export function AuthModal() {
       setError('Please enter a valid email address.');
       return;
     }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long.');
-      return;
-    }
 
-    if (passwordMode === 'signup' && password !== confirmPassword) {
-      setError('Passwords do not match.');
+    if (passwordMode === 'signup') {
+      const pwCheck = validatePasswordStrength(password, cleanEmail);
+      if (!pwCheck.valid) {
+        setError(pwCheck.message || 'Password does not meet security requirements.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.');
+        return;
+      }
+    } else if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
       return;
     }
 
@@ -174,7 +183,15 @@ export function AuthModal() {
           ? await signInWithPassword(cleanEmail, password)
           : await signUpWithPassword(name, cleanEmail, password);
 
-      if (!res.success) {
+      if (res.needsEmailVerification) {
+        setOtpPurpose('email-verification');
+        setOtpCode('');
+        setCooldown(60);
+        setStep('otp');
+        setSuccessMsg(
+          res.message || `Verification code sent to ${cleanEmail}.`
+        );
+      } else if (!res.success) {
         setError(res.message || 'Authentication failed. Please check your details.');
       }
     } catch (err: any) {
@@ -187,8 +204,9 @@ export function AuthModal() {
   const handleSaveFirstPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
+    const pwCheck = validatePasswordStrength(password, email);
+    if (!pwCheck.valid) {
+      setError(pwCheck.message || 'Password does not meet security requirements.');
       return;
     }
     if (password !== confirmPassword) {
@@ -218,11 +236,11 @@ export function AuthModal() {
     setSuccessMsg(null);
     setIsLoading(true);
     try {
-      const res = await sendEmailOtp(email.toLowerCase().trim());
+      const res = await sendEmailOtp(email.toLowerCase().trim(), otpPurpose);
       if (res.success) {
-        setOtp(createEmptyOtp());
+        setOtpCode('');
         setCooldown(60);
-        setSuccessMsg(`A new ${OTP_LENGTH}-digit verification code has been dispatched to your email.`);
+        setSuccessMsg('A new verification code has been sent to your email.');
       } else {
         if (res.retryAfter) {
           setCooldown(res.retryAfter);
@@ -264,9 +282,9 @@ export function AuthModal() {
           </h2>
           <p className="text-xs sm:text-sm text-[#475569] dark:text-[#94A3B8] mt-1">
             {step === 'otp'
-              ? `Enter the ${OTP_LENGTH}-digit code sent to ${email} (expires in 5 min)`
+              ? `Enter the verification code sent to ${email} (expires in 5 min)`
               : step === 'setPassword'
-              ? 'First-time setup: add a password so you can sign in with either Password or 4-digit OTP.'
+              ? 'First-time setup: add a password so you can sign in with either Password or Email OTP.'
               : 'Sign in free for unlimited PDF editing, conversions & cloud storage.'}
           </p>
         </div>
@@ -329,7 +347,7 @@ export function AuthModal() {
               <span>{isLoading ? 'Connecting to Google...' : 'Sign in with Google'}</span>
             </button>
 
-            {/* Auth Method Tabs: 4-Digit OTP vs Password */}
+            {/* Auth Method Tabs: OTP vs Password */}
             <div className="grid grid-cols-2 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-bold">
               <button
                 type="button"
@@ -345,7 +363,7 @@ export function AuthModal() {
                 }`}
               >
                 <Mail className="w-3.5 h-3.5" />
-                <span>4-Digit OTP</span>
+                <span>OTP</span>
               </button>
               <button
                 type="button"
@@ -394,11 +412,11 @@ export function AuthModal() {
                   {isLoading ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Dispatching Code...</span>
+                      <span>Sending Code...</span>
                     </>
                   ) : (
                     <>
-                      <span>Send 4-Digit Email Code</span>
+                      <span>Send Code</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </>
                   )}
@@ -536,24 +554,34 @@ export function AuthModal() {
             )}
           </div>
         ) : step === 'otp' ? (
-          /* Step 2: 4-Digit OTP Verification */
+          /* Step 2: Verification Code */
           <form onSubmit={handleVerifyOtp} className="space-y-5">
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block text-center">
-                {OTP_LENGTH}-Digit Security Code
+              <label
+                htmlFor="otp-verification-input"
+                className="text-xs font-semibold text-slate-700 dark:text-slate-300 block text-center"
+              >
+                Verification Code
               </label>
-              <OtpCodeInput
-                value={otp}
-                onChange={setOtp}
-                idPrefix="otp-input"
-                inputClassName="w-12 h-12 sm:w-14 sm:h-14 text-center text-xl sm:text-2xl font-mono font-bold rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-blue-600 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+              <input
+                id="otp-verification-input"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="one-time-code"
+                autoFocus
+                maxLength={8}
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                placeholder="Enter verification code"
+                className="w-full h-12 sm:h-14 text-center text-xl sm:text-2xl font-mono font-bold tracking-[0.4em] rounded-xl border border-[#CBD5E1] dark:border-[#334155] bg-slate-50 dark:bg-[#0B1120] text-blue-600 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               />
             </div>
 
             <Button
               type="submit"
               variant="primary"
-              disabled={isLoading || otp.join('').trim().length !== OTP_LENGTH}
+              disabled={isLoading || otpCode.trim().length < 4}
               className="w-full py-3 text-sm font-bold flex items-center justify-center gap-2"
             >
               {isLoading ? (
@@ -575,7 +603,8 @@ export function AuthModal() {
                 type="button"
                 onClick={() => {
                   setStep('options');
-                  setOtp(createEmptyOtp());
+                  setOtpPurpose('sign-in');
+                  setOtpCode('');
                   setError(null);
                   setSuccessMsg(null);
                 }}
