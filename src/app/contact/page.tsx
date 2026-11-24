@@ -258,7 +258,7 @@ export default function ContactPage() {
                           <option value="general">General Inquiry</option>
                           <option value="technical">Document Processing Help</option>
                           <option value="account">Account & Storage Limits</option>
-                          <option value="billing">Billing & Paid Plans (Coming Soon)</option>
+                          <option value="billing">Billing & Paid Plans</option>
                           <option value="grievance">Grievance & Privacy Support</option>
                         </select>
                       </div>

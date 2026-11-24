@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     const settings = await getSiteSettings();
     if (!settings.paymentsEnabled) {
       return NextResponse.json(
-        { error: 'Paid upgrades are currently disabled by the site administrator (Coming Soon).' },
+        { error: 'Paid upgrades are currently paused by the site administrator.' },
         { status: 403 }
       );
     }
@@ -98,9 +98,10 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     console.error('[checkout] Order creation error:', err);
     const message = err instanceof Error ? err.message : 'Failed to initialize payment checkout.';
+    const status = message.toLowerCase().includes('not configured') ? 503 : 500;
     return NextResponse.json(
       { error: message },
-      { status: 500 }
+      { status }
     );
   }
 }

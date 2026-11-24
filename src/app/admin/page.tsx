@@ -601,7 +601,7 @@ export default function AdminDashboardPage() {
                             : 'text-amber-700 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-300'
                         }`}
                       >
-                        {controlsData?.siteSettings?.paymentsEnabled ? 'Payments Live' : 'Coming Soon'}
+                        {controlsData?.siteSettings?.paymentsEnabled ? 'Payments Live' : 'Paused'}
                       </button>
                     </div>
                   </div>
@@ -702,7 +702,7 @@ export default function AdminDashboardPage() {
                         {overviewData?.subscription_distribution?.prime ?? 0}
                       </p>
                       <span className={`text-[10px] font-bold block ${controlsData?.siteSettings?.paymentsEnabled ? 'text-emerald-600' : 'text-amber-600'}`}>
-                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Coming Soon'}
+                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Paused'}
                       </span>
                     </div>
 
@@ -712,7 +712,7 @@ export default function AdminDashboardPage() {
                         {overviewData?.subscription_distribution?.prime_plus ?? 0}
                       </p>
                       <span className={`text-[10px] font-bold block ${controlsData?.siteSettings?.paymentsEnabled ? 'text-emerald-600' : 'text-amber-600'}`}>
-                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Coming Soon'}
+                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Paused'}
                       </span>
                     </div>
 
@@ -722,7 +722,7 @@ export default function AdminDashboardPage() {
                         {overviewData?.subscription_distribution?.prime_ultra ?? 0}
                       </p>
                       <span className={`text-[10px] font-bold block ${controlsData?.siteSettings?.paymentsEnabled ? 'text-emerald-600' : 'text-amber-600'}`}>
-                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Coming Soon'}
+                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Paused'}
                       </span>
                     </div>
                   </div>
@@ -770,7 +770,7 @@ export default function AdminDashboardPage() {
                         ) : (
                           <Clock className="w-3.5 h-3.5" />
                         )}
-                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Coming Soon'}
+                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Paused'}
                       </button>
                     </div>
                     <div className="flex items-center justify-between py-2">
@@ -846,13 +846,13 @@ export default function AdminDashboardPage() {
                     <div className="space-y-1">
                       <h2 className="text-base font-bold text-[#20232B] dark:text-[#F8FAFC]">
                         Checkout Availability:{' '}
-                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Coming Soon'}
+                        {controlsData?.siteSettings?.paymentsEnabled ? 'Live Active' : 'Paused'}
                       </h2>
                       <p className="text-xs text-[#727783] dark:text-[#9DA3AE] leading-relaxed max-w-3xl">
                         {revenueData?.gateway_integration?.notice ||
                           (controlsData?.siteSettings?.paymentsEnabled
                             ? 'Paid plans are currently active on Pricing and Export Modals.'
-                            : 'Paid plans are currently marked as Coming Soon. Switch Paid Plans to Live Active in Website Controls whenever ready to accept orders.')}
+                            : 'Paid plans are currently paused. Switch Paid Plans to Live Active in Website Controls whenever ready to accept orders.')}
                       </p>
                     </div>
                   </div>
@@ -870,7 +870,7 @@ export default function AdminDashboardPage() {
                   <div className="p-4 rounded-2xl bg-[#F7F8FA] dark:bg-[#0D1017] border border-[#E9EBF0] dark:border-[#222632] space-y-1">
                     <span className="font-semibold text-[#727783]">Storefront State</span>
                     <p className="font-bold text-[#20232B] dark:text-[#F8FAFC]">
-                      {controlsData?.siteSettings?.paymentsEnabled ? 'Live Checkouts Enabled' : 'Coming Soon Mode'}
+                      {controlsData?.siteSettings?.paymentsEnabled ? 'Live Checkouts Enabled' : 'Upgrades Paused'}
                     </p>
                   </div>
                   <div className="p-4 rounded-2xl bg-[#F7F8FA] dark:bg-[#0D1017] border border-[#E9EBF0] dark:border-[#222632] space-y-1">

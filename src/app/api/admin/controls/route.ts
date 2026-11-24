@@ -13,6 +13,7 @@ import {
   upsertSubscriptionPlan,
 } from '@/lib/siteConfigServer';
 import { CENTRAL_TOOL_REGISTRY } from '@/lib/toolRegistry';
+import { getRazorpayKeyId, getRazorpayKeySecret } from '@/lib/razorpay';
 
 export const dynamic = 'force-dynamic';
 
@@ -129,6 +130,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         siteSettings,
+        gatewayConfigured: Boolean(getRazorpayKeyId() && getRazorpayKeySecret()),
         plans,
         quotaPolicy,
         toolCatalog,

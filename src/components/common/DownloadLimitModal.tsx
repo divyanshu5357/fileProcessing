@@ -66,7 +66,7 @@ export function DownloadLimitModal({
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [statusNote, setStatusNote] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
-  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(true);
   const [livePlans, setLivePlans] = useState(PREMIUM_PLANS);
 
   useEffect(() => {
@@ -122,7 +122,7 @@ export function DownloadLimitModal({
 
   const handleBuyPremium = async () => {
     if (!paymentsEnabled) {
-      setStatusNote('Paid plan upgrades are currently paused (Coming Soon). Your free allowance refreshes automatically.');
+      setStatusNote('Paid plan upgrades are temporarily paused. Your free allowance refreshes automatically.');
       return;
     }
 
@@ -321,7 +321,7 @@ export function DownloadLimitModal({
               ) : !paymentsEnabled ? (
                 <>
                   <Crown className="w-4 h-4" />
-                  <span>Paid Upgrades Coming Soon</span>
+                  <span>Upgrades Temporarily Paused</span>
                 </>
               ) : (
                 <>

@@ -195,7 +195,7 @@ async function buildPostgresAdminFallback(
         mode: settings.paymentsEnabled ? 'live' : 'coming_soon',
         notice: settings.paymentsEnabled
           ? 'Paid upgrades are LIVE across Pricing and Export Limit workflows. Payment totals reflect verified database transactions.'
-          : 'Paid upgrades are currently set to Coming Soon by the Administrator. Toggle "Paid Upgrades Live" in Website Controls to enable live checkouts.',
+          : 'Paid upgrades are currently paused by the Administrator. Toggle "Enable Paid Plan Upgrades" in Controls & Limits to enable live checkouts.',
       },
     };
   }

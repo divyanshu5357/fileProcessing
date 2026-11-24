@@ -154,7 +154,7 @@ export default function PricingPage() {
   const { user, updateUserPlan, openAuthModal } = useAuth();
 
   const [plans, setPlans] = useState<LivePlanDto[]>(FALLBACK_PLANS);
-  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(true);
   const [announcementBanner, setAnnouncementBanner] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [freeLoading, setFreeLoading] = useState(false);
@@ -220,7 +220,7 @@ export default function PricingPage() {
     }
 
     if (!paymentsEnabled) {
-      setNoticeMessage('Paid plan upgrades are currently paused (Coming Soon).');
+      setNoticeMessage('Paid plan upgrades are temporarily paused by the administrator.');
       setTimeout(() => setNoticeMessage(null), 4000);
       return;
     }
@@ -309,7 +309,7 @@ export default function PricingPage() {
                 <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
                 <span>
                   <strong>Administrator View:</strong> Manage prices, tier storage limits, and toggle{' '}
-                  <strong>{paymentsEnabled ? 'Live Active' : 'Coming Soon'}</strong> checkout mode in Admin Controls.
+                  <strong>{paymentsEnabled ? 'Live Active' : 'Paused'}</strong> checkout mode in Admin Controls.
                 </span>
               </div>
               <Link
@@ -406,7 +406,7 @@ export default function PricingPage() {
                       : 'bg-white dark:bg-[#111622] border border-[#E9EBF0] dark:border-[#222632] shadow-xs hover:border-slate-300 dark:hover:border-slate-700'
                   }`}
                 >
-                  {/* Recommended / Status Badge */}
+                  {/* Recommended / Paused Badge */}
                   {p.isRecommended && paymentsEnabled ? (
                     <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-[#536BCE] text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm whitespace-nowrap">
                       <Sparkles className="w-3 h-3" />
@@ -415,7 +415,7 @@ export default function PricingPage() {
                   ) : isPaidLocked ? (
                     <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-slate-800 dark:bg-slate-700 text-slate-100 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm whitespace-nowrap">
                       <Clock className="w-3 h-3" />
-                      <span>Coming Soon</span>
+                      <span>Paused</span>
                     </div>
                   ) : null}
 
@@ -536,7 +536,7 @@ export default function PricingPage() {
                         ) : isPaidLocked ? (
                           <span className="flex items-center justify-center gap-1.5">
                             <Lock className="w-3.5 h-3.5" />
-                            <span>Coming Soon</span>
+                            <span>Paused</span>
                           </span>
                         ) : isCustomerCurrentPlan ? (
                           'Current Active Plan'
@@ -652,7 +652,7 @@ export default function PricingPage() {
                         !p.isPaid || paymentsEnabled ? 'text-emerald-600' : 'text-amber-600'
                       }`}
                     >
-                      {!p.isPaid || paymentsEnabled ? 'Active Now' : 'Coming Soon'}
+                      {!p.isPaid || paymentsEnabled ? 'Active Now' : 'Paused'}
                     </td>
                   ))}
                 </tr>

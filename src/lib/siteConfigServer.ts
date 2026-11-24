@@ -30,7 +30,7 @@ export interface SubscriptionPlanRecord {
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   settingKey: 'default',
-  paymentsEnabled: false,
+  paymentsEnabled: true,
   maintenanceMode: false,
   announcementBanner: '',
   updatedAt: null,
@@ -152,7 +152,7 @@ async function ensureSiteConfigTables(): Promise<void> {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS site_settings (
         setting_key TEXT PRIMARY KEY,
-        payments_enabled BOOLEAN NOT NULL DEFAULT false,
+        payments_enabled BOOLEAN NOT NULL DEFAULT true,
         maintenance_mode BOOLEAN NOT NULL DEFAULT false,
         announcement_banner TEXT NOT NULL DEFAULT '',
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -161,7 +161,7 @@ async function ensureSiteConfigTables(): Promise<void> {
 
     await pool.query(
       `INSERT INTO site_settings (setting_key, payments_enabled, maintenance_mode, announcement_banner)
-       VALUES ('default', false, false, '')
+       VALUES ('default', true, false, '')
        ON CONFLICT (setting_key) DO NOTHING;`
     );
 

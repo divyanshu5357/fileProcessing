@@ -35,6 +35,7 @@ export interface AdminPlanItem {
 }
 
 export interface AdminControlsPayload {
+  gatewayConfigured?: boolean;
   siteSettings: {
     paymentsEnabled: boolean;
     maintenanceMode: boolean;
@@ -192,7 +193,7 @@ function AdminControlsForm({
               <span>Paid Plans & Payment Mode Control</span>
             </h2>
             <p className="text-xs text-[#727783] dark:text-[#9DA3AE]">
-              Switch Pricing & Download Upgrade modals between Coming Soon and Live Active checkout across the entire website.
+              Toggle live paid plan upgrades across Pricing &amp; Export modals. Changes save automatically when flipped.
             </p>
           </div>
           <span
@@ -202,8 +203,30 @@ function AdminControlsForm({
                 : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
             }`}
           >
-            {paymentsEnabled ? 'Live Active Mode' : 'Coming Soon Mode'}
+            {paymentsEnabled ? 'Payments Live Active' : 'Upgrades Paused'}
           </span>
+        </div>
+
+        {/* Gateway Server Credentials Check */}
+        <div
+          className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between gap-3 ${
+            controlsData.gatewayConfigured
+              ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/60 text-emerald-800 dark:text-emerald-300'
+              : 'bg-amber-50/80 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {controlsData.gatewayConfigured ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            ) : (
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+            )}
+            <span>
+              {controlsData.gatewayConfigured
+                ? 'Payment gateway API keys are connected on the server. Live upgrades can accept UPI, Card & NetBanking checkouts.'
+                : 'Storefront Upgrade buttons are enabled, but server keys (RAZORPAY_KEY_ID & RAZORPAY_KEY_SECRET) are not configured in Vercel Environment Variables yet.'}
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -213,13 +236,27 @@ function AdminControlsForm({
                 Enable Paid Plan Upgrades
               </p>
               <p className="text-[11px] text-[#727783] dark:text-[#9DA3AE]">
-                When OFF, all paid plans show Coming Soon. When ON, users can upgrade immediately.
+                Saves immediately — activates Upgrade buttons on Pricing and Download modals.
               </p>
             </div>
             <button
               type="button"
-              onClick={() => setPaymentsEnabled((v) => !v)}
-              className={`w-12 h-7 rounded-full transition-colors p-1 cursor-pointer shrink-0 ${
+              disabled={savingKey === 'site_settings'}
+              onClick={() => {
+                const nextVal = !paymentsEnabled;
+                setPaymentsEnabled(nextVal);
+                void callControlsApi(
+                  'site_settings',
+                  {
+                    action: 'update_site_settings',
+                    paymentsEnabled: nextVal,
+                    maintenanceMode,
+                    announcementBanner,
+                  },
+                  nextVal ? 'Paid upgrades are now LIVE across the website.' : 'Paid upgrades paused.'
+                );
+              }}
+              className={`w-12 h-7 rounded-full transition-colors p-1 cursor-pointer shrink-0 disabled:opacity-60 ${
                 paymentsEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
               }`}
               aria-label="Toggle live paid plans"
@@ -238,13 +275,27 @@ function AdminControlsForm({
                 Maintenance Mode Notice
               </p>
               <p className="text-[11px] text-[#727783] dark:text-[#9DA3AE]">
-                Display a global announcement or pause banner for platform maintenance.
+                Saves immediately — displays a global pause banner for platform maintenance.
               </p>
             </div>
             <button
               type="button"
-              onClick={() => setMaintenanceMode((v) => !v)}
-              className={`w-12 h-7 rounded-full transition-colors p-1 cursor-pointer shrink-0 ${
+              disabled={savingKey === 'site_settings'}
+              onClick={() => {
+                const nextMaint = !maintenanceMode;
+                setMaintenanceMode(nextMaint);
+                void callControlsApi(
+                  'site_settings',
+                  {
+                    action: 'update_site_settings',
+                    paymentsEnabled,
+                    maintenanceMode: nextMaint,
+                    announcementBanner,
+                  },
+                  nextMaint ? 'Maintenance mode notice enabled.' : 'Maintenance mode disabled.'
+                );
+              }}
+              className={`w-12 h-7 rounded-full transition-colors p-1 cursor-pointer shrink-0 disabled:opacity-60 ${
                 maintenanceMode ? 'bg-rose-600' : 'bg-slate-300 dark:bg-slate-700'
               }`}
               aria-label="Toggle maintenance mode"
