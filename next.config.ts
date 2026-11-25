@@ -63,6 +63,7 @@ export default function (phase: string): NextConfig {
         { source: '/doc-to-pdf', destination: '/pdf/word-to-pdf', permanent: true },
         { source: '/scan-pdf', destination: '/scan-studio', permanent: true },
         { source: '/look-scanned', destination: '/scan-studio', permanent: true },
+        { source: '/tools/image-reducer', destination: '/tools/image-size-reducer', permanent: true },
       ];
     },
     experimental: {

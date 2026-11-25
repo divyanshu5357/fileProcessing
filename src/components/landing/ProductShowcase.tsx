@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { AnimatedSignatureSvg, ScanLaserBeam, ScanTiltCard } from './MotionPrimitives';
 import Link from 'next/link';
 import {
   FileText,
@@ -161,7 +162,7 @@ export function ProductShowcase() {
                     href="/pdf"
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#536BCE] hover:bg-[#4157B5] text-white text-sm font-semibold transition shadow-xs group"
                   >
-                    <span>Open Document Studio</span>
+                    <span>Convert PDF to Word, Merge &amp; Compress</span>
                     <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                   </Link>
                 </div>
@@ -310,7 +311,7 @@ export function ProductShowcase() {
                     href="/scan-studio"
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#536BCE] hover:bg-[#4157B5] text-white text-sm font-semibold transition shadow-xs group"
                   >
-                    <span>Launch Scan Studio</span>
+                    <span>Simulate Photocopier Scans in Scan Studio FX</span>
                     <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                   </Link>
                 </div>
@@ -318,10 +319,10 @@ export function ProductShowcase() {
 
               {/* Scan Studio Before/After Live Preview */}
               <div className="lg:col-span-7 rounded-2xl bg-slate-900 border border-slate-800 p-6 flex items-center justify-center min-h-[300px]">
-                <div
-                  className="w-64 aspect-[1/1.3] bg-white rounded shadow-2xl p-4 flex flex-col justify-between transition-transform duration-200 relative overflow-hidden"
+                <ScanTiltCard
+                  baseAngle={scanAngle}
+                  className="w-64 aspect-[1/1.3] bg-white rounded shadow-2xl p-4 flex flex-col justify-between relative overflow-hidden"
                   style={{
-                    transform: `rotate(${scanAngle}deg)`,
                     filter:
                       scanFilter === 'grayscale'
                         ? 'grayscale(100%) contrast(110%)'
@@ -330,6 +331,7 @@ export function ProductShowcase() {
                         : 'none',
                   }}
                 >
+                  <ScanLaserBeam tone="emerald" />
                   <div>
                     <div className="flex items-center justify-between border-b pb-1.5 border-black/80">
                       <span className="font-serif font-black text-xs text-black tracking-widest uppercase">
@@ -356,7 +358,7 @@ export function ProductShowcase() {
                     <span>150 PPI // ARCHIVE</span>
                     <span className="underline decoration-wavy">Signature: ____________</span>
                   </div>
-                </div>
+                </ScanTiltCard>
               </div>
             </div>
           )}
@@ -402,7 +404,7 @@ export function ProductShowcase() {
                     href="/image-converter"
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#536BCE] hover:bg-[#4157B5] text-white text-sm font-semibold transition shadow-xs group"
                   >
-                    <span>Launch Media Studio</span>
+                    <span>Convert JPG, PNG &amp; WebP or Reduce Photo KB</span>
                     <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                   </Link>
                 </div>
@@ -469,7 +471,7 @@ export function ProductShowcase() {
                     href="/tools/pdf-editor"
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#536BCE] hover:bg-[#4157B5] text-white text-sm font-semibold transition shadow-xs group"
                   >
-                    <span>Launch Canvas Editor</span>
+                    <span>Open Free Online PDF Editor Without Watermark</span>
                     <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                   </Link>
                 </div>
@@ -492,15 +494,25 @@ export function ProductShowcase() {
                 <div className="w-full aspect-[4/2.5] bg-[#F7F8FA] dark:bg-[#121622] rounded-xl border border-dashed border-[#536BCE] p-5 flex flex-col justify-between relative">
                   <div>
                     <span className="text-xs font-bold text-[#20232B] dark:text-[#F8FAFC]">
-                      Section 3. Non-Disclosure & IP Assignment
+                      Section 3. Non-Disclosure &amp; IP Assignment
                     </span>
                     <p className="text-xs text-[#4E5360] dark:text-[#9DA3AE] mt-1.5">
                       All intellectual work created under this schedule shall remain proprietary. Click and drag to resize selection bounding boxes.
                     </p>
                   </div>
-                  <div className="flex justify-between items-center text-[10px] text-[#4E5360] dark:text-[#9DA3AE] font-mono">
-                    <span>X: 120.0pt, Y: 410.5pt</span>
-                    <span className="text-emerald-600 font-semibold">Ready to Save</span>
+                  <div className="pt-3 border-t border-[#E2E6F0] dark:border-[#242B3E] flex justify-between items-end gap-4">
+                    <div>
+                      <span className="block text-[9px] font-mono text-[#4E5360] dark:text-[#9DA3AE] uppercase">
+                        Signature Field
+                      </span>
+                      <AnimatedSignatureSvg className="w-28 h-7 text-[#3B50B2] dark:text-[#93A5F5]" />
+                    </div>
+                    <div className="text-right text-[10px] text-[#4E5360] dark:text-[#9DA3AE] font-mono">
+                      <span className="block">X: 120.0pt, Y: 410.5pt</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                        Ready to Save
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

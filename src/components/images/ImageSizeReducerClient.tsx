@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -30,6 +30,7 @@ import {
   ImageCompressControlState,
   normalizeImageCompressSettings,
 } from './ImageCompressControls';
+import { fileTransferService } from '@/lib/fileTransferService';
 import { MainCategory } from '@/types/document';
 
 interface ReducedImageEntry {
@@ -79,6 +80,36 @@ export function ImageSizeReducerClient({ children }: { children?: React.ReactNod
     else if (category === 'image-converter') router.push('/image-converter');
   };
 
+  const toReducedEntry = (file: File): ReducedImageEntry => ({
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    file,
+    originalSize: file.size,
+    originalUrl: URL.createObjectURL(file),
+    reducedBlob: null,
+    reducedUrl: null,
+    reducedSize: null,
+    width: null,
+    height: null,
+    outputExt: 'jpg',
+    error: null,
+  });
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const pending = fileTransferService.consumePendingFile();
+      if (!pending?.file || !pending.file.type.startsWith('image/')) return;
+      const maxBytes = quota.memoryProfile.maxFileSizeMb * 1024 * 1024;
+      if (pending.file.size > maxBytes) {
+        setErrorBanner(
+          `You can queue up to ${quota.memoryProfile.maxBatchFiles} files (${quota.memoryProfile.maxFileSizeMb} MB max per file).`
+        );
+        return;
+      }
+      setEntries((prev) => [...prev, toReducedEntry(pending.file)]);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [quota.memoryProfile.maxBatchFiles, quota.memoryProfile.maxFileSizeMb]);
+
   const addFiles = (incoming: FileList | File[]) => {
     const allowed = Array.from(incoming).filter((f) => f.type.startsWith('image/'));
     if (allowed.length === 0) {
@@ -98,19 +129,7 @@ export function ImageSizeReducerClient({ children }: { children?: React.ReactNod
       setErrorBanner(null);
     }
 
-    const mapped: ReducedImageEntry[] = valid.map((file) => ({
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      file,
-      originalSize: file.size,
-      originalUrl: URL.createObjectURL(file),
-      reducedBlob: null,
-      reducedUrl: null,
-      reducedSize: null,
-      width: null,
-      height: null,
-      outputExt: 'jpg',
-      error: null,
-    }));
+    const mapped = valid.map(toReducedEntry);
 
     setEntries((prev) => [...prev, ...mapped]);
   };

@@ -11,19 +11,24 @@ import { CapabilitiesSection } from '@/components/landing/CapabilitiesSection';
 import { TrustSection } from '@/components/landing/TrustSection';
 import { ALL_PDF_TOOLS } from '@/lib/toolRegistry';
 import { GLOBAL_SEARCH_KEYWORDS, SITE_BASE_URL } from '@/lib/seoData';
+import { HeroTaskPills } from '@/components/landing/HeroTaskPills';
+import { HeroDropzoneSurface } from '@/components/landing/MotionPrimitives';
+import { SearchableToolDirectory } from '@/components/landing/SearchableToolDirectory';
 
 export const metadata: Metadata = {
-  title: 'Gyanvatsala — Free Online PDF Editor, Image to PDF & Image Size Reducer',
+  title: {
+    absolute: 'Free Online PDF Editor, JPG to PDF & Image Size Reducer (20KB–100KB) | Gyanvatsala',
+  },
   description:
-    'Gyanvatsala is a free privacy-first online PDF editor, Image to PDF (IMG/JPG/PNG to PDF) converter, and Image Size Reducer in KB & MB. Edit PDF text, merge, split, compress, and scan documents privately in your browser with Zero Server Uploads.',
+    'Edit PDFs without watermarks, convert JPG/PNG to PDF, compress PDFs, and reduce photo size to 20KB, 50KB, or 100KB—100% locally in your browser with zero server uploads.',
   keywords: GLOBAL_SEARCH_KEYWORDS,
   alternates: {
     canonical: 'https://www.gyanvatsala.in/',
   },
   openGraph: {
-    title: 'Gyanvatsala — Free Online PDF Editor, Image to PDF & Image Size Reducer',
+    title: 'Free Online PDF Editor, JPG to PDF & Image Size Reducer (20KB–100KB) | Gyanvatsala',
     description:
-      'Gyanvatsala: Edit PDFs in-place, convert IMG/JPG/PNG to PDF, reduce image size to 20KB–500KB, convert PDF to Word, and simulate scans cleanly with 100% client-side privacy.',
+      'Edit PDFs without watermarks, convert JPG/PNG to PDF, compress PDFs, and reduce photo size to 20KB, 50KB, or 100KB—100% locally in your browser with zero server uploads.',
     url: 'https://www.gyanvatsala.in/',
     siteName: 'Gyanvatsala',
     images: [
@@ -31,7 +36,7 @@ export const metadata: Metadata = {
         url: 'https://www.gyanvatsala.in/opengraph-image',
         width: 1200,
         height: 630,
-        alt: 'Gyanvatsala — Free Online PDF Editor, Image to PDF & Image Size Reducer',
+        alt: 'Free Online PDF Editor, JPG to PDF & Image Size Reducer (20KB–100KB) | Gyanvatsala',
       },
     ],
   },
@@ -56,18 +61,18 @@ export default function GyanvatsalaHomepage() {
           <div className="max-w-7xl mx-auto flex flex-col items-center text-center gap-8 relative z-10">
             {/* Small Introductory Label */}
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#F7F8FA] dark:bg-[#151926] border border-[#E9EBF0] dark:border-[#28314A] text-xs font-semibold text-[#3B50B2] dark:text-[#93A5F5] tracking-wider uppercase shadow-2xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#3B50B2] dark:bg-[#93A5F5]" />
-              <span>Gyanvatsala • Free Online PDF &amp; Image Workspace</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>100% Client-Side Browser Processing • Zero Watermarks</span>
             </div>
 
-            {/* Main Bold Headline */}
+            {/* Main Bold Headline (Static on initial paint for <1.2s LCP) */}
             <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black text-[#20232B] dark:text-[#F8FAFC] tracking-tight max-w-5xl leading-[1.08]">
-              Gyanvatsala: Edit PDFs, convert images to PDF &amp; reduce image size privately.
+              Free Online PDF Editor, Image to PDF &amp; KB Size Reducer
             </h1>
 
             {/* Supporting Paragraph */}
             <p className="text-base sm:text-xl text-[#4E5360] dark:text-[#9DA3AE] max-w-3xl leading-relaxed font-normal">
-              Gyanvatsala (www.gyanvatsala.in) is a free online PDF editor, IMG &amp; JPG to PDF converter, and KB/MB image size reducer (20KB, 50KB, 100KB). Process Aadhaar cards, PAN PDFs, forms &amp; photos 100% locally in your browser with Zero Server Uploads.
+              Edit PDF text, sign documents, merge/split pages, convert JPG to PDF, and shrink photos to 20KB–100KB for exam &amp; government portals. 100% private browser processing—zero server uploads.
             </p>
 
             {/* Primary Button & Secondary Link */}
@@ -76,52 +81,32 @@ export default function GyanvatsalaHomepage() {
                 href="/workspace"
                 className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl bg-[#20232B] dark:bg-[#536BCE] hover:bg-[#343A46] dark:hover:bg-[#4157B5] text-white text-sm font-semibold transition-all shadow-sm hover:shadow-md group"
               >
-                <span>Explore Workspace</span>
+                <span>Open Free PDF &amp; Image Workspace</span>
                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
               </Link>
 
               <a
-                href="#showcase"
+                href="#tool-directory"
                 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#3B50B2] dark:text-[#93A5F5] hover:underline px-4 py-3.5 transition"
               >
-                <span>See what you can do</span>
+                <span>Browse All 34 PDF &amp; KB Tools</span>
                 <span>→</span>
               </a>
             </div>
 
-            {/* Direct Popular Tool Shortcuts for Instant Access & Crawling */}
-            <nav
-              aria-label="Popular Document and Image Tools"
-              className="flex flex-wrap items-center justify-center gap-2 pt-2 max-w-4xl"
-            >
-              {[
-                { label: 'Online PDF Editor', href: '/tools/pdf-editor' },
-                { label: 'Image to PDF (JPG / PNG)', href: '/pdf/jpg-to-pdf' },
-                { label: 'Image Size Reducer (KB)', href: '/tools/image-size-reducer' },
-                { label: 'Compress PDF', href: '/pdf/compress-pdf' },
-                { label: 'Merge PDF', href: '/pdf/merge-pdf' },
-                { label: 'Split PDF', href: '/pdf/split-pdf' },
-                { label: 'PDF to Word', href: '/pdf/pdf-to-word' },
-                { label: 'Scan Studio', href: '/scan-studio' },
-              ].map((shortcut) => (
-                <Link
-                  key={shortcut.href}
-                  href={shortcut.href}
-                  className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#F7F8FA] dark:bg-[#151926] border border-[#E2E6F0] dark:border-[#28314A] text-[#20232B] dark:text-[#E2E8F0] hover:border-[#3B50B2] dark:hover:border-[#93A5F5] hover:text-[#3B50B2] dark:hover:text-[#93A5F5] transition"
-                >
-                  {shortcut.label}
-                </Link>
-              ))}
-            </nav>
+            {/* Staggered Functional Task Pills */}
+            <HeroTaskPills />
 
             {/* Subtle Supporting Statement */}
             <span className="text-xs sm:text-sm text-[#4E5360] dark:text-[#9DA3AE] tracking-wide pt-1">
-              Documents. Images. Scanning. Creativity.
+              Drop any PDF or image directly onto the preview canvas below to start immediately.
             </span>
 
-            {/* Hero Visual Composition */}
-            <div className="w-full pt-10 sm:pt-14">
-              <ProductHeroVisual />
+            {/* Hero Visual Composition with Interactive Dropzone */}
+            <div className="w-full pt-8 sm:pt-12">
+              <HeroDropzoneSurface>
+                <ProductHeroVisual />
+              </HeroDropzoneSurface>
             </div>
           </div>
         </section>
@@ -185,142 +170,91 @@ export default function GyanvatsalaHomepage() {
         {(() => {
           const homeFaqs = [
             {
-              question: 'What is Gyanvatsala (www.gyanvatsala.in)?',
+              question: 'How do I edit a PDF online for free without watermarks on Gyanvatsala?',
               answer:
-                'Gyanvatsala is an official online PDF and image processing platform at https://www.gyanvatsala.in/ featuring a Free Online PDF Editor, JPG/PNG/IMG to PDF Converter, Image Size Reducer in KB & MB, Merge/Split PDF, PDF to Word, and Photocopier Scan Studio.',
+                'Open Gyanvatsala Online PDF Editor, drop your PDF directly into the browser workspace, modify text, add signatures or whiteout, and export cleanly in seconds with zero watermarks and zero server uploads.',
             },
             {
-              question: 'Are Aadhaar cards, PAN cards, or financial PDFs safe on Gyanvatsala?',
+              question: 'How can I reduce image size in KB (20KB, 50KB, or 100KB) for exam & government portals?',
               answer:
-                'Yes. Core PDF editing, IMG to PDF conversion, KB image size reduction, merging, splitting, and Scan Studio run 100% locally in your browser using client-side WebAssembly and HTML5 Canvas — zero files leave your device for external server processing.',
+                'Use Gyanvatsala Image Size Reducer in KB to enter any exact KB target like 20KB, 50KB, or 100KB—or scale by quality percentage—to compress JPG, PNG, and WebP photos locally in your browser.',
             },
             {
-              question: 'How do I edit a PDF online for free without watermarks?',
+              question: 'Can I convert JPG to PDF, convert PDF to Word, and compress PDF without losing quality?',
               answer:
-                'Open Gyanvatsala’s Free Online PDF Editor, select any PDF from your device, click existing text lines to edit wording or move rows with snap guides, add signatures or whiteout, and export cleanly in your browser without watermarks.',
+                'Yes. Gyanvatsala includes dedicated JPG to PDF, PDF to Word, Compress PDF, Merge/Split PDF, and Scan Studio FX utilities running privately in browser WebAssembly and Canvas.',
             },
             {
-              question: 'How can I convert an image (IMG, JPG, PNG) to PDF or 20KB–100KB?',
+              question: 'Are sensitive documents like Aadhaar cards, PAN PDFs, or transcripts uploaded to cloud servers?',
               answer:
-                'Use Gyanvatsala’s Image to PDF converter to combine JPG/PNG/WebP images into printable A4 or Letter PDFs, or use our Image Size Reducer to shrink photos to exact target sizes like 20KB, 50KB, 100KB, or 200KB for exam portals and government forms.',
+                'No. All core PDF editing, KB image compression, JPG to PDF conversion, and Scan Studio FX processing happen 100% locally in your browser RAM with zero external server uploads.',
             },
           ];
 
-          const homeSchema = {
+          const homeDirectorySchema = {
             '@context': 'https://schema.org',
-            '@graph': [
+            '@type': 'ItemList',
+            name: 'Gyanvatsala PDF & Image Tools Directory',
+            itemListElement: [
               {
-                '@type': 'ItemList',
-                name: 'Gyanvatsala PDF & Image Tools Directory',
-                itemListElement: [
-                  {
-                    '@type': 'ListItem',
-                    position: 1,
-                    name: 'Online PDF Editor',
-                    url: `${SITE_BASE_URL}/tools/pdf-editor`,
-                  },
-                  {
-                    '@type': 'ListItem',
-                    position: 2,
-                    name: 'Image to PDF (JPG / PNG to PDF)',
-                    url: `${SITE_BASE_URL}/pdf/jpg-to-pdf`,
-                  },
-                  {
-                    '@type': 'ListItem',
-                    position: 3,
-                    name: 'Image Size Reducer (KB / MB)',
-                    url: `${SITE_BASE_URL}/tools/image-size-reducer`,
-                  },
-                  ...ALL_PDF_TOOLS.slice(0, 12).map((t, idx) => ({
-                    '@type': 'ListItem',
-                    position: idx + 4,
-                    name: t.name,
-                    url: `${SITE_BASE_URL}/pdf/${t.id}`,
-                  })),
-                ],
+                '@type': 'ListItem',
+                position: 1,
+                name: 'Online PDF Editor Without Watermark',
+                url: `${SITE_BASE_URL}/tools/pdf-editor`,
               },
               {
-                '@type': 'FAQPage',
-                mainEntity: homeFaqs.map((faq) => ({
-                  '@type': 'Question',
-                  name: faq.question,
-                  acceptedAnswer: {
-                    '@type': 'Answer',
-                    text: faq.answer,
-                  },
-                })),
+                '@type': 'ListItem',
+                position: 2,
+                name: 'Reduce Image Size in KB (20KB–100KB)',
+                url: `${SITE_BASE_URL}/tools/image-size-reducer`,
               },
+              {
+                '@type': 'ListItem',
+                position: 3,
+                name: 'Convert JPG & PNG Photos to PDF',
+                url: `${SITE_BASE_URL}/pdf/jpg-to-pdf`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 4,
+                name: 'Compress PDF File Size',
+                url: `${SITE_BASE_URL}/pdf/compress-pdf`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 5,
+                name: 'Convert PDF to Editable Word (DOCX)',
+                url: `${SITE_BASE_URL}/pdf/pdf-to-word`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 6,
+                name: 'Scan Studio FX Simulator',
+                url: `${SITE_BASE_URL}/scan-studio`,
+              },
+              ...ALL_PDF_TOOLS.slice(0, 10).map((t, idx) => ({
+                '@type': 'ListItem',
+                position: idx + 7,
+                name: t.name,
+                url: `${SITE_BASE_URL}/pdf/${t.id}`,
+              })),
             ],
           };
 
           return (
             <section
-              aria-label="All PDF and Image Tools Directory and FAQ"
+              id="tool-directory"
+              aria-label="Searchable PDF and Image Tools Directory and FAQ"
               className="w-full py-20 px-4 sm:px-6 lg:px-8 bg-[#F7F8FA] dark:bg-[#0E121B] border-t border-[#E9EBF0] dark:border-[#222632]"
             >
               <script
                 type="application/ld+json"
-                dangerouslySetInnerHTML={{ __html: JSON.stringify(homeSchema) }}
+                dangerouslySetInnerHTML={{
+                  __html: JSON.stringify(homeDirectorySchema).replace(/</g, '\\u003c'),
+                }}
               />
               <div className="max-w-7xl mx-auto space-y-14">
-                <div className="space-y-6">
-                  <div className="max-w-3xl">
-                    <h2 className="text-2xl sm:text-3xl font-black text-[#20232B] dark:text-[#F8FAFC] tracking-tight">
-                      Every PDF Editor, Image to PDF &amp; File Compressor Tool in One Place
-                    </h2>
-                    <p className="text-sm sm:text-base text-[#4E5360] dark:text-[#9DA3AE] mt-2 leading-relaxed">
-                      Jump straight into any dedicated client-side utility—from editing PDF text and reducing photo file sizes in KB to merging, splitting, signing, and scanning documents.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    <Link
-                      href="/tools/pdf-editor"
-                      className="p-3.5 rounded-xl bg-white dark:bg-[#141824] border border-[#E9EBF0] dark:border-[#242B3E] hover:border-[#3B50B2] dark:hover:border-[#93A5F5] text-xs font-bold text-[#20232B] dark:text-[#F8FAFC] transition"
-                    >
-                      Online PDF Editor
-                    </Link>
-                    <Link
-                      href="/tools/image-size-reducer"
-                      className="p-3.5 rounded-xl bg-white dark:bg-[#141824] border border-[#E9EBF0] dark:border-[#242B3E] hover:border-[#3B50B2] dark:hover:border-[#93A5F5] text-xs font-bold text-[#20232B] dark:text-[#F8FAFC] transition"
-                    >
-                      Image Size Reducer (KB)
-                    </Link>
-                    <Link
-                      href="/scan-studio"
-                      className="p-3.5 rounded-xl bg-white dark:bg-[#141824] border border-[#E9EBF0] dark:border-[#242B3E] hover:border-[#3B50B2] dark:hover:border-[#93A5F5] text-xs font-bold text-[#20232B] dark:text-[#F8FAFC] transition"
-                    >
-                      Scan Studio FX
-                    </Link>
-                    <Link
-                      href="/image-tools"
-                      className="p-3.5 rounded-xl bg-white dark:bg-[#141824] border border-[#E9EBF0] dark:border-[#242B3E] hover:border-[#3B50B2] dark:hover:border-[#93A5F5] text-xs font-bold text-[#20232B] dark:text-[#F8FAFC] transition"
-                    >
-                      Passport Photo &amp; EXIF Studio
-                    </Link>
-                    <Link
-                      href="/image-converter"
-                      className="p-3.5 rounded-xl bg-white dark:bg-[#141824] border border-[#E9EBF0] dark:border-[#242B3E] hover:border-[#3B50B2] dark:hover:border-[#93A5F5] text-xs font-bold text-[#20232B] dark:text-[#F8FAFC] transition"
-                    >
-                      WebP / PNG / JPG Converter
-                    </Link>
-                    {ALL_PDF_TOOLS.map((tool) => (
-                      <Link
-                        key={tool.id}
-                        href={
-                          tool.id === 'pdf-editor'
-                            ? '/tools/pdf-editor'
-                            : tool.id === 'pdf-assembler'
-                            ? '/tools/pdf-assembler'
-                            : `/pdf/${tool.id}`
-                        }
-                        className="p-3.5 rounded-xl bg-white dark:bg-[#141824] border border-[#E9EBF0] dark:border-[#242B3E] hover:border-[#3B50B2] dark:hover:border-[#93A5F5] text-xs font-semibold text-[#20232B] dark:text-[#F8FAFC] transition truncate"
-                      >
-                        {tool.name}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
+                <SearchableToolDirectory />
 
                 <div className="space-y-5 pt-6 border-t border-[#E9EBF0] dark:border-[#242B3E]">
                   <h2 className="text-2xl font-black text-[#20232B] dark:text-[#F8FAFC] tracking-tight">

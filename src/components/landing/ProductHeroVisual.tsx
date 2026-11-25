@@ -1,4 +1,5 @@
 import React from 'react';
+import { AnimatedSignatureSvg, ScanLaserBeam, ScanTiltCard } from './MotionPrimitives';
 import {
   FileText,
   PenTool,
@@ -152,13 +153,13 @@ export function ProductHeroVisual() {
               </div>
             </div>
 
-            {/* Bottom Signature Line */}
-            <div className="mt-4 pt-3 border-t border-[#E9EBF0] dark:border-[#28314A] flex items-center justify-between">
-              <div>
-                <span className="block text-[9px] font-mono text-[#4E5360] dark:text-[#9DA3AE]">AUTHORIZED SIGNATURE</span>
-                <span className="font-serif italic text-xs text-[#3B50B2] dark:text-[#93A5F5] font-bold">
-                  Authorized Executive
+            {/* Bottom Signature Line with Animated SVG Stroke */}
+            <div className="mt-4 pt-3 border-t border-[#E9EBF0] dark:border-[#28314A] flex items-center justify-between gap-2">
+              <div className="flex flex-col gap-0.5">
+                <span className="block text-[9px] font-mono text-[#4E5360] dark:text-[#9DA3AE]">
+                  AUTHORIZED SIGNATURE
                 </span>
+                <AnimatedSignatureSvg className="w-28 h-6 text-[#3B50B2] dark:text-[#93A5F5]" />
               </div>
               <div className="flex items-center gap-1 text-[10px] font-mono text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="w-3 h-3" />
@@ -190,8 +191,12 @@ export function ProductHeroVisual() {
               </div>
             </div>
 
-            {/* Secondary Floating Scan Card (Analog FX preview) */}
-            <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-700 text-white shadow-xs flex flex-col gap-2 relative overflow-hidden">
+            {/* Secondary Floating Scan Card (Analog FX preview with optical laser sweep & ±0.5° hover tilt) */}
+            <ScanTiltCard
+              baseAngle={0}
+              className="p-3.5 rounded-xl bg-slate-900 border border-slate-700 text-white shadow-xs flex flex-col gap-2 relative overflow-hidden"
+            >
+              <ScanLaserBeam tone="emerald" />
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-mono text-amber-400 font-bold uppercase">
                   Scan Studio FX
@@ -208,7 +213,7 @@ export function ProductHeroVisual() {
                   OFFICIAL COPY
                 </span>
               </div>
-            </div>
+            </ScanTiltCard>
           </div>
         </div>
       </div>

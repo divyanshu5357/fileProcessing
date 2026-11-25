@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
-import { ShieldCheck, Lock, HardDrive, Cpu, Cloud, Check } from 'lucide-react';
+import { Lock, Cloud, Check } from 'lucide-react';
+import { ClientPrivacySandbox } from './ClientPrivacySandbox';
 
 export function TrustSection() {
   return (
@@ -32,9 +32,11 @@ export function TrustSection() {
               <h3 className="text-xl font-bold text-[#20232B] dark:text-[#F8FAFC] mb-2">
                 Standard Client-Side Processing
               </h3>
-              <p className="text-sm text-[#4E5360] dark:text-[#9DA3AE] leading-relaxed mb-6">
-                All core document operations—PDF to Word, image compression, page splitting, merging, and scanner effects—execute directly inside your web browser via HTML5 Canvas and WebAssembly.
+              <p className="text-sm text-[#4E5360] dark:text-[#9DA3AE] leading-relaxed mb-4">
+                All core document operations—PDF editing, PDF to Word, image size reduction in KB, merging, splitting, and Scan Studio FX—execute inside your own browser RAM via HTML5 Canvas and WebAssembly with zero cloud uploads.
               </p>
+
+              <ClientPrivacySandbox />
 
               <div className="flex flex-col gap-3 text-xs text-[#20232B] dark:text-[#F8FAFC]">
                 <div className="flex items-center gap-2">
@@ -73,7 +75,7 @@ export function TrustSection() {
               <div className="flex flex-col gap-3 text-xs text-[#20232B] dark:text-[#F8FAFC]">
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-[#3B50B2] dark:text-[#93A5F5] shrink-0" />
-                  <span>Only happens when you deliberately click "Save to Cloud"</span>
+                  <span>Only happens when you deliberately click &ldquo;Save to Cloud&rdquo;</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-[#3B50B2] dark:text-[#93A5F5] shrink-0" />
