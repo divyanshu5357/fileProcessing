@@ -3,7 +3,21 @@ import { emailOTP, admin } from 'better-auth/plugins';
 import { Pool } from 'pg';
 import { sendOtpEmail } from './email';
 
-const databaseUrl = process.env.DATABASE_URL;
+function normalizeDatabaseUrl(rawUrl?: string): string | undefined {
+  if (!rawUrl) return undefined;
+  try {
+    const parsed = new URL(rawUrl);
+    const mode = parsed.searchParams.get('sslmode');
+    if (mode === 'prefer' || mode === 'require' || mode === 'verify-ca') {
+      parsed.searchParams.set('sslmode', 'verify-full');
+    }
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
 
 const getBetterAuthSecret = (): string => {
   const secret = process.env.BETTER_AUTH_SECRET;
@@ -128,7 +142,7 @@ export const pool = databaseUrl
       ssl:
         databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1')
           ? false
-          : { rejectUnauthorized: process.env.NODE_ENV === 'production' },
+          : undefined,
     })
   : null;
 
